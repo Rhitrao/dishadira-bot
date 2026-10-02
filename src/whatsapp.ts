@@ -3,6 +3,7 @@ import { z } from "zod";
 import { config } from "./config";
 import { copyFor, LANGUAGE_BUTTONS } from "./copy";
 import type { Env } from "./env";
+import { bookingChoice } from "./booking";
 import { raiseAttention, sendMessage, type Out } from "./send";
 
 type C = Context<{ Bindings: Env }>;
@@ -192,10 +193,7 @@ async function handleMessage(env: Env, m: Msg, name: string | undefined): Promis
     await menu(copyFor(locale), "menu");
     return;
   }
-  if (choice === "menu_book") {
-    await send({ type: "text", text: cp.bookSoon }, "book"); // Ticket 04 replaces this
-    return;
-  }
+  if (await bookingChoice(env, choice, conv.id, m.id)) return;
   if (choice === "menu_how") {
     await send(
       {

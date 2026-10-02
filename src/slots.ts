@@ -7,7 +7,7 @@ export type Slot = { kind: SlotKind; startUtc: string; endUtc: string };
 // India has no daylight saving, so IST is a fixed +05:30 offset from UTC.
 const IST_OFFSET_MINUTES = 330;
 
-const iso = (ms: number) => new Date(ms).toISOString().slice(0, 19) + "Z";
+export const iso = (ms: number) => new Date(ms).toISOString().slice(0, 19) + "Z";
 const hhmm = (s: string) => {
   const [h, m] = s.split(":").map(Number);
   return h * 60 + m;
@@ -34,14 +34,45 @@ export function generateSlots(ymd: string, kind: SlotKind): Slot[] {
 // IST calendar day ("YYYY-MM-DD") that contains a UTC instant.
 export const istDay = (ms: number) => new Date(ms + IST_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
 
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// IST wording for customers: { day: "Mon 6 Oct", time: "2:30pm" }.
+export function formatIstParts(utc: string): { day: string; time: string } {
+  const d = new Date(Date.parse(utc) + IST_OFFSET_MINUTES * 60_000);
+  const h = d.getUTCHours();
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return {
+    day: `${DAY_NAMES[d.getUTCDay()]} ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]}`,
+    time: `${h % 12 || 12}:${mm}${h < 12 ? "am" : "pm"}`,
+  };
+}
+export const formatIst = (utc: string) => {
+  const p = formatIstParts(utc);
+  return `${p.day}, ${p.time}`;
+};
+
+// The next `count` working days (IST "YYYY-MM-DD"), starting with today.
+export function nextWorkingDays(nowMs: number, count: number): string[] {
+  const out: string[] = [];
+  for (let i = 0; out.length < count && i < 14; i++) {
+    const ymd = istDay(nowMs + i * 86_400_000);
+    if (generateSlots(ymd, "CALL").length) out.push(ymd);
+  }
+  return out;
+}
+
 // A slot is active (blocks the calendar) when booked, or held and not yet expired.
 const ACTIVE = "(state = 'BOOKED' OR hold_until > :now)";
+
+// The per-person limit counts only unexpired HELD rows: a BOOKED call must not stop a later session hold.
+const HELD = "(state = 'HELD' AND hold_until > :now)";
 
 export type HoldResult = { ok: true; holdUntil: string } | { ok: false; reason: "NOT_A_SLOT" | "ALREADY_HOLDING" | "UNAVAILABLE" };
 
 // Amma has one calendar: a CALL and a SESSION must never overlap, so the single statement below
 // refuses a slot if ANY active slot overlaps it (either kind) or if this person already has an
-// active slot. INSERT ... WHERE NOT EXISTS is one atomic write, so concurrent callers get one winner.
+// unexpired hold. INSERT ... WHERE NOT EXISTS is one atomic write, so concurrent callers get one winner.
 // An expired row on the same (kind, start) is taken over by ON CONFLICT; an active one never is,
 // so a replay by the same person can never extend a hold (it is refused as ALREADY_HOLDING).
 export async function holdSlot(
@@ -58,7 +89,7 @@ export async function holdSlot(
     INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until)
     SELECT :kind, :start, :end, :owner, 'HELD', :until
     WHERE NOT EXISTS (SELECT 1 FROM slots WHERE ${ACTIVE} AND start_utc < :end AND end_utc > :start)
-      AND NOT EXISTS (SELECT 1 FROM slots WHERE ${ACTIVE} AND owner_id = :owner)
+      AND NOT EXISTS (SELECT 1 FROM slots WHERE ${HELD} AND owner_id = :owner)
     ON CONFLICT (kind, start_utc) DO UPDATE
       SET owner_id = :owner, state = 'HELD', hold_until = :until, end_utc = :end
       WHERE NOT (slots.state = 'BOOKED' OR slots.hold_until > :now)`;
@@ -66,7 +97,7 @@ export async function holdSlot(
   const res = await run(db, sql, { kind, start: slot.startUtc, end: slot.endUtc, owner: ownerId, until: holdUntil, now });
   if (res.meta.changes > 0) return { ok: true, holdUntil };
 
-  const mine = await first(db, `SELECT 1 AS x FROM slots WHERE ${ACTIVE} AND owner_id = :owner`, { owner: ownerId, now });
+  const mine = await first(db, `SELECT 1 AS x FROM slots WHERE ${HELD} AND owner_id = :owner`, { owner: ownerId, now });
   return { ok: false, reason: mine ? "ALREADY_HOLDING" : "UNAVAILABLE" };
 }
 

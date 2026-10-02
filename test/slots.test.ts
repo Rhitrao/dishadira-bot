@@ -106,6 +106,15 @@ describe("holds", () => {
     expect((await hold("CALL", call(MON, 5).startUtc, a, later)).ok).toBe(true);
   });
 
+  it("a person with a BOOKED call can hold a non-overlapping session slot", async () => {
+    expect((await hold("CALL", call(MON, 0).startUtc, a)).ok).toBe(true);
+    await db.prepare("UPDATE slots SET state = 'BOOKED', hold_until = NULL WHERE owner_id = ?1").bind(a).run();
+    expect((await hold("SESSION", session(MON, 2).startUtc, a)).ok).toBe(true); // 16:00 IST
+    // Still one hold at a time, and the overlap rule is untouched.
+    expect(await hold("SESSION", session(MON, 4).startUtc, a)).toEqual({ ok: false, reason: "ALREADY_HOLDING" });
+    expect(await hold("SESSION", session(MON, 0).startUtc, b)).toEqual({ ok: false, reason: "UNAVAILABLE" });
+  });
+
   it("a replayed request cannot extend a hold", async () => {
     const s = call(MON, 0);
     const first = await hold("CALL", s.startUtc, a);
