@@ -36,6 +36,8 @@ Tables: conversations, events, messages, slots, intros, sessions, payments, refu
 conversations: unique wa_id, display name, locale, mode, last_user_at, source_ad_id, consent_at.
 events: unique(provider, event_key); minimal payload; status; error. Receipt is not processing.
 slots: kind (CALL|SESSION), UNIQUE(kind, start_utc), owner id, hold_until. Availability by conditional SQL only.
+  Amma has ONE calendar: a CALL and a SESSION must never overlap in time. An active booking or hold of either kind blocks
+  every overlapping slot of the other kind. Enforced in the hold write itself, not just in the list shown to customers.
 payments: provider, purpose (INTRO|SESSION), target id, unique order/link/payment ids, amount, state.
 refunds: unique(payment_id); reason; requested_by; state; provider refund id. Never two refunds for one payment.
 blocks: wa_id and/or UPI handle/payer ref; reason; by. Checked before any link is created.
