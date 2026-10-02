@@ -20,7 +20,7 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [x] 04 ₹99 booking (PR https://github.com/Rhitrao/dishadira-bot/pull/4, CI green)
 - [x] 05 Amma's page (PR https://github.com/Rhitrao/dishadira-bot/pull/5, CI green)
 - [x] 06 Outcomes + ₹700 (PR https://github.com/Rhitrao/dishadira-bot/pull/6, CI green)
-- [ ] 07 Rohit's console
+- [x] 07 Rohit's console (PR https://github.com/Rhitrao/dishadira-bot/pull/7, CI green)
 - [ ] 08 Reminders + go-live
 
 ## Credits
@@ -35,7 +35,7 @@ Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far:
 - Switches (`src/switches.ts`, settings table): `NEW_BOOKINGS="false"` pauses, `SENDS="false"` pauses, `AMMA_AWAY="true"` pauses new bookings and raises `AMMA_AWAY_CALL` / `AMMA_AWAY_SESSION` items for calls/sessions still ahead today and tomorrow (on switch and from the 2-minute cron, once per target ever). Env stays master: effective = env on AND not paused; "resume" only removes a pause and is refused (`envoff`) when the env flag is off. booking.ts, session.ts, outcomes.ts (reschedule) and send.ts now ask `bookingsOpen` / `sendsOn`.
 - Cron: `*/2` also records the heartbeat (settings `HEARTBEAT`), raises `AMMA_NO_TAP` (call started over `ammaTapReminderHours` ago, no outcome, last 7 days; once per call), and sends alerts. `30 15 * * *` (9pm IST) sends the digest, then alerts including the heartbeat check; opening /admin also checks the heartbeat.
 - Email (`src/mail.ts`): Cloudflare Email Service `send_email` binding `EMAIL` (`[[send_email]]` in wrangler.toml, structured `env.EMAIL.send({to, from, subject, text})`, no library), recipient = secret `DIGEST_TO`, sender `config.mail.from` (`bot@disha-dira.com`, the public site domain). Missing binding or DIGEST_TO: logged and skipped. Alerts: REFUND_FAILED, REFUND_STUCK, PAYMENT_MISMATCH, UNKNOWN_PAYMENT_LINK, OUTCOME_FAILED, HEARTBEAT_STALE (15 min); one email per kind per IST day (a settings row claimed before sending, released if the send fails).
-- Checks (local): typecheck, vitest 116/116 (17 new in test/admin.test.ts), wrangler dry-run: all passed. GitHub Actions: see PR.
+- Checks (local): typecheck, vitest 116/116 (17 new in test/admin.test.ts), wrangler dry-run: all passed. GitHub Actions: passed on PR 7.
 - Credits: not visible to Claude; check the Usage page.
 - Open questions: (1) Is `disha-dira.com` (or another address) onboarded and verified as a sender in Cloudflare Email Service? The code uses `bot@disha-dira.com`; change `config.mail.from` if not. (2) Refunding a PAYMENT_MISMATCH payment uses the expected amount (₹99 / ₹700), not what was actually paid; check the paid amount in Cashfree first. (3) Replies are deduplicated by item + text, so the identical text sent twice to one item is blocked on purpose. (4) Admin replies are not stored beyond the normal `messages` row; the audit row has no text.
 - Next: Ticket 08 (Reminders + go-live), after Rohit merges the Ticket 07 PR.
@@ -47,7 +47,7 @@ Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far:
 - Refunds: one engine (`requestRefund`). refund_id is always `refund-<payment id>`, plus an `x-idempotency-key` header. Cashfree's create-refund page does not say what a repeated refund_id returns, so a retry first GETs the refund (`/orders/{id}/refunds/{refund_id}`) and only POSTs if it is 404. A transport error leaves it PENDING (retried every ~2 min, lease 60 s); only the provider saying REJECTED/CANCELLED makes it FAILED (-> REFUND_FAILED + attention); not confirmed after 30 min -> attention `REFUND_STUCK`. Refund webhook (`REFUND_STATUS_WEBHOOK`) is handled with the same signature check. Payment moves are conditional on the previous state; a late SUCCESS may repair FAILED, nothing goes backwards from REFUNDED.
 - Migration 0003: `payments.payer_ref`, `outcomes.slot_id` (+ unique with intro, so a rescheduled call gets its own outcome), `refunds` rebuilt (states add PENDING_APPROVAL, new `attempt_at`). Amma's page now also lists RESCHEDULED calls and shows "Done: <outcome>" with no buttons once applied.
 - Behaviour change in an older test: a refund POST that errors used to become FAILED at once; now it stays PENDING and is retried (see above). The old test checks REJECTED instead.
-- Checks (local): typecheck, vitest 99/99, wrangler dry-run: all passed. GitHub Actions: see PR.
+- Checks (local): typecheck, vitest 99/99, wrangler dry-run: all passed. GitHub Actions: passed on PR 7.
 - Credits: not visible to Claude; check the Usage page.
 - Open questions: (1) `payment_update` template (used for the NOT_FIT notice outside 24h, one parameter "₹99") and `session_offer` (no parameters) need matching wording when Rohit submits them to Meta. (2) The payer UPI handle is not returned by the Payment Links endpoints, so `payer_ref` stays empty unless a later change reads it from the order payments API; the once-per-person rule works on wa_id today. (3) Session confirmation text ("distance session… she calls you at the booked time") is my wording; Amma should check it. (4) If Amma's three-hour no-tap reminder and "Amma away" are Ticket 07/08, nothing here covers them.
 - Next: Ticket 07 (Rohit's console: approve rude refunds, resolve attention), after Rohit merges the Ticket 06 PR.
