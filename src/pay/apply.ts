@@ -31,7 +31,7 @@ export async function applyStatus(env: Env, provider: PaymentProvider, ev: PaySt
 
   if (ev.status === "EXPIRED" || ev.status === "CANCELLED") return closeUnpaid(env, pay);
   if (ev.status === "PAID") return applyPaid(env, provider, pay, ev);
-  if (ev.status === "PARTIALLY_PAID") return mismatch(env, pay, "PARTIAL_PAYMENT");
+  if (ev.status === "PARTIALLY_PAID") return mismatch(env, pay, "PARTIAL_PAYMENT", ev.paidPaise);
   return "NOOP"; // ACTIVE / unknown: nothing to do yet
 }
 
@@ -52,8 +52,12 @@ async function closeUnpaid(env: Env, pay: Payment): Promise<Applied> {
   return "CLOSED";
 }
 
-async function mismatch(env: Env, pay: Payment, kind: string): Promise<Applied> {
-  await env.DB.prepare(`UPDATE payments SET state = 'UNKNOWN', updated_at = ?2 WHERE id = ?1 AND state IN ('CREATING','PENDING','FAILED')`).bind(pay.id, nowIso()).run();
+// paid_paise keeps what the customer really paid, so a refund returns that amount and never the expected price.
+async function mismatch(env: Env, pay: Payment, kind: string, paidPaise?: number): Promise<Applied> {
+  await env.DB
+    .prepare(`UPDATE payments SET state = 'UNKNOWN', paid_paise = COALESCE(?3, paid_paise), updated_at = ?2 WHERE id = ?1 AND state IN ('CREATING','PENDING','FAILED')`)
+    .bind(pay.id, nowIso(), paidPaise && paidPaise > 0 ? paidPaise : null)
+    .run();
   await raiseAttention(env.DB, kind, `payment:${pay.id}`);
   return "MISMATCH";
 }
@@ -64,14 +68,14 @@ async function applyPaid(env: Env, provider: PaymentProvider, pay: Payment, ev: 
   const db = env.DB;
   const mode = env.PAYMENT_MODE === "live" ? "live" : "test";
   const price = priceFor(pay.purpose);
-  if (price === null) return mismatch(env, pay, "UNSUPPORTED_PAYMENT");
+  if (price === null) return mismatch(env, pay, "UNSUPPORTED_PAYMENT", ev.paidPaise);
   if (
     ev.paidPaise !== pay.amount_paise ||
     ev.paidPaise !== price ||
     ev.currency !== config.currency ||
     (ev.mode !== undefined && ev.mode !== mode)
   ) {
-    return mismatch(env, pay, "PAYMENT_MISMATCH");
+    return mismatch(env, pay, "PAYMENT_MISMATCH", ev.paidPaise);
   }
 
   // Claim: a verified success supersedes FAILED/UNKNOWN. Money never moves backwards from PAID.

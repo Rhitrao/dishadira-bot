@@ -9,8 +9,8 @@ database_name = "dishadira-bot"
 database_id = "00000000-0000-0000-0000-000000000000"
 
 [triggers]
-# 9pm IST digest (15:30 UTC); and payment reconciliation, outcomes, refunds and the heartbeat every 2 minutes.
-crons = ["30 15 * * *", "*/2 * * * *"]
+# 18:30 IST reminders (13:00 UTC); 9pm IST digest (15:30 UTC); and payment reconciliation, outcomes, refunds and the heartbeat every 2 minutes.
+crons = ["0 13 * * *", "30 15 * * *", "*/2 * * * *"]
 
 # Runtime flags at safe defaults. Only Rohit changes these, outside a coding session.
 [vars]
@@ -21,4 +21,52 @@ PAYMENT_MODE = "test"
 
 # Email to Rohit (digest and alerts). The address itself is the secret DIGEST_TO; no resource is created by this binding.
 [[send_email]]
+name = "EMAIL"
+
+# ---- Deployment environments (Ticket 08) ----
+# `wrangler deploy --env test` / `--env live` (done by the "Deploy" GitHub workflow). The top level above is only for local
+# checks and the CI dry run. Test and live have their OWN D1 database and Worker, so their data never mixes.
+# Wrangler does not inherit bindings, vars or triggers into an environment, so each one repeats them.
+# The database_id values are placeholders: Rohit pastes the real ids (docs/GO-LIVE.md, step 1). All safety flags start off.
+
+[env.test]
+name = "dishadira-bot-test"
+
+[[env.test.d1_databases]]
+binding = "DB"
+database_name = "dishadira-bot-test"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "migrations"
+
+[env.test.triggers]
+crons = ["0 13 * * *", "30 15 * * *", "*/2 * * * *"]
+
+[env.test.vars]
+OWNER_APPROVED = "false"
+NEW_BOOKINGS = "false"
+SENDS = "false"
+PAYMENT_MODE = "test"
+
+[[env.test.send_email]]
+name = "EMAIL"
+
+[env.live]
+name = "dishadira-bot-live"
+
+[[env.live.d1_databases]]
+binding = "DB"
+database_name = "dishadira-bot-live"
+database_id = "00000000-0000-0000-0000-000000000002"
+migrations_dir = "migrations"
+
+[env.live.triggers]
+crons = ["0 13 * * *", "30 15 * * *", "*/2 * * * *"]
+
+[env.live.vars]
+OWNER_APPROVED = "false"
+NEW_BOOKINGS = "false"
+SENDS = "false"
+PAYMENT_MODE = "live"
+
+[[env.live.send_email]]
 name = "EMAIL"

@@ -253,7 +253,7 @@ admin.post("/keep", (c) =>
     const pay = await paymentOf(c.env, item.target);
     if (!pay || !(await declineRefund(c.env, pay.id))) return "gone";
     await resolveItem(c, item.id);
-    await audit(c, "ADMIN_KEEP_NO_REFUND", `payment:${pay.id}`, item.kind);
+    await audit(c, "ADMIN_KEEP_NO_REFUND", `payment:${pay.id}`, `${item.kind}: declined by ${c.get("email")}`);
     return "kept";
   }),
 );

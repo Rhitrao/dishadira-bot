@@ -77,9 +77,13 @@ export async function approveRefund(env: Env, provider: PaymentProvider, payment
   return true;
 }
 
-// Rohit keeps the money: the waiting row is removed (nothing was ever sent to the provider for it).
+// Rohit keeps the money: the row stays as DECLINED (nothing was sent to the provider, and a payment can never get a second refund row).
+// The caller writes who declined it to audit_log.
 export async function declineRefund(env: Env, paymentId: number): Promise<boolean> {
-  const res = await env.DB.prepare("DELETE FROM refunds WHERE payment_id = ?1 AND state = 'PENDING_APPROVAL'").bind(paymentId).run();
+  const res = await env.DB
+    .prepare("UPDATE refunds SET state = 'DECLINED', updated_at = ?2 WHERE payment_id = ?1 AND state = 'PENDING_APPROVAL'")
+    .bind(paymentId, nowIso())
+    .run();
   return res.meta.changes > 0;
 }
 
@@ -95,13 +99,14 @@ export async function retryFailedRefund(env: Env, provider: PaymentProvider, pay
   return true;
 }
 
+// The amount refunded is what was actually paid (paid_paise, recorded on a mismatch), else the price.
 // Looks up (unless fresh) and, if the provider has no such refund, creates it; then records what the provider says.
 // Any error leaves the refund PENDING: the cron retries with the same refund_id.
 async function settleRefund(env: Env, provider: PaymentProvider, paymentId: number, fresh: boolean): Promise<void> {
   const db = env.DB;
   const r = await db
     .prepare(
-      `SELECT r.state, r.created_at AS createdAt, p.provider_order_id AS orderId, p.amount_paise AS amount
+      `SELECT r.state, r.created_at AS createdAt, p.provider_order_id AS orderId, COALESCE(p.paid_paise, p.amount_paise) AS amount
        FROM refunds r JOIN payments p ON p.id = r.payment_id WHERE r.payment_id = ?1`,
     )
     .bind(paymentId)

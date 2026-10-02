@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-02 (Ticket 07 session)
+Updated: 2026-10-02 (Ticket 08 session)
 
 ## Payment provider
 Cashfree (KYC submitted by owner: pending). Razorpay: not used.
@@ -21,13 +21,31 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [x] 05 Amma's page (PR https://github.com/Rhitrao/dishadira-bot/pull/5, CI green)
 - [x] 06 Outcomes + ₹700 (PR https://github.com/Rhitrao/dishadira-bot/pull/6, CI green)
 - [x] 07 Rohit's console (PR https://github.com/Rhitrao/dishadira-bot/pull/7, CI green)
-- [ ] 08 Reminders + go-live
+- [ ] 08 Reminders + go-live (PR: see session notes; tick when Actions are green)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
 
 ## Blocked
 (none)
+
+## Session notes (Ticket 08)
+- Fixes from Ticket 07: (a) migration 0004 adds `payments.paid_paise`; a mismatch (wrong amount, partial, unsupported) stores what was really paid, and the refund engine refunds `COALESCE(paid_paise, amount_paise)`, never the expected price (the 7-day refund total uses the same). (b) refunds gain state `DECLINED` (table rebuilt in 0004); "Keep (no refund)" sets it, keeps the row (so the payment can never get a second refund) and audit_log `ADMIN_KEEP_NO_REFUND` records the Access e-mail as actor and in the detail ("declined by ...").
+- Reminders (`src/remind.ts`): cron `0 13 * * *` (18:30 IST). Everyone with a PAID/RESCHEDULED call or a CONFIRMED session tomorrow (IST) gets `copy.reminder` as text inside 24h or the `reminder` template (params: call|session, day, time) outside it. Dedupe key `reminder:<call|session>:<id>:<slot id>` = once per booking (a moved call is a new booking). While SENDS is paused (env or settings) it returns before writing anything, so a later run can still send. Blocked people and unapproved templates are handled by `sendMessage` (nothing sent / attention).
+- Deploy: `.github/workflows/deploy.yml` (workflow_dispatch, input environment test|live): typecheck, tests, gitleaks, dry run, `wrangler d1 migrations apply DB --remote --env <env>`, `wrangler deploy --env <env>`. Uses GitHub secrets CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID. `wrangler.toml` has `[env.test]` (`dishadira-bot-test`, PAYMENT_MODE test) and `[env.live]` (`dishadira-bot-live`, PAYMENT_MODE live), each with its own D1 (placeholder ids ...0001 / ...0002), crons, flags all "false", and the EMAIL binding. Bindings are not inherited by wrangler environments, hence repeated. `test/release.test.ts` checks all of this.
+- Docs: `docs/GO-LIVE.md` (Rohit's checklist), `docs/TEMPLATES.md` (5 Meta templates, text matches the code's params), `docs/COPY.md` (all copy.ts text, Kannada column empty; generated from copy.ts once, not kept in sync by code).
+- Release-test families (contract) and where each is covered:
+  - inventory/holds: `test/slots.test.ts` (simultaneous holds, call/session overlap both ways, expiry, one hold per person, replay) and `test/pay.test.ts` (late payment never takes another's slot).
+  - money/refunds: `test/outcomes.test.ts` "NOT_FIT refunds", "refund safety" (same refund_id, lost answer, REFUNDED never backwards), `test/pay.test.ts` (wrong amount, duplicate refund), `test/admin.test.ts` "refunds" (approve once, DECLINED, mismatch refunds the amount paid).
+  - replay/recovery: `test/pay.test.ts` (webhook replay, webhook vs cron race, reconciliation), `test/outcomes.test.ts` (outcome applied once), `test/whatsapp.test.ts` (replayed message sends nothing new), `test/remind.test.ts` (once per booking).
+  - access: `test/admin.test.ts` and `test/amma.test.ts` "access" (no JWT, wrong audience/issuer/key/e-mail, fail closed, Origin + CSRF), `test/health.test.ts`.
+  - window/templates: `test/whatsapp.test.ts` "sendMessage" (free text outside 24h refused, unapproved template, payload limits), `test/outcomes.test.ts` (session_offer outside window), `test/remind.test.ts` (text vs template).
+  - switches/blocks: `test/admin.test.ts` "switches" (env master, SENDS, AMMA_AWAY), `test/pay.test.ts` and `test/whatsapp.test.ts` (blocked contact gets no hold/link/message), `test/outcomes.test.ts` RUDE, `test/remind.test.ts` (SENDS paused).
+  - Nothing was missing; added `test/release.test.ts` (deploy config) as an extra.
+- Checks (local): typecheck, vitest all passed, `wrangler deploy --dry-run` for the top level, `--env test` and `--env live` passed. GitHub Actions: see PR.
+- Credits: not visible to Claude; check the Usage page.
+- Open questions: (1) `session_offer` outside 24h: the template has no button, and the code does not read template quick-reply taps, so the customer replies in text, which becomes a "needs attention" item for Rohit to answer inside the new window. Do you want a quick-reply button wired in a later ticket? (2) Access for /amma and /admin needs a custom domain (docs assume `bot.disha-dira.com` and `bot-test.disha-dira.com`); `wrangler.toml` has no `routes`, so please confirm a dashboard-added custom domain survives a deploy. (3) Sandbox payments are recognised as test mode only if Cashfree's sandbox link URL contains `payments-test.` (code assumption); step 11 of GO-LIVE.md tests it. (4) `OWNER_APPROVED` is not read by any code yet. (5) Real business number is still the placeholder in `src/config.ts`.
+- Next: Rohit follows `docs/GO-LIVE.md`; Kannada copy from `docs/COPY.md`.
 
 ## Session notes (Ticket 07)
 - /admin (`src/admin.ts`): Access JWT via the /amma checker with `ROHIT_EMAIL` only (Amma's e-mail gets 403), POST-only changes, Origin + per-form CSRF, escaped output, no-store, CSP, no JavaScript. Sections: switches (top), needs attention (newest first, plain-English text, actions that fit the kind), today/tomorrow (Completed / No-show on started CONFIRMED sessions), 7-day scoreboard. Every change writes `audit_log` with the Access e-mail (ADMIN_REPLY / RESOLVE / REFUND / APPROVE_REFUND / KEEP_NO_REFUND / BLOCK / UNBLOCK / SWITCH / SESSION). Result messages come from a fixed list via `?m=code`, never from user input.

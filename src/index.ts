@@ -8,6 +8,7 @@ import { reconcile } from "./pay/apply";
 import { cashfree } from "./pay/cashfree";
 import { retryRefunds } from "./pay/refund";
 import { cashfreeWebhook } from "./pay/webhook";
+import { sendReminders } from "./remind";
 import { runDigest } from "./report";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat } from "./watch";
 import { receiveWebhook, verifyWebhook } from "./whatsapp";
@@ -28,9 +29,12 @@ export const RECONCILE_CRON = "*/2 * * * *";
 
 export const DIGEST_CRON = "30 15 * * *";
 
-// Cloudflare calls scheduled() for each cron in wrangler.toml: every 2 minutes (jobs + heartbeat) and 9pm IST (digest).
+export const REMINDER_CRON = "0 13 * * *"; // 18:30 IST
+
+// Cloudflare calls scheduled() for each cron in wrangler.toml: every 2 minutes (jobs + heartbeat), 6:30pm IST (reminders) and 9pm IST (digest).
 const scheduled = async (event: { cron: string }, env: Env) => {
   if (event.cron === DIGEST_CRON) return runDigest(env).catch(() => undefined);
+  if (event.cron === REMINDER_CRON) return sendReminders(env).then(() => undefined, () => undefined);
   if (event.cron !== RECONCILE_CRON) return;
   const provider = cashfree(env);
   await recordHeartbeat(env).catch(() => 0);
