@@ -1,0 +1,20 @@
+name = "dishadira-bot"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# Placeholder id: the real D1 database is created by Rohit, not in a coding session.
+[[d1_databases]]
+binding = "DB"
+database_name = "dishadira-bot"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[triggers]
+# 9pm IST digest (15:30 UTC). Unused until Ticket 07.
+crons = ["30 15 * * *"]
+
+# Runtime flags at safe defaults. Only Rohit changes these, outside a coding session.
+[vars]
+OWNER_APPROVED = "false"
+NEW_BOOKINGS = "false"
+SENDS = "false"
+PAYMENT_MODE = "test"
