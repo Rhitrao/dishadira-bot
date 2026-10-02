@@ -3,6 +3,7 @@
 import { config } from "./config";
 import { copyFor } from "./copy";
 import type { Env } from "./env";
+import { bookingsOpen } from "./switches";
 import { cashfree } from "./pay/cashfree";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, type Out } from "./send";
@@ -23,7 +24,7 @@ export async function sessionChoice(env: Env, choice: string | null, convId: num
   const cp = copyFor(conv.locale);
   const send = (out: Out, step: string) => sendMessage(env, conv.id, out, `${msgId}:${step}`);
 
-  if (env.NEW_BOOKINGS !== "true") {
+  if (!(await bookingsOpen(env))) {
     await send({ type: "text", text: cp.bookSoon }, "book");
     return true;
   }

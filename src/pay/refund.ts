@@ -8,7 +8,7 @@ import { raiseAttention } from "../send";
 import { iso, istDay } from "../slots";
 import type { PaymentProvider, RefundResult, RefundStatus } from "./provider";
 
-export type RefundReason = "DUPLICATE" | "NOT_FIT" | "RUDE";
+export type RefundReason = "DUPLICATE" | "NOT_FIT" | "RUDE" | "ADMIN"; // ADMIN: Rohit decided in /admin
 export type RefundRequest = "CREATED" | "EXISTS" | "PERSON_LIMIT" | "DAILY_LIMIT";
 
 const nowIso = () => iso(Date.now());
@@ -64,6 +64,35 @@ export async function requestRefund(env: Env, provider: PaymentProvider, payment
   }
   await settleRefund(env, provider, paymentId, true); // this caller inserted the row, so it owns the first send
   return "CREATED";
+}
+
+// Rohit approves a RUDE refund: the same row moves PENDING_APPROVAL -> PENDING once (a second tap changes nothing), then the one engine sends it.
+export async function approveRefund(env: Env, provider: PaymentProvider, paymentId: number): Promise<boolean> {
+  const moved = await env.DB
+    .prepare("UPDATE refunds SET state = 'PENDING', attempt_at = ?2, updated_at = ?2 WHERE payment_id = ?1 AND state = 'PENDING_APPROVAL'")
+    .bind(paymentId, nowIso())
+    .run();
+  if (!moved.meta.changes) return false;
+  await settleRefund(env, provider, paymentId, true);
+  return true;
+}
+
+// Rohit keeps the money: the waiting row is removed (nothing was ever sent to the provider for it).
+export async function declineRefund(env: Env, paymentId: number): Promise<boolean> {
+  const res = await env.DB.prepare("DELETE FROM refunds WHERE payment_id = ?1 AND state = 'PENDING_APPROVAL'").bind(paymentId).run();
+  return res.meta.changes > 0;
+}
+
+// A FAILED refund goes back to PENDING and is asked again with the same refund_id (the provider is looked up first, so no second refund).
+export async function retryFailedRefund(env: Env, provider: PaymentProvider, paymentId: number): Promise<boolean> {
+  const moved = await env.DB
+    .prepare("UPDATE refunds SET state = 'PENDING', attempt_at = ?2, updated_at = ?2 WHERE payment_id = ?1 AND state = 'FAILED'")
+    .bind(paymentId, nowIso())
+    .run();
+  if (!moved.meta.changes) return false;
+  await env.DB.prepare("UPDATE payments SET state = 'REFUND_PENDING', updated_at = ?2 WHERE id = ?1 AND state = 'REFUND_FAILED'").bind(paymentId, nowIso()).run();
+  await settleRefund(env, provider, paymentId, false);
+  return true;
 }
 
 // Looks up (unless fresh) and, if the provider has no such refund, creates it; then records what the provider says.

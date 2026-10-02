@@ -10,8 +10,8 @@ describe("routes", () => {
     expect(body.version).toBeTruthy();
   });
 
-  it("/admin is a 501 stub", async () => {
+  it("/admin is closed without Access", async () => {
     const res = await app.request("/admin");
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(403);
   });
 });
