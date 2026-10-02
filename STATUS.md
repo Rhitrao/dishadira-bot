@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-02 (Ticket 02 session)
+Updated: 2026-10-02 (Ticket 03 session)
 
 ## Payment provider
 Cashfree (KYC submitted by owner: pending). Razorpay: not used.
@@ -16,7 +16,7 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 ## Tickets
 - [x] 01 Foundation (PR https://github.com/Rhitrao/dishadira-bot/pull/1, CI green)
 - [x] 02 Data + slots (PR https://github.com/Rhitrao/dishadira-bot/pull/2, CI green)
-- [ ] 03 WhatsApp bot
+- [x] 03 WhatsApp bot (PR https://github.com/Rhitrao/dishadira-bot/pull/3, CI green)
 - [ ] 04 ₹99 booking
 - [ ] 05 Amma's page
 - [ ] 06 Outcomes + ₹700
@@ -28,6 +28,15 @@ Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far:
 
 ## Blocked
 (none)
+
+## Session notes (Ticket 03)
+- Built: /wa/webhook (verify + signed POST + zod + dedupe), menu bot, src/send.ts (single send path, 24h window, template registry), src/copy.ts (English final; Kannada KN_TODO placeholders).
+- Migration 0002 rebuilds `messages` (adds SKIPPED/RECEIVED statuses and a `delivery` column).
+- All 5 templates are approved:false in config.ts until Meta approves them (owner flips).
+- Checks (local and GitHub Actions on PR 3): typecheck, vitest 35/35, wrangler dry-run: all passed.
+- Credits: not visible to Claude; check the Usage page.
+- Open questions: a greeting recorded as SKIPPED (SENDS off) is not re-sent when SENDS is turned on. Acceptable?
+- Next: Ticket 04 (₹99 booking), after Rohit merges PR 3. Kannada copy (KN_TODO) needs a family member.
 
 ## Session notes (Ticket 02)
 - Built: migrations/0001_init.sql (all contract tables), src/slots.ts (generator, guarded hold, availability list), tests on a real local D1.

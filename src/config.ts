@@ -25,6 +25,16 @@ export const config = {
     notFitRefundsPerDay: 5,
     ammaTapReminderHours: 3,
   },
+  graphVersion: "v23.0",
+  windowHours: 24,
+  // Template registry. Flip approved to true only after Meta approves the template (owner decision).
+  templates: {
+    call_booked: { approved: false, language: "en" },
+    session_offer: { approved: false, language: "en" },
+    session_confirmed: { approved: false, language: "en" },
+    reminder: { approved: false, language: "en" },
+    payment_update: { approved: false, language: "en" },
+  },
   languages: ["en", "kn"],
   faqIds: ["what_is_this", "how_it_works", "price", "timings", "refund", "privacy"],
 } as const;

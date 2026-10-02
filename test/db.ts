@@ -1,13 +1,14 @@
 import { Miniflare } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import initSql from "../migrations/0001_init.sql?raw";
+import messagesSql from "../migrations/0002_messages_skipped.sql?raw";
 
 // A fresh local D1 (real workerd SQLite) with the migrations applied.
 export async function newDb(): Promise<{ db: D1Database; close: () => Promise<void> }> {
   const mf = new Miniflare({ modules: true, script: "export default {}", d1Databases: { DB: "test" } });
   const db = (await mf.getD1Database("DB")) as unknown as D1Database;
   // D1 runs one statement per prepare(); split the migration file on ";" at line ends.
-  const statements = initSql
+  const statements = (initSql + "\n" + messagesSql)
     .replace(/^--.*$/gm, "")
     .split(/;\s*$/m)
     .map((s) => s.replace(/\s+/g, " ").trim())

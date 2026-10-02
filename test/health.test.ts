@@ -10,7 +10,7 @@ describe("routes", () => {
     expect(body.version).toBeTruthy();
   });
 
-  it.each(["/wa/webhook", "/pay/cashfree/webhook", "/amma", "/admin"])("%s is a 501 stub", async (path) => {
+  it.each(["/pay/cashfree/webhook", "/amma", "/admin"])("%s is a 501 stub", async (path) => {
     const res = await app.request(path);
     expect(res.status).toBe(501);
   });
