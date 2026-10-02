@@ -19,7 +19,7 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [x] 03 WhatsApp bot (PR https://github.com/Rhitrao/dishadira-bot/pull/3, CI green)
 - [x] 04 ₹99 booking (PR https://github.com/Rhitrao/dishadira-bot/pull/4, CI green)
 - [x] 05 Amma's page (PR https://github.com/Rhitrao/dishadira-bot/pull/5, CI green)
-- [ ] 06 Outcomes + ₹700
+- [x] 06 Outcomes + ₹700 (PR https://github.com/Rhitrao/dishadira-bot/pull/6, CI green)
 - [ ] 07 Rohit's console
 - [ ] 08 Reminders + go-live
 
