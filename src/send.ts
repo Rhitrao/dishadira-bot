@@ -1,6 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { config } from "./config";
 import type { Env } from "./env";
+import { sendsOn } from "./switches";
 
 export type Out =
   | { type: "text"; text: string }
@@ -119,7 +120,7 @@ export async function sendMessage(env: Env, conversationId: number, out: Out, de
       .bind(id, status, waId, nowIso())
       .run();
 
-  if (env.SENDS !== "true") {
+  if (!(await sendsOn(env))) {
     await setStatus("SKIPPED");
     return "SKIPPED";
   }

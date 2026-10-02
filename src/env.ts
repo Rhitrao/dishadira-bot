@@ -24,4 +24,6 @@ export type Env = {
   NEW_BOOKINGS: string;
   SENDS: string;
   PAYMENT_MODE: string;
+  // Cloudflare send_email binding (optional: without it, emails are logged and skipped).
+  EMAIL?: { send(message: { to: string; from: string; subject: string; text: string }): Promise<unknown> };
 } & Record<SecretName, string>;

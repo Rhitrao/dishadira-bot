@@ -5,6 +5,7 @@ import { config } from "./config";
 import { freeCallSlots } from "./booking";
 import { copyFor } from "./copy";
 import type { Env } from "./env";
+import { bookingsOpen } from "./switches";
 import { requestRefund } from "./pay/refund";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
@@ -155,7 +156,7 @@ export async function rescheduleChoice(env: Env, choice: string | null, convId: 
   const cp = copyFor(conv.locale);
   const send = (out: Out, step: string) => sendMessage(env, conv.id, out, `${msgId}:${step}`);
 
-  if (env.NEW_BOOKINGS !== "true") {
+  if (!(await bookingsOpen(env))) {
     await send({ type: "text", text: cp.bookSoon }, "book");
     return true;
   }

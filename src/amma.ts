@@ -24,13 +24,13 @@ const keysFor = (host: string) => {
 };
 
 // The Worker verifies the Access JWT itself (signature, audience, issuer, expiry) and then the e-mail.
-async function allowedJwt(env: Env, token: string | undefined): Promise<{ jwt: string; email: string } | null> {
+export async function allowedJwt(env: Env, token: string | undefined, rohitOnly = false): Promise<{ jwt: string; email: string } | null> {
   if (!token || !env.ACCESS_TEAM || !env.ACCESS_AUD) return null;
   try {
     const host = teamHost(env.ACCESS_TEAM);
     const { payload } = await jwtVerify(token, keysFor(host), { audience: env.ACCESS_AUD, issuer: `https://${host}` });
     const email = typeof payload.email === "string" ? payload.email.toLowerCase() : "";
-    const allowed = [env.AMMA_EMAIL, env.ROHIT_EMAIL].filter(Boolean).map((e) => e.toLowerCase());
+    const allowed = (rohitOnly ? [env.ROHIT_EMAIL] : [env.AMMA_EMAIL, env.ROHIT_EMAIL]).filter(Boolean).map((e) => e.toLowerCase());
     return email && allowed.includes(email) ? { jwt: token, email } : null;
   } catch {
     return null;
@@ -38,12 +38,12 @@ async function allowedJwt(env: Env, token: string | undefined): Promise<{ jwt: s
 }
 
 // CSRF token per form: SHA-256 of the form's scope + the visitor's own Access JWT (unknown to other sites). No extra secret.
-async function csrf(jwt: string, scope: string): Promise<string> {
+export async function csrf(jwt: string, scope: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`csrf|${scope}|${jwt}`));
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-const CSS = `
+export const CSS = `
 *{box-sizing:border-box}
 body{margin:0;padding:16px;font:20px/1.4 system-ui,sans-serif;color:#000;background:#fff;max-width:600px}
 h1{font-size:28px;margin:0 0 16px}h2{font-size:24px;margin:28px 0 8px;border-bottom:3px solid #000}

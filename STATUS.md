@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-02 (Ticket 06 session)
+Updated: 2026-10-02 (Ticket 07 session)
 
 ## Payment provider
 Cashfree (KYC submitted by owner: pending). Razorpay: not used.
@@ -19,8 +19,8 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [x] 03 WhatsApp bot (PR https://github.com/Rhitrao/dishadira-bot/pull/3, CI green)
 - [x] 04 ₹99 booking (PR https://github.com/Rhitrao/dishadira-bot/pull/4, CI green)
 - [x] 05 Amma's page (PR https://github.com/Rhitrao/dishadira-bot/pull/5, CI green)
-- [ ] 06 Outcomes + ₹700
-- [ ] 07 Rohit's console
+- [x] 06 Outcomes + ₹700 (PR https://github.com/Rhitrao/dishadira-bot/pull/6, CI green)
+- [x] 07 Rohit's console (PR https://github.com/Rhitrao/dishadira-bot/pull/7, CI green)
 - [ ] 08 Reminders + go-live
 
 ## Credits
@@ -28,6 +28,17 @@ Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far:
 
 ## Blocked
 (none)
+
+## Session notes (Ticket 07)
+- /admin (`src/admin.ts`): Access JWT via the /amma checker with `ROHIT_EMAIL` only (Amma's e-mail gets 403), POST-only changes, Origin + per-form CSRF, escaped output, no-store, CSP, no JavaScript. Sections: switches (top), needs attention (newest first, plain-English text, actions that fit the kind), today/tomorrow (Completed / No-show on started CONFIRMED sessions), 7-day scoreboard. Every change writes `audit_log` with the Access e-mail (ADMIN_REPLY / RESOLVE / REFUND / APPROVE_REFUND / KEEP_NO_REFUND / BLOCK / UNBLOCK / SWITCH / SESSION). Result messages come from a fixed list via `?m=code`, never from user input.
+- Refunds: one engine. New in `src/pay/refund.ts`: reason `ADMIN` goes through `requestRefund` (immediate, requested_by = Rohit's e-mail); `approveRefund` (PENDING_APPROVAL -> PENDING once, then `settleRefund`); `declineRefund` (deletes the waiting row: "Keep, no refund"; the states have no DECLINED value and I added no migration); `retryFailedRefund` (FAILED -> PENDING, same `refund-<id>`, provider is looked up first). Refund is offered only if the payment is PAID or UNKNOWN and has no refund row (or a FAILED one).
+- Switches (`src/switches.ts`, settings table): `NEW_BOOKINGS="false"` pauses, `SENDS="false"` pauses, `AMMA_AWAY="true"` pauses new bookings and raises `AMMA_AWAY_CALL` / `AMMA_AWAY_SESSION` items for calls/sessions still ahead today and tomorrow (on switch and from the 2-minute cron, once per target ever). Env stays master: effective = env on AND not paused; "resume" only removes a pause and is refused (`envoff`) when the env flag is off. booking.ts, session.ts, outcomes.ts (reschedule) and send.ts now ask `bookingsOpen` / `sendsOn`.
+- Cron: `*/2` also records the heartbeat (settings `HEARTBEAT`), raises `AMMA_NO_TAP` (call started over `ammaTapReminderHours` ago, no outcome, last 7 days; once per call), and sends alerts. `30 15 * * *` (9pm IST) sends the digest, then alerts including the heartbeat check; opening /admin also checks the heartbeat.
+- Email (`src/mail.ts`): Cloudflare Email Service `send_email` binding `EMAIL` (`[[send_email]]` in wrangler.toml, structured `env.EMAIL.send({to, from, subject, text})`, no library), recipient = secret `DIGEST_TO`, sender `config.mail.from` (`bot@disha-dira.com`, the public site domain). Missing binding or DIGEST_TO: logged and skipped. Alerts: REFUND_FAILED, REFUND_STUCK, PAYMENT_MISMATCH, UNKNOWN_PAYMENT_LINK, OUTCOME_FAILED, HEARTBEAT_STALE (15 min); one email per kind per IST day (a settings row claimed before sending, released if the send fails).
+- Checks (local): typecheck, vitest 116/116 (17 new in test/admin.test.ts), wrangler dry-run: all passed. GitHub Actions: passed on PR 7.
+- Credits: not visible to Claude; check the Usage page.
+- Open questions: (1) Is `disha-dira.com` (or another address) onboarded and verified as a sender in Cloudflare Email Service? The code uses `bot@disha-dira.com`; change `config.mail.from` if not. (2) Refunding a PAYMENT_MISMATCH payment uses the expected amount (₹99 / ₹700), not what was actually paid; check the paid amount in Cashfree first. (3) Replies are deduplicated by item + text, so the identical text sent twice to one item is blocked on purpose. (4) Admin replies are not stored beyond the normal `messages` row; the audit row has no text.
+- Next: Ticket 08 (Reminders + go-live), after Rohit merges the Ticket 07 PR.
 
 ## Session notes (Ticket 06)
 - Cron (`*/2`) now runs three jobs, each safe to repeat: `applyDueOutcomes` (src/outcomes.ts), `retryRefunds` (src/pay/refund.ts), `reconcile` (now also polls SESSION payments).
