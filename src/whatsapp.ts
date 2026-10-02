@@ -5,7 +5,7 @@ import { copyFor, LANGUAGE_BUTTONS } from "./copy";
 import type { Env } from "./env";
 import { bookingChoice } from "./booking";
 import { rescheduleChoice } from "./outcomes";
-import { sessionChoice } from "./session";
+import { openOfferId, sessionChoice } from "./session";
 import { raiseAttention, sendMessage, type Out } from "./send";
 
 type C = Context<{ Bindings: Env }>;
@@ -22,6 +22,7 @@ const message = z.object({
       list_reply: z.object({ id: z.string() }).optional(),
     })
     .optional(),
+  button: z.object({ payload: z.string().optional(), text: z.string().optional() }).optional(), // template quick-reply tap
   referral: z.object({ source_id: z.string().optional() }).optional(),
 });
 const status = z.object({ id: z.string().min(1), status: z.string() });
@@ -219,6 +220,12 @@ async function handleMessage(env: Env, m: Msg, name: string | undefined): Promis
     await send({ type: "text", text: cp.faqAnswers[faq] }, "answer");
     await menu(cp, "menu");
     return;
+  }
+
+  // Any text, or a template quick-reply tap, from someone with an open session offer gets the slot list.
+  if (m.type === "text" || m.type === "button") {
+    const sid = await openOfferId(db, conv.id);
+    if (sid && (await sessionChoice(env, `sess_offer_${sid}`, conv.id, m.id))) return;
   }
 
   // Anything else is free text: stays BOT, raises attention, one acknowledgement per 24h.
