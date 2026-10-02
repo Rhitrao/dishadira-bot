@@ -37,11 +37,14 @@ export const istDay = (ms: number) => new Date(ms + IST_OFFSET_MINUTES * 60_000)
 // A slot is active (blocks the calendar) when booked, or held and not yet expired.
 const ACTIVE = "(state = 'BOOKED' OR hold_until > :now)";
 
+// The per-person limit counts only unexpired HELD rows: a BOOKED call must not stop a later session hold.
+const HELD = "(state = 'HELD' AND hold_until > :now)";
+
 export type HoldResult = { ok: true; holdUntil: string } | { ok: false; reason: "NOT_A_SLOT" | "ALREADY_HOLDING" | "UNAVAILABLE" };
 
 // Amma has one calendar: a CALL and a SESSION must never overlap, so the single statement below
 // refuses a slot if ANY active slot overlaps it (either kind) or if this person already has an
-// active slot. INSERT ... WHERE NOT EXISTS is one atomic write, so concurrent callers get one winner.
+// unexpired hold. INSERT ... WHERE NOT EXISTS is one atomic write, so concurrent callers get one winner.
 // An expired row on the same (kind, start) is taken over by ON CONFLICT; an active one never is,
 // so a replay by the same person can never extend a hold (it is refused as ALREADY_HOLDING).
 export async function holdSlot(
@@ -58,7 +61,7 @@ export async function holdSlot(
     INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until)
     SELECT :kind, :start, :end, :owner, 'HELD', :until
     WHERE NOT EXISTS (SELECT 1 FROM slots WHERE ${ACTIVE} AND start_utc < :end AND end_utc > :start)
-      AND NOT EXISTS (SELECT 1 FROM slots WHERE ${ACTIVE} AND owner_id = :owner)
+      AND NOT EXISTS (SELECT 1 FROM slots WHERE ${HELD} AND owner_id = :owner)
     ON CONFLICT (kind, start_utc) DO UPDATE
       SET owner_id = :owner, state = 'HELD', hold_until = :until, end_utc = :end
       WHERE NOT (slots.state = 'BOOKED' OR slots.hold_until > :now)`;
@@ -66,7 +69,7 @@ export async function holdSlot(
   const res = await run(db, sql, { kind, start: slot.startUtc, end: slot.endUtc, owner: ownerId, until: holdUntil, now });
   if (res.meta.changes > 0) return { ok: true, holdUntil };
 
-  const mine = await first(db, `SELECT 1 AS x FROM slots WHERE ${ACTIVE} AND owner_id = :owner`, { owner: ownerId, now });
+  const mine = await first(db, `SELECT 1 AS x FROM slots WHERE ${HELD} AND owner_id = :owner`, { owner: ownerId, now });
   return { ok: false, reason: mine ? "ALREADY_HOLDING" : "UNAVAILABLE" };
 }
 
