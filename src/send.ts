@@ -74,7 +74,7 @@ export function buildPayload(out: Out, to: string): Record<string, unknown> {
         template: {
           name: out.name,
           language: { code: config.templates[out.name].language },
-          components: [{ type: "body", parameters: out.params.map((text) => ({ type: "text", text })) }],
+          ...(out.params.length ? { components: [{ type: "body", parameters: out.params.map((text) => ({ type: "text", text })) }] } : {}),
         },
       };
   }
@@ -151,4 +151,11 @@ export async function sendMessage(env: Env, conversationId: number, out: Out, de
     await setStatus("UNKNOWN"); // timeout or network error: outcome not known
     return "UNKNOWN";
   }
+}
+
+// Free text inside the 24-hour window, the approved template outside it.
+export async function sendOrTemplate(env: Env, conversationId: number, text: Out, template: Out, dedupeKey: string): Promise<SendResult> {
+  const conv = await env.DB.prepare("SELECT last_user_at FROM conversations WHERE id = ?1").bind(conversationId).first<{ last_user_at: string | null }>();
+  const inWindow = conv?.last_user_at && Date.now() - Date.parse(conv.last_user_at) < config.windowHours * 3600_000;
+  return sendMessage(env, conversationId, inWindow ? text : template, dedupeKey);
 }

@@ -32,6 +32,7 @@ export type AmmaCopy = {
   undo: string;
   undone: string;
   answered: (label: string) => string;
+  done: (label: string) => string;
   alreadyAnswered: string;
   undoTooLate: string;
   expired: string;
@@ -60,6 +61,20 @@ export type Copy = {
   payLabel: string; // max 20 chars
   payFailed: string;
   confirmed: (day: string, time: string, businessNumber: string) => string;
+  // Ticket 06: outcomes and the session
+  btnChooseTime: string; // max 20 chars
+  sessionOfferBody: string;
+  sessionSlotBody: string;
+  noSessionSlots: string;
+  sessionNotAvailable: string;
+  sessionPayBody: string;
+  sessionPayLabel: string; // max 20 chars
+  sessionConfirmed: (day: string, time: string) => string;
+  notFitRefund: string;
+  missedOffer: string;
+  rescheduled: (day: string, time: string, businessNumber: string) => string;
+  rescheduleNotAvailable: string;
+  missedFinal: string;
   askPrompt: string;
   ack: string;
   faqBody: string;
@@ -116,6 +131,7 @@ const en: Copy = {
     undo: "Undo",
     undone: "Undone.",
     answered: (label) => `Saved: ${label}`,
+    done: (label) => `Done: ${label}`,
     alreadyAnswered: "This call already has an answer. If it was a mistake, please tell Rohit.",
     undoTooLate: "Sorry, it is too late to undo this.",
     expired: "This page has expired. Please go back and try again.",
@@ -130,6 +146,27 @@ const en: Copy = {
   confirmed: (day, time, number) =>
     `Received your ${rupees(config.prices.introPaise)}. Shantha Rao will call you on ${day} at ${time} from ${number}. ` +
     "That number is for her calls only, so please message us here.",
+  btnChooseTime: "Choose a time",
+  sessionOfferBody: `Thank you for speaking with Shantha Rao. She would be glad to offer you a full session (${rupees(config.prices.sessionPaise)}). Tap below to choose a time.`,
+  sessionSlotBody: `Choose a time for your ${config.slots.sessionMinutes}-minute session with Shantha Rao (India time).`,
+  noSessionSlots: "There are no free session times right now. We will message you when new times are open.",
+  sessionNotAvailable: "Sorry, we cannot book a session from this message. A person will look into it.",
+  sessionPayBody:
+    `Your time is held for ${config.holdMinutes} minutes. Tap below to pay ${rupees(config.prices.sessionPaise)} for your session. ` +
+    "Please don't pay twice.",
+  sessionPayLabel: `Pay ${rupees(config.prices.sessionPaise)}`,
+  sessionConfirmed: (day, time) =>
+    `Your session with Shantha Rao is confirmed for ${day} at ${time} (India time). ` +
+    "It is a distance session: you stay where you are and she calls you at the booked time. " +
+    "Please keep your phone with you in a quiet place. We will remind you the day before.",
+  notFitRefund:
+    "Thank you for speaking with Shantha Rao. She feels a session isn't the right fit just now, so we've refunded your ₹99.",
+  missedOffer: "Sorry we missed each other. Choose a new time for your call. There is nothing more to pay.",
+  rescheduled: (day, time, number) =>
+    `Your call is now booked for ${day} at ${time}. Shantha Rao will call you from ${number}. There is nothing more to pay.`,
+  rescheduleNotAvailable: "Sorry, this call cannot be moved again. A person will look into it.",
+  missedFinal:
+    "We were not able to reach you for the second time, so we are closing this booking. Thank you for your interest, and you are welcome to write to us again.",
   askPrompt: "Please type your question below.",
   ack: "Thanks, a person will reply within 24 hours.",
   faqBody: "Choose a topic.",
@@ -204,6 +241,7 @@ const kn: Copy = {
     undo: "KN_TODO undo",
     undone: "KN_TODO undone",
     answered: (label) => `KN_TODO saved ${label}`,
+    done: (label) => `KN_TODO done ${label}`,
     alreadyAnswered: "KN_TODO already answered",
     undoTooLate: "KN_TODO too late",
     expired: "KN_TODO expired",
@@ -214,6 +252,19 @@ const kn: Copy = {
   payLabel: "KN_TODO pay",
   payFailed: "KN_TODO pay failed",
   confirmed: (day, time, number) => `KN_TODO confirmed ${day} ${time} ${number}`,
+  btnChooseTime: "KN_TODO choose time",
+  sessionOfferBody: "KN_TODO session offer",
+  sessionSlotBody: "KN_TODO session slot list",
+  noSessionSlots: "KN_TODO no session slots",
+  sessionNotAvailable: "KN_TODO session not available",
+  sessionPayBody: "KN_TODO session pay body",
+  sessionPayLabel: "KN_TODO pay session",
+  sessionConfirmed: (day, time) => `KN_TODO session confirmed ${day} ${time}`,
+  notFitRefund: "KN_TODO not fit refund",
+  missedOffer: "KN_TODO missed offer",
+  rescheduled: (day, time, number) => `KN_TODO rescheduled ${day} ${time} ${number}`,
+  rescheduleNotAvailable: "KN_TODO reschedule not available",
+  missedFinal: "KN_TODO missed final",
   askPrompt: "KN_TODO ask prompt",
   ack: "KN_TODO ack",
   faqBody: "KN_TODO faq body",

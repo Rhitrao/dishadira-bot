@@ -7,16 +7,23 @@
 //    amounts are rupee strings; `order` is null for expired/cancelled links)
 //  - payments/online/webhooks/signature-verification  (headers x-webhook-timestamp + x-webhook-signature;
 //    signature = base64(HMAC-SHA256(timestamp + rawBody)) keyed with the PG SECRET KEY)
-//  - api-reference/payments/latest/refunds/create-refund  (POST /pg/orders/{order_id}/refunds; refund_id, refund_amount, refund_note, refund_speed)
+//  - api-reference/payments/latest/refunds/create-refund  (POST /pg/orders/{order_id}/refunds; refund_id, refund_amount, refund_note, refund_speed;
+//    optional x-idempotency-key header: "retry with the same key to avoid duplicate actions". The page does NOT say what a repeated
+//    refund_id returns, so a retry looks the refund up first (get-refund) and only creates it when Cashfree has none.)
+//  - api-reference/payments/latest/refunds/get-refund  (GET /pg/orders/{order_id}/refunds/{refund_id}; refund_status SUCCESS|PENDING|
+//    PENDING_APPROVAL|CANCELLED|ONHOLD|REJECTED)
+//  - refund webhook  (type REFUND_STATUS_WEBHOOK, data.refund.{refund_id, refund_status}; same signature headers as above)
 // Not confirmed in the docs: the exact minimum link expiry (config.cashfree.minLinkExpiryMinutes is an assumption)
 // and the GET /pg/links/{id} response shape beyond the create response (same fields are assumed).
 import { z } from "zod";
 import { config } from "../config";
 import type { Env } from "../env";
-import type { CreateLinkArgs, LinkState, PayStatus, PaymentProvider, VerifyResult } from "./provider";
+import type { CreateLinkArgs, LinkState, PayStatus, PaymentProvider, RefundStatus, VerifyResult } from "./provider";
 
 const STATES: LinkState[] = ["ACTIVE", "PAID", "PARTIALLY_PAID", "EXPIRED", "CANCELLED"];
 const toState = (s: unknown): LinkState => (STATES.includes(s as LinkState) ? (s as LinkState) : "UNKNOWN");
+const toRefundStatus = (s: unknown): RefundStatus =>
+  s === "SUCCESS" ? "SUCCESS" : s === "CANCELLED" || s === "REJECTED" ? "FAILED" : "PENDING"; // PENDING, ONHOLD, PENDING_APPROVAL: keep polling
 const toPaise = (v: unknown) => Math.round(Number(v ?? 0) * 100);
 const modeOf = (url: unknown): "test" | "live" | undefined =>
   typeof url !== "string" ? undefined : /payments-test\./.test(url) ? "test" : "live";
@@ -26,6 +33,12 @@ function istStamp(utc: string): string {
   const d = new Date(Date.parse(utc) + 330 * 60_000);
   return d.toISOString().slice(0, 19) + "+05:30";
 }
+
+const refundWebhookSchema = z.object({
+  type: z.literal("REFUND_STATUS_WEBHOOK"),
+  event_time: z.string().optional(),
+  data: z.object({ refund: z.object({ refund_id: z.string().min(1), refund_status: z.string() }) }),
+});
 
 const webhookSchema = z.object({
   type: z.string(),
@@ -48,14 +61,15 @@ export function cashfree(env: Env): PaymentProvider {
     "x-client-secret": env.CASHFREE_SECRET,
     "Content-Type": "application/json",
   });
-  const call = async (method: string, path: string, body?: unknown) => {
+  const call = async (method: string, path: string, body?: unknown, opts: { idempotencyKey?: string; notFoundOk?: boolean } = {}) => {
     const res = await fetch(base + path, {
       method,
-      headers: headers(),
+      headers: opts.idempotencyKey ? { ...headers(), "x-idempotency-key": opts.idempotencyKey } : headers(),
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(10_000),
     });
     const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (res.status === 404 && opts.notFoundOk) return null;
     if (!res.ok) throw new Error(`cashfree ${method} ${path.split("?")[0]} -> ${res.status}`);
     return data;
   };
@@ -111,12 +125,19 @@ export function cashfree(env: Env): PaymentProvider {
       // subtle.verify compares in constant time.
       if (!(await crypto.subtle.verify("HMAC", key, sigBytes, new TextEncoder().encode(ts + raw)))) return { ok: false, reason: "SIGNATURE" };
 
-      let parsed;
+      let json: unknown;
       try {
-        parsed = webhookSchema.safeParse(JSON.parse(raw));
+        json = JSON.parse(raw);
       } catch {
         return { ok: false, reason: "PAYLOAD" };
       }
+      if ((json as { type?: unknown } | null)?.type === "REFUND_STATUS_WEBHOOK") {
+        const r = refundWebhookSchema.safeParse(json);
+        if (!r.success) return { ok: false, reason: "PAYLOAD" };
+        const f = r.data.data.refund;
+        return { ok: true, refund: { key: `refund:${f.refund_id}:${f.refund_status}:${r.data.event_time ?? ts}`, refundId: f.refund_id, status: toRefundStatus(f.refund_status) } };
+      }
+      const parsed = webhookSchema.safeParse(json);
       if (!parsed.success || parsed.data.type !== "PAYMENT_LINK_EVENT") return { ok: false, reason: "PAYLOAD" };
       const d = parsed.data.data;
       const orderId = d.order?.order_id;
@@ -135,14 +156,21 @@ export function cashfree(env: Env): PaymentProvider {
     },
 
     async refund(a) {
-      const data = await call("POST", `/orders/${encodeURIComponent(a.orderId)}/refunds`, {
-        refund_id: a.refundId,
-        refund_amount: a.amountPaise / 100,
-        refund_note: a.note,
-        refund_speed: "STANDARD",
-      });
+      const data = await call(
+        "POST",
+        `/orders/${encodeURIComponent(a.orderId)}/refunds`,
+        { refund_id: a.refundId, refund_amount: a.amountPaise / 100, refund_note: a.note, refund_speed: "STANDARD" },
+        { idempotencyKey: a.refundId },
+      );
       const id = data?.cf_refund_id;
-      return { providerRefundId: id === undefined ? a.refundId : String(id), done: data?.refund_status === "SUCCESS" };
+      return { providerRefundId: id === undefined ? a.refundId : String(id), status: toRefundStatus(data?.refund_status) };
+    },
+
+    async getRefund(orderId, refundId) {
+      const data = await call("GET", `/orders/${encodeURIComponent(orderId)}/refunds/${encodeURIComponent(refundId)}`, undefined, { notFoundOk: true });
+      if (!data) return { status: "NOT_FOUND" };
+      const id = data.cf_refund_id;
+      return { providerRefundId: id === undefined ? refundId : String(id), status: toRefundStatus(data.refund_status) };
     },
   };
 }

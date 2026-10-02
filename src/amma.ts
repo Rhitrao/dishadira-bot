@@ -65,17 +65,17 @@ const firstName = (n: string | null) => n?.trim().split(/\s+/)[0] || t().noName;
 
 type Row = {
   startUtc: string; name: string; waId: string; service: string; kind: "CALL" | "SESSION";
-  introId: number | null; oid: number | null; value: string | null; undoUntil: string | null;
+  introId: number | null; oid: number | null; value: string | null; undoUntil: string | null; appliedAt: string | null;
 };
 
 async function rowsBetween(env: Env, fromUtc: string, toUtc: string): Promise<Row[]> {
   const calls = await env.DB
     .prepare(
       `SELECT s.start_utc AS startUtc, c.display_name AS name, c.wa_id AS waId, i.service, i.id AS introId,
-              o.id AS oid, o.value, o.undo_until AS undoUntil
+              o.id AS oid, o.value, o.undo_until AS undoUntil, o.applied_at AS appliedAt
        FROM intros i JOIN slots s ON s.id = i.slot_id JOIN conversations c ON c.id = i.conversation_id
-       LEFT JOIN outcomes o ON o.intro_id = i.id
-       WHERE s.kind = 'CALL' AND i.state IN ('PAID','CALLED_SESSION','CALLED_NOT_FIT','MISSED','RUDE')
+       LEFT JOIN outcomes o ON o.intro_id = i.id AND o.slot_id = i.slot_id
+       WHERE s.kind = 'CALL' AND i.state IN ('PAID','RESCHEDULED','CALLED_SESSION','CALLED_NOT_FIT','MISSED','RUDE')
          AND s.start_utc >= ?1 AND s.start_utc < ?2`,
     )
     .bind(fromUtc, toUtc)
@@ -90,7 +90,7 @@ async function rowsBetween(env: Env, fromUtc: string, toUtc: string): Promise<Ro
     .all<Omit<Row, "kind">>();
   const all: Row[] = [
     ...calls.results.map((r) => ({ ...r, kind: "CALL" as const })),
-    ...sessions.results.map((r) => ({ ...r, kind: "SESSION" as const, introId: null, oid: null, value: null, undoUntil: null })),
+    ...sessions.results.map((r) => ({ ...r, kind: "SESSION" as const, introId: null, oid: null, value: null, undoUntil: null, appliedAt: null })),
   ];
   return all.sort((a, b) => a.startUtc.localeCompare(b.startUtc));
 }
@@ -112,6 +112,7 @@ async function rowHtml(r: Row, jwt: string, nowIsoStr: string) {
   if (r.kind !== "CALL" || r.introId === null) return html`<div class="row">${head}</div>`;
   if (r.oid !== null && r.value && isOutcome(r.value)) {
     const label = c[OUTCOMES[r.value]];
+    if (r.appliedAt) return html`<div class="row">${head}<div class="msg">${c.done(label)}</div></div>`; // applied: no buttons, no undo
     const canUndo = (r.undoUntil ?? "") > nowIsoStr;
     return html`<div class="row">${head}<div class="msg">${c.answered(label)}</div>
 ${canUndo ? undoForm(r.oid, await csrf(jwt, `undo:${r.oid}`), c.undo) : ""}</div>`;
@@ -166,18 +167,18 @@ const message = (c: Ctx, text: string, status: 200 | 400 | 403 | 404 | 409) =>
 async function introFor(env: Env, id: number) {
   return env.DB
     .prepare(
-      `SELECT i.id, i.state, s.start_utc AS startUtc, c.display_name AS name FROM intros i
+      `SELECT i.id, i.state, i.slot_id AS slotId, s.start_utc AS startUtc, c.display_name AS name FROM intros i
        JOIN slots s ON s.id = i.slot_id JOIN conversations c ON c.id = i.conversation_id WHERE i.id = ?1 AND s.kind = 'CALL'`,
     )
     .bind(id)
-    .first<{ id: number; state: string; startUtc: string; name: string | null }>();
+    .first<{ id: number; state: string; slotId: number; startUtc: string; name: string | null }>();
 }
 
 amma.get("/confirm", async (c) => {
   const id = Number(c.req.query("intro"));
   const v = c.req.query("v");
   const intro = Number.isInteger(id) ? await introFor(c.env, id) : null;
-  if (!intro || intro.state !== "PAID" || !isOutcome(v)) return message(c, t().notFound, 404);
+  if (!intro || !["PAID", "RESCHEDULED"].includes(intro.state) || !isOutcome(v)) return message(c, t().notFound, 404);
   if (intro.startUtc > iso(Date.now())) return message(c, t().notYet, 409);
   const cp = t();
   const token = await csrf(c.get("jwt"), `outcome:${id}:${v}`);
@@ -198,16 +199,16 @@ amma.post("/outcome", async (c) => {
   }
   const cp = t();
   const intro = await introFor(c.env, id);
-  if (!intro || intro.state !== "PAID") return message(c, cp.notFound, 404);
+  if (!intro || !["PAID", "RESCHEDULED"].includes(intro.state)) return message(c, cp.notFound, 404);
   const now = Date.now();
   if (intro.startUtc > iso(now)) return message(c, cp.notYet, 409);
-  // One atomic write: refused if this call already has an outcome. Effects are NOT applied here (Ticket 06).
+  // One atomic write: refused if this call already has an outcome. Effects are applied later by the cron (src/outcomes.ts), once undo_until has passed.
   const res = await c.env.DB
     .prepare(
-      `INSERT INTO outcomes (intro_id, value, tapped_at, undo_until)
-       SELECT ?1, ?2, ?3, ?4 WHERE NOT EXISTS (SELECT 1 FROM outcomes WHERE intro_id = ?1)`,
+      `INSERT INTO outcomes (intro_id, value, tapped_at, undo_until, slot_id)
+       SELECT ?1, ?2, ?3, ?4, ?5 WHERE NOT EXISTS (SELECT 1 FROM outcomes WHERE intro_id = ?1 AND slot_id = ?5)`,
     )
-    .bind(id, v, iso(now), iso(now + config.undoMinutes * 60_000))
+    .bind(id, v, iso(now), iso(now + config.undoMinutes * 60_000), intro.slotId)
     .run();
   if (!res.meta.changes) return message(c, cp.alreadyAnswered, 409);
   const oid = res.meta.last_row_id;

@@ -4,6 +4,8 @@ import { config } from "./config";
 import { copyFor, LANGUAGE_BUTTONS } from "./copy";
 import type { Env } from "./env";
 import { bookingChoice } from "./booking";
+import { rescheduleChoice } from "./outcomes";
+import { sessionChoice } from "./session";
 import { raiseAttention, sendMessage, type Out } from "./send";
 
 type C = Context<{ Bindings: Env }>;
@@ -194,6 +196,8 @@ async function handleMessage(env: Env, m: Msg, name: string | undefined): Promis
     return;
   }
   if (await bookingChoice(env, choice, conv.id, m.id)) return;
+  if (await sessionChoice(env, choice, conv.id, m.id)) return;
+  if (await rescheduleChoice(env, choice, conv.id, m.id)) return;
   if (choice === "menu_how") {
     await send(
       {

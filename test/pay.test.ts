@@ -17,6 +17,7 @@ let close: () => Promise<void>;
 let fetchMock: ReturnType<typeof vi.fn>;
 let live = false;
 let refundFails = false;
+let refundStatus = "PENDING";
 let n = 0;
 
 const env = () =>
@@ -34,6 +35,7 @@ beforeEach(async () => {
   ({ db, close } = await newDb());
   live = false;
   refundFails = false;
+  refundStatus = "PENDING";
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
   fetchMock = vi.fn(async (url: string, init: { method: string; body?: string }) => {
@@ -46,7 +48,7 @@ beforeEach(async () => {
     }
     if (u.includes("/orders?")) return json([{ order_id: "order_1", order_status: "PAID" }]);
     if (/\/links\/[^/]+$/.test(u)) return json({ link_status: "PAID", link_currency: "INR", link_amount_paid: "99.00", link_url: "https://payments-test.cashfree.com/links/x" });
-    if (u.includes("/refunds")) return refundFails ? json({ message: "no" }, 400) : json({ cf_refund_id: 555, refund_status: "PENDING" });
+    if (u.includes("/refunds")) return refundFails ? json({ message: "no" }, 400) : json({ cf_refund_id: 555, refund_status: refundStatus });
     return json({}, 404);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -243,12 +245,12 @@ describe("webhook", () => {
     expect(waSent().filter((m) => m.text?.body?.startsWith("Received your")).length).toBe(1);
   });
 
-  it("a failed refund is recorded and raises attention", async () => {
+  it("a refund the provider reports as REJECTED is FAILED and raises attention; a transport error just stays PENDING for the retry", async () => {
     const c = await person("test-a");
     const p = await book(c);
     await hook(linkEvent(p.link));
     await db.prepare("INSERT INTO payments (provider, purpose, target_id, provider_link_id, amount_paise, state) VALUES ('cashfree','INTRO',?1,'di-intro-dup',9900,'PENDING')").bind(p.target_id).run();
-    refundFails = true;
+    refundStatus = "REJECTED";
     await hook(linkEvent("di-intro-dup", { order: "order_dup" }));
     expect(await db.prepare("SELECT state FROM refunds").first()).toEqual({ state: "FAILED" });
     expect(await db.prepare("SELECT state FROM payments WHERE provider_link_id = 'di-intro-dup'").first()).toEqual({ state: "REFUND_FAILED" });
