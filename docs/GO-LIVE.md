@@ -121,7 +121,7 @@ Do this on weekdays between 14:00 and 19:00 India time, because that is when cal
 
 ### 13. One real ₹99
 - [ ] In `wrangler.toml` under `[env.live.vars]` set only `SENDS = "true"` first, deploy **live**, and message the Airtel number: you should get the greeting and menu; booking says "Booking opens soon".
-- [ ] Then set `NEW_BOOKINGS = "true"`, deploy **live**, and book and pay **one real ₹99 yourself**. Check: PAYMENT confirmation arrives, `/amma` shows the call, no "wrong amount" item in `/admin`, and the payment shows in the Cashfree **production** dashboard.
+- [ ] Then set `NEW_BOOKINGS = "true"`, deploy **live**, and book and pay **one real ₹99 yourself**. Check: the "call confirmed" message arrives, `/amma` shows the call, no "wrong amount" item in `/admin`, and the payment shows in the Cashfree **production** dashboard.
 - [ ] Have Amma tap **Not right fit** on that call. After 10 minutes, check the ₹99 comes back (Cashfree dashboard, and your bank/UPI app after a day or two).
 
 ### 14. Flag order
