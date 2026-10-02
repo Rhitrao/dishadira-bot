@@ -13,6 +13,18 @@ export type Copy = {
   btnHow: string; // max 20 chars
   btnAsk: string; // max 20 chars
   bookSoon: string;
+  chooseService: string;
+  btnProtection: string; // max 20 chars
+  btnHealing: string; // max 20 chars
+  slotListBody: string;
+  slotListButton: string; // max 20 chars
+  noSlots: string;
+  slotTaken: string;
+  alreadyHolding: string;
+  payBody: string;
+  payLabel: string; // max 20 chars
+  payFailed: string;
+  confirmed: (day: string, time: string, businessNumber: string) => string;
   askPrompt: string;
   ack: string;
   faqBody: string;
@@ -35,6 +47,22 @@ const en: Copy = {
   btnHow: "How it works",
   btnAsk: "Ask a question",
   bookSoon: "Booking opens soon.",
+  chooseService: "Which would you like?",
+  btnProtection: "Protection",
+  btnHealing: "Healing",
+  slotListBody: `Choose a time for your ${config.slots.callMinutes}-minute call with Shantha Rao (India time).`,
+  slotListButton: "Choose a time",
+  noSlots: "There are no free call times right now. Please check again later.",
+  slotTaken: "Sorry, that time was just taken. Please choose another.",
+  alreadyHolding: "You already have a time held for you. Please use the payment button above, or wait a few minutes and try again.",
+  payBody:
+    `Your time is held for ${config.holdMinutes} minutes. Tap below to pay ${rupees(config.prices.introPaise)}. ` +
+    "Please don't pay twice.",
+  payLabel: `Pay ${rupees(config.prices.introPaise)}`,
+  payFailed: "Sorry, we could not create the payment link. Nothing was charged. Please try again.",
+  confirmed: (day, time, number) =>
+    `Received your ${rupees(config.prices.introPaise)}. Shantha Rao will call you on ${day} at ${time} from ${number}. ` +
+    "That number is for her calls only, so please message us here.",
   askPrompt: "Please type your question below.",
   ack: "Thanks, a person will reply within 24 hours.",
   faqBody: "Choose a topic.",
@@ -75,6 +103,18 @@ const kn: Copy = {
   btnHow: "KN_TODO how",
   btnAsk: "KN_TODO ask",
   bookSoon: "KN_TODO booking soon",
+  chooseService: "KN_TODO choose service",
+  btnProtection: "KN_TODO protection",
+  btnHealing: "KN_TODO healing",
+  slotListBody: "KN_TODO slot list",
+  slotListButton: "KN_TODO choose time",
+  noSlots: "KN_TODO no slots",
+  slotTaken: "KN_TODO slot taken",
+  alreadyHolding: "KN_TODO already holding",
+  payBody: "KN_TODO pay body",
+  payLabel: "KN_TODO pay",
+  payFailed: "KN_TODO pay failed",
+  confirmed: (day, time, number) => `KN_TODO confirmed ${day} ${time} ${number}`,
   askPrompt: "KN_TODO ask prompt",
   ack: "KN_TODO ack",
   faqBody: "KN_TODO faq body",

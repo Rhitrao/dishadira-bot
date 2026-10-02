@@ -25,6 +25,16 @@ export const config = {
     notFitRefundsPerDay: 5,
     ammaTapReminderHours: 3,
   },
+  // Placeholder until the Airtel number exists; the owner sets the real one here, never in git history.
+  businessNumber: "+91 00000 00000",
+  booking: { leadMinutes: 60, workingDays: 3, maxListRows: 10 },
+  cashfree: {
+    apiVersion: "2025-01-01",
+    sandboxBase: "https://sandbox.cashfree.com/pg",
+    liveBase: "https://api.cashfree.com/pg",
+    minLinkExpiryMinutes: 15, // assumed provider minimum; holdMinutes must stay >= this
+    pollAfterMinutes: 2,
+  },
   graphVersion: "v23.0",
   windowHours: 24,
   // Template registry. Flip approved to true only after Meta approves the template (owner decision).
