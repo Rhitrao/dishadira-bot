@@ -3,6 +3,8 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose";
 import app from "../src/index";
 import { bookingChoice } from "../src/booking";
+import { applyDueOutcomes } from "../src/outcomes";
+import { cashfree } from "../src/pay/cashfree";
 import { generateSlots } from "../src/slots";
 import { addPerson, newDb } from "./db";
 
@@ -304,5 +306,19 @@ describe("one open intro per person", () => {
     expect((await db.prepare("SELECT count(*) AS n FROM slots").first<{ n: number }>())!.n).toBe(1);
     const m = await db.prepare("SELECT body FROM messages WHERE direction = 'OUT' ORDER BY id DESC LIMIT 1").first<{ body: string }>();
     expect(m?.body ?? "").toContain("already booked");
+  });
+});
+
+describe("after the outcome is applied", () => {
+  it('the row shows "Done: <outcome>" and no buttons', async () => {
+    const a = await booking("2026-10-05", 0, "Test Person");
+    expect((await confirm(a.introId, "SESSION")).status).toBe(200);
+    expect(await (await get("/amma")).text()).toContain("Undo");
+    vi.setSystemTime(NOW + 11 * 60_000);
+    await applyDueOutcomes(env(), cashfree(env()));
+    const page = await (await get("/amma")).text();
+    expect(page).toContain("Done: Session");
+    expect(page).not.toContain("Undo");
+    expect(page).not.toContain("/amma/confirm");
   });
 });

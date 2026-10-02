@@ -50,13 +50,18 @@ export async function bookingChoice(env: Env, choice: string | null, convId: num
   return true;
 }
 
-async function sendSlotList(env: Env, conv: Conv, service: string, msgId: string): Promise<void> {
-  const cp = copyFor(conv.locale);
-  const nowMs = Date.now();
+// Next free call slots (list limit applied by the caller).
+export async function freeCallSlots(env: Env, nowMs: number): Promise<Slot[]> {
   const free: Slot[] = [];
   for (const ymd of nextWorkingDays(nowMs, config.booking.workingDays)) {
     free.push(...(await availableSlots(env.DB, "CALL", ymd, nowMs + config.booking.leadMinutes * 60_000)));
   }
+  return free;
+}
+
+async function sendSlotList(env: Env, conv: Conv, service: string, msgId: string): Promise<void> {
+  const cp = copyFor(conv.locale);
+  const free = await freeCallSlots(env, Date.now());
   const rows = free.slice(0, config.booking.maxListRows).map((s) => ({ id: `slot_${service}_${s.startUtc}`, title: formatIst(s.startUtc) }));
   if (!rows.length) {
     await sendMessage(env, conv.id, { type: "text", text: cp.noSlots }, `${msgId}:noslots`);

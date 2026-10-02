@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import type { Env } from "./env";
 import { amma } from "./amma";
+import { applyDueOutcomes } from "./outcomes";
 import { reconcile } from "./pay/apply";
 import { cashfree } from "./pay/cashfree";
+import { retryRefunds } from "./pay/refund";
 import { cashfreeWebhook } from "./pay/webhook";
 import { receiveWebhook, verifyWebhook } from "./whatsapp";
 
@@ -25,7 +27,10 @@ export const RECONCILE_CRON = "*/2 * * * *";
 
 // Cloudflare calls scheduled() for each cron in wrangler.toml; the 9pm digest (Ticket 07) will share this entry.
 const scheduled = async (event: { cron: string }, env: Env) => {
-  if (event.cron === RECONCILE_CRON) await reconcile(env, cashfree(env));
+  if (event.cron !== RECONCILE_CRON) return;
+  const provider = cashfree(env);
+  // One failing job must not stop the others; each is safe to run again.
+  for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);
 };
 
 export default Object.assign(app, { scheduled });
