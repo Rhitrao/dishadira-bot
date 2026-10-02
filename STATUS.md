@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-02 (Ticket 05 session)
+Updated: 2026-10-02 (Ticket 06 session)
 
 ## Payment provider
 Cashfree (KYC submitted by owner: pending). Razorpay: not used.
@@ -28,6 +28,18 @@ Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far:
 
 ## Blocked
 (none)
+
+## Session notes (Ticket 06)
+- Cron (`*/2`) now runs three jobs, each safe to repeat: `applyDueOutcomes` (src/outcomes.ts), `retryRefunds` (src/pay/refund.ts), `reconcile` (now also polls SESSION payments).
+- Outcomes: claimed with `UPDATE outcomes SET applied_at … WHERE applied_at IS NULL AND undo_until <= now`; effects are idempotent, a thrown error releases the claim and raises attention. SESSION -> CALLED_SESSION + sessions row OFFERED + button "Choose a time" (session_offer template outside 24h). NOT_FIT -> refund (once per person by conversation/wa_id or payer ref, `notFitRefundsPerDay` per IST day, enforced inside the INSERT) + kind message; refused -> attention `NOT_FIT_REFUND_REFUSED`, nothing sent. MISSED -> list of free call slots; pick -> same guarded hold, then intro RESCHEDULED + slot BOOKED + old slot freed in one batch, free of charge; second miss -> intro MISSED (reschedule_count 1) + polite message, no refund. RUDE -> conversation BLOCKED + blocks row, refund row `PENDING_APPROVAL` (payment stays PAID), attention `RUDE_REFUND_APPROVAL`, nothing sent. Rude is applied after the undo window, like the others.
+- ₹700 (src/session.ts): `sess_offer_<id>` -> next 5 weekdays, max 10 SESSION slots -> `sess_<id>_<start>` -> hold -> session HELD + payment SESSION 70000 -> link expiring with the hold. Only after intro CALLED_SESSION (or `override_by`) and only for the person it was offered to. `applyStatus` now prices by purpose; paid -> session CONFIRMED + slot BOOKED + `session_confirmed`; a late payment never takes a slot (session EXPIRED, attention `LATE_PAYMENT_NO_SLOT`).
+- Refunds: one engine (`requestRefund`). refund_id is always `refund-<payment id>`, plus an `x-idempotency-key` header. Cashfree's create-refund page does not say what a repeated refund_id returns, so a retry first GETs the refund (`/orders/{id}/refunds/{refund_id}`) and only POSTs if it is 404. A transport error leaves it PENDING (retried every ~2 min, lease 60 s); only the provider saying REJECTED/CANCELLED makes it FAILED (-> REFUND_FAILED + attention); not confirmed after 30 min -> attention `REFUND_STUCK`. Refund webhook (`REFUND_STATUS_WEBHOOK`) is handled with the same signature check. Payment moves are conditional on the previous state; a late SUCCESS may repair FAILED, nothing goes backwards from REFUNDED.
+- Migration 0003: `payments.payer_ref`, `outcomes.slot_id` (+ unique with intro, so a rescheduled call gets its own outcome), `refunds` rebuilt (states add PENDING_APPROVAL, new `attempt_at`). Amma's page now also lists RESCHEDULED calls and shows "Done: <outcome>" with no buttons once applied.
+- Behaviour change in an older test: a refund POST that errors used to become FAILED at once; now it stays PENDING and is retried (see above). The old test checks REJECTED instead.
+- Checks (local): typecheck, vitest 99/99, wrangler dry-run: all passed. GitHub Actions: see PR.
+- Credits: not visible to Claude; check the Usage page.
+- Open questions: (1) `payment_update` template (used for the NOT_FIT notice outside 24h, one parameter "₹99") and `session_offer` (no parameters) need matching wording when Rohit submits them to Meta. (2) The payer UPI handle is not returned by the Payment Links endpoints, so `payer_ref` stays empty unless a later change reads it from the order payments API; the once-per-person rule works on wa_id today. (3) Session confirmation text ("distance session… she calls you at the booked time") is my wording; Amma should check it. (4) If Amma's three-hour no-tap reminder and "Amma away" are Ticket 07/08, nothing here covers them.
+- Next: Ticket 07 (Rohit's console: approve rude refunds, resolve attention), after Rohit merges the Ticket 06 PR.
 
 ## Session notes (Ticket 05)
 - Fix from Ticket 04: one open intro per person. A PAID intro, or a HELD intro whose hold is still live, makes "Book a ₹99 call" reply "Your call is already booked for {day} {time}" and nothing else (`src/booking.ts`, check 1b). Tests in `test/amma.test.ts`.
