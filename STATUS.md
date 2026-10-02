@@ -14,7 +14,7 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [ ] Amma's sign-off on the decisions list
 
 ## Tickets
-- [ ] 01 Foundation (built and checked locally; NOT pushed, no PR, CI not run - see Blocked)
+- [x] 01 Foundation (PR https://github.com/Rhitrao/dishadira-bot/pull/1, CI green)
 - [ ] 02 Data + slots
 - [ ] 03 WhatsApp bot
 - [ ] 04 ₹99 booking
@@ -24,14 +24,14 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [ ] 08 Reminders + go-live
 
 ## Credits
-Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: $0.
+Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
 
 ## Blocked
-- Push to origin returns 403: the Claude GitHub App/connector has no write access to Rhitrao/dishadira-bot. Branch t01-foundation exists locally only.
-  Question for Rohit: please reconnect GitHub at https://claude.ai/connect-github (and install the Claude GitHub App on the repo), then should I push and open the PR?
+(none)
 
 ## Session notes (Ticket 01)
-- Local checks: npm run typecheck OK; vitest 10/10 pass; wrangler deploy --dry-run OK. gitleaks and GitHub Actions not yet run.
+- Checks (local and GitHub Actions on PR 1): typecheck, vitest 10/10, gitleaks (no leaks), wrangler deploy --dry-run: all passed.
 - Cashfree KYC left unticked (owner said dashboard live, Payment Links activation unconfirmed).
 - Credits: not visible from inside the session; check the Usage page.
-- Next: push, open PR, confirm CI green, then tick 01.
+- Open questions: none.
+- Next: Ticket 02 (Data + slots), after Rohit merges PR 1.
