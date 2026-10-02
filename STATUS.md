@@ -21,7 +21,7 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [x] 05 Amma's page (PR https://github.com/Rhitrao/dishadira-bot/pull/5, CI green)
 - [x] 06 Outcomes + ₹700 (PR https://github.com/Rhitrao/dishadira-bot/pull/6, CI green)
 - [x] 07 Rohit's console (PR https://github.com/Rhitrao/dishadira-bot/pull/7, CI green)
-- [ ] 08 Reminders + go-live (PR: see session notes; tick when Actions are green)
+- [x] 08 Reminders + go-live (PR https://github.com/Rhitrao/dishadira-bot/pull/8, CI green)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
@@ -42,7 +42,7 @@ Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far:
   - window/templates: `test/whatsapp.test.ts` "sendMessage" (free text outside 24h refused, unapproved template, payload limits), `test/outcomes.test.ts` (session_offer outside window), `test/remind.test.ts` (text vs template).
   - switches/blocks: `test/admin.test.ts` "switches" (env master, SENDS, AMMA_AWAY), `test/pay.test.ts` and `test/whatsapp.test.ts` (blocked contact gets no hold/link/message), `test/outcomes.test.ts` RUDE, `test/remind.test.ts` (SENDS paused).
   - Nothing was missing; added `test/release.test.ts` (deploy config) as an extra.
-- Checks (local): typecheck, vitest all passed, `wrangler deploy --dry-run` for the top level, `--env test` and `--env live` passed. GitHub Actions: see PR.
+- Checks (local): typecheck, vitest all passed, `wrangler deploy --dry-run` for the top level, `--env test` and `--env live` passed. GitHub Actions: passed on PR 8.
 - Credits: not visible to Claude; check the Usage page.
 - Open questions: (1) `session_offer` outside 24h: the template has no button, and the code does not read template quick-reply taps, so the customer replies in text, which becomes a "needs attention" item for Rohit to answer inside the new window. Do you want a quick-reply button wired in a later ticket? (2) Access for /amma and /admin needs a custom domain (docs assume `bot.disha-dira.com` and `bot-test.disha-dira.com`); `wrangler.toml` has no `routes`, so please confirm a dashboard-added custom domain survives a deploy. (3) Sandbox payments are recognised as test mode only if Cashfree's sandbox link URL contains `payments-test.` (code assumption); step 11 of GO-LIVE.md tests it. (4) `OWNER_APPROVED` is not read by any code yet. (5) Real business number is still the placeholder in `src/config.ts`.
 - Next: Rohit follows `docs/GO-LIVE.md`; Kannada copy from `docs/COPY.md`.
@@ -65,7 +65,7 @@ Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far:
 - Refunds: one engine (`requestRefund`). refund_id is always `refund-<payment id>`, plus an `x-idempotency-key` header. Cashfree's create-refund page does not say what a repeated refund_id returns, so a retry first GETs the refund (`/orders/{id}/refunds/{refund_id}`) and only POSTs if it is 404. A transport error leaves it PENDING (retried every ~2 min, lease 60 s); only the provider saying REJECTED/CANCELLED makes it FAILED (-> REFUND_FAILED + attention); not confirmed after 30 min -> attention `REFUND_STUCK`. Refund webhook (`REFUND_STATUS_WEBHOOK`) is handled with the same signature check. Payment moves are conditional on the previous state; a late SUCCESS may repair FAILED, nothing goes backwards from REFUNDED.
 - Migration 0003: `payments.payer_ref`, `outcomes.slot_id` (+ unique with intro, so a rescheduled call gets its own outcome), `refunds` rebuilt (states add PENDING_APPROVAL, new `attempt_at`). Amma's page now also lists RESCHEDULED calls and shows "Done: <outcome>" with no buttons once applied.
 - Behaviour change in an older test: a refund POST that errors used to become FAILED at once; now it stays PENDING and is retried (see above). The old test checks REJECTED instead.
-- Checks (local): typecheck, vitest 99/99, wrangler dry-run: all passed. GitHub Actions: see PR.
+- Checks (local): typecheck, vitest 99/99, wrangler dry-run: all passed. GitHub Actions: passed on PR 8.
 - Credits: not visible to Claude; check the Usage page.
 - Open questions: (1) `payment_update` template (used for the NOT_FIT notice outside 24h, one parameter "₹99") and `session_offer` (no parameters) need matching wording when Rohit submits them to Meta. (2) The payer UPI handle is not returned by the Payment Links endpoints, so `payer_ref` stays empty unless a later change reads it from the order payments API; the once-per-person rule works on wa_id today. (3) Session confirmation text ("distance session… she calls you at the booked time") is my wording; Amma should check it. (4) If Amma's three-hour no-tap reminder and "Amma away" are Ticket 07/08, nothing here covers them.
 - Next: Ticket 07 (Rohit's console: approve rude refunds, resolve attention), after Rohit merges the Ticket 06 PR.
