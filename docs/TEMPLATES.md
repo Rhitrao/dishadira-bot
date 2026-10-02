@@ -6,7 +6,7 @@ How to submit (WhatsApp Manager → Message templates → Create template), for 
 
 - **Category:** Utility. Never Marketing.
 - **Name:** exactly as written (lower case, underscores). **Language:** English.
-- **Header, footer and buttons:** none. Body only.
+- **Header and footer:** none. **Buttons:** none, except `session_offer`, which has one Quick reply button (see below).
 - **Variables:** written `{{1}}`, `{{2}}`, `{{3}}`. Paste the sample values shown (Meta requires them; they are examples, not real data).
 - Do not add offers, discounts, emojis or promotional words. Each text is a confirmation, reminder or account update about something the customer already did.
 
@@ -34,13 +34,15 @@ Thank you, we have received your payment. Shantha Rao will call you on {{1}} at 
 
 ## 2. session_offer
 
-Sent after Amma taps "Session", when the 24-hour window has closed. No variables.
+Sent after Amma taps "Session", when the 24-hour window has closed. No variables. One Quick reply button.
 
 **Body**
 
 ```
-Thank you for speaking with Shantha Rao. She would be glad to offer you a full session. Please reply to this message and we will help you choose a time.
+Thank you for speaking with Shantha Rao. She would be glad to offer you a full session. Tap below to choose a time.
 ```
+
+**Button:** one **Quick reply**, text exactly `Choose a time`. The bot treats a tap on it, or any reply, from someone with an open offer as "show me the times". Header and footer stay empty.
 
 No variables, so no sample values. (The price is left out on purpose so a price change never needs a new template; the chat tells the customer the price when they choose a time.)
 

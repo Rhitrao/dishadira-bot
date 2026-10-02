@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-02 (Ticket 08 session)
+Updated: 2026-10-02 (Ticket 08b session)
 
 ## Payment provider
 Cashfree (KYC submitted by owner: pending). Razorpay: not used.
@@ -21,13 +21,22 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [x] 05 Amma's page (PR https://github.com/Rhitrao/dishadira-bot/pull/5, CI green)
 - [x] 06 Outcomes + ₹700 (PR https://github.com/Rhitrao/dishadira-bot/pull/6, CI green)
 - [x] 07 Rohit's console (PR https://github.com/Rhitrao/dishadira-bot/pull/7, CI green)
-- [ ] 08 Reminders + go-live (PR: see session notes; tick when Actions are green)
+- [x] 08 Reminders + go-live (PR https://github.com/Rhitrao/dishadira-bot/pull/8, CI green)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
 
 ## Blocked
 (none)
+
+## Session notes (Ticket 08b)
+- Ticket 08 ticked with its PR link.
+- session_offer follow-up (`src/whatsapp.ts`, `openOfferId` in `src/session.ts`): a text message or a template quick-reply tap (WhatsApp message type `button`, now accepted by the payload schema) from someone with an open offer gets the "Choose a time" session slot list, not a FREE_TEXT attention item. Open offer = session OFFERED or EXPIRED, or HELD whose slot hold has lapsed, with intro CALLED_SESSION (or `override_by`), newest first. It goes through `sessionChoice`, so the existing rules apply (bookings switch, blocked, only the person it was offered to). Known menu buttons and list picks are handled before this; no open offer behaves as before.
+- `docs/TEMPLATES.md`: `session_offer` gets one Quick reply button "Choose a time"; body now ends "Tap below to choose a time." Still Utility, no price. Rohit: submit/re-submit the template with the button.
+- Checks (local): typecheck, vitest 133/133 (5 new in test/whatsapp.test.ts). GitHub Actions: see PR.
+- Credits: not visible to Claude; check the Usage page.
+- Open questions: none.
+- Next: Rohit merges, re-submits `session_offer` to Meta, then follows `docs/GO-LIVE.md`.
 
 ## Session notes (Ticket 08)
 - Fixes from Ticket 07: (a) migration 0004 adds `payments.paid_paise`; a mismatch (wrong amount, partial, unsupported) stores what was really paid, and the refund engine refunds `COALESCE(paid_paise, amount_paise)`, never the expected price (the 7-day refund total uses the same). (b) refunds gain state `DECLINED` (table rebuilt in 0004); "Keep (no refund)" sets it, keeps the row (so the payment can never get a second refund) and audit_log `ADMIN_KEEP_NO_REFUND` records the Access e-mail as actor and in the detail ("declined by ...").

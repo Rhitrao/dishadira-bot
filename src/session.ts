@@ -55,6 +55,22 @@ export async function sessionChoice(env: Env, choice: string | null, convId: num
   return true;
 }
 
+// The session a customer may still be choosing a time for: OFFERED, EXPIRED, or HELD with a lapsed hold; same rules as sessionChoice.
+export async function openOfferId(db: Env["DB"], convId: number): Promise<number | null> {
+  const row = await db
+    .prepare(
+      `SELECT se.id FROM sessions se
+       LEFT JOIN intros i ON i.id = se.intro_id
+       LEFT JOIN slots sl ON sl.id = se.slot_id
+       WHERE se.conversation_id = ?1 AND (i.state = 'CALLED_SESSION' OR se.override_by IS NOT NULL)
+         AND (se.state IN ('OFFERED','EXPIRED') OR (se.state = 'HELD' AND (sl.hold_until IS NULL OR sl.hold_until <= ?2)))
+       ORDER BY se.id DESC LIMIT 1`,
+    )
+    .bind(convId, nowIso())
+    .first<{ id: number }>();
+  return row?.id ?? null;
+}
+
 async function sendSlotList(env: Env, conv: Conv, sid: number, msgId: string): Promise<void> {
   const cp = copyFor(conv.locale);
   const nowMs = Date.now();

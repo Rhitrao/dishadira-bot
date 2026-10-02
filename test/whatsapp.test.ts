@@ -10,10 +10,11 @@ const PHONE = "919999999999"; // synthetic
 let db: D1Database;
 let close: () => Promise<void>;
 let sends: "true" | "false";
+let bookings = "false";
 let fetchMock: ReturnType<typeof vi.fn>;
 let n = 0;
 
-const env = () => ({ DB: db, SENDS: sends, WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "verify-me", WA_TOKEN: "tok", WA_PHONE_ID: "1000" }) as never;
+const env = () => ({ DB: db, SENDS: sends, WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "verify-me", WA_TOKEN: "tok", WA_PHONE_ID: "1000", NEW_BOOKINGS: bookings }) as never;
 
 async function sign(raw: string, secret = SECRET) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -44,6 +45,7 @@ const count = async (sql: string) => (await db.prepare(sql).first<{ n: number }>
 beforeEach(async () => {
   ({ db, close } = await newDb());
   sends = "true";
+  bookings = "false";
   fetchMock = vi.fn(async () => new Response(JSON.stringify({ messages: [{ id: `wamid.OUT${++n}` }] }), { status: 200 }));
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -243,5 +245,59 @@ describe("sendMessage", () => {
     expect(cta.interactive.type).toBe("cta_url");
     const tpl = buildPayload({ type: "template", name: "reminder", params: ["a"] }, PHONE) as { template: { name: string } };
     expect(tpl.template.name).toBe("reminder");
+  });
+});
+
+describe("session offer follow-up", () => {
+  const tap = (id: string) => inbound(id, { type: "button", button: { payload: "Choose a time", text: "Choose a time" } });
+  const lists = () => sent().filter((b) => b.interactive?.type === "list");
+
+  // A greeted person with an intro CALLED_SESSION and a session in the given state.
+  async function offered(state = "OFFERED") {
+    bookings = "true";
+    await post(text("wamid.SEED")); // creates the conversation + greeting
+    const conv = (await db.prepare("SELECT id FROM conversations WHERE wa_id = ?1").bind(PHONE).first<{ id: number }>())!.id;
+    const intro = await db.prepare("INSERT INTO intros (conversation_id, service, state) VALUES (?1, 'PROTECTION', 'CALLED_SESSION')").bind(conv).run();
+    await db.prepare("INSERT INTO sessions (conversation_id, intro_id, service, state) VALUES (?1, ?2, 'PROTECTION', ?3)").bind(conv, intro.meta.last_row_id, state).run();
+    fetchMock.mockClear();
+    return conv;
+  }
+
+  it("a text reply after an offer gets the slot list, no attention item", async () => {
+    await offered();
+    await post(text("wamid.F1", "ok please"));
+    expect(lists()).toHaveLength(1);
+    expect(lists()[0].interactive.action.sections[0].rows[0].id).toMatch(/^sess_\d+_/);
+    expect(await count("SELECT COUNT(*) n FROM attention")).toBe(0);
+  });
+
+  it("a template quick-reply tap gets the slot list", async () => {
+    await offered();
+    expect((await post(tap("wamid.F2"))).status).toBe(200);
+    expect(lists()).toHaveLength(1);
+    expect(await count("SELECT COUNT(*) n FROM attention")).toBe(0);
+  });
+
+  it("an offer whose hold lapsed without payment still gets the list", async () => {
+    await offered("HELD"); // no live hold on the slot
+    await post(text("wamid.F3", "hello again"));
+    expect(lists()).toHaveLength(1);
+  });
+
+  it("no open offer: unchanged (free text -> attention + ack, a stray button tap is ignored into the same path)", async () => {
+    bookings = "true";
+    await post(text("wamid.G0")); // greeting
+    fetchMock.mockClear();
+    await post(text("wamid.G1", "hello"));
+    expect(lists()).toHaveLength(0);
+    expect(await count("SELECT COUNT(*) n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(1);
+    expect(sent()[0].text.body).toBeTruthy();
+  });
+
+  it("an offer for someone else is not used", async () => {
+    await offered();
+    await post(inbound("wamid.H1", { type: "text", text: { body: "hi" } }, "919999999998"));
+    await post(inbound("wamid.H2", { type: "text", text: { body: "hi again" } }, "919999999998"));
+    expect(lists()).toHaveLength(0);
   });
 });
