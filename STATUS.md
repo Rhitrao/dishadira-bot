@@ -18,7 +18,7 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [x] 02 Data + slots (PR https://github.com/Rhitrao/dishadira-bot/pull/2, CI green)
 - [x] 03 WhatsApp bot (PR https://github.com/Rhitrao/dishadira-bot/pull/3, CI green)
 - [x] 04 ₹99 booking (PR https://github.com/Rhitrao/dishadira-bot/pull/4, CI green)
-- [ ] 05 Amma's page
+- [x] 05 Amma's page (PR https://github.com/Rhitrao/dishadira-bot/pull/5, CI green)
 - [ ] 06 Outcomes + ₹700
 - [ ] 07 Rohit's console
 - [ ] 08 Reminders + go-live
@@ -36,7 +36,7 @@ Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far:
 - Safety: POST-only changes, Origin must equal the Worker's origin (missing = 403), per-form CSRF token = SHA-256 of form scope + the visitor's own Access JWT (no new secret; a stale page after Access re-issues the JWT gives 403 -> reload), escaped output via hono/html, `Cache-Control: no-store`, CSP, no JavaScript.
 - Copy: `amma` section in `src/copy.ts` (English final, Kannada KN_TODO). The page uses English for now.
 - Env: `AMMA_EMAIL`, `ROHIT_EMAIL` added to `SECRET_NAMES`; empty placeholders for them and ACCESS_TEAM / ACCESS_AUD added under `[vars]` in wrangler.toml.
-- Checks (local): typecheck, vitest 72/72, wrangler dry-run: all passed.
+- Checks (local and GitHub Actions on PR 5): typecheck, vitest 72/72, wrangler dry-run: all passed.
 - Credits: not visible to Claude; check the Usage page.
 - Open questions: (1) the empty `[vars]` in wrangler.toml may overwrite values set in the Cloudflare dashboard on deploy; set real values as dashboard secrets / use `--keep-vars`, or tell me to remove the placeholders from the toml. (2) Rohit's e-mail can also see /amma and tap outcomes (for support). OK?
 - Next: Ticket 06 (Outcomes + ₹700), after Rohit merges the Ticket 05 PR.
