@@ -8,7 +8,7 @@ import { copyFor, type AmmaCopy } from "./copy";
 import type { Env } from "./env";
 import { formatIstParts, iso, istDay } from "./slots";
 
-type Ctx = Context<{ Bindings: Env; Variables: { jwt: string } }>;
+type Ctx = Context<{ Bindings: Env; Variables: { jwt: string; email: string } }>;
 const t = (): AmmaCopy => copyFor("en").amma; // Amma's page is English until the Kannada copy is written
 
 const OUTCOMES = { SESSION: "btnSession", NOT_FIT: "btnNotFit", MISSED: "btnMissed", RUDE: "btnRude" } as const;
@@ -24,14 +24,14 @@ const keysFor = (host: string) => {
 };
 
 // The Worker verifies the Access JWT itself (signature, audience, issuer, expiry) and then the e-mail.
-async function allowedJwt(env: Env, token: string | undefined): Promise<string | null> {
+async function allowedJwt(env: Env, token: string | undefined): Promise<{ jwt: string; email: string } | null> {
   if (!token || !env.ACCESS_TEAM || !env.ACCESS_AUD) return null;
   try {
     const host = teamHost(env.ACCESS_TEAM);
     const { payload } = await jwtVerify(token, keysFor(host), { audience: env.ACCESS_AUD, issuer: `https://${host}` });
     const email = typeof payload.email === "string" ? payload.email.toLowerCase() : "";
     const allowed = [env.AMMA_EMAIL, env.ROHIT_EMAIL].filter(Boolean).map((e) => e.toLowerCase());
-    return email && allowed.includes(email) ? token : null;
+    return email && allowed.includes(email) ? { jwt: token, email } : null;
   } catch {
     return null;
   }
@@ -52,8 +52,8 @@ h1{font-size:28px;margin:0 0 16px}h2{font-size:24px;margin:28px 0 8px;border-bot
 a.btn,button{display:block;width:100%;min-height:56px;margin:8px 0;padding:12px;border:2px solid #000;border-radius:8px;
  font:bold 20px system-ui,sans-serif;text-align:center;text-decoration:none;color:#000;background:#fff;cursor:pointer}
 a.call,button.go{background:#000;color:#fff}
-.small a.btn,.small button{min-height:56px;font-size:18px;font-weight:normal}
-.msg{font-size:22px;margin:16px 0}
+.rude{margin-top:40px}.rude a.btn{min-height:56px;font-size:18px;font-weight:normal;color:#b00000;border-color:#b00000}
+.msg{font-size:22px;margin:16px 0}a.refresh{margin:0 0 8px}
 form{margin:0}`;
 
 const page = (body: unknown) =>
@@ -116,18 +116,20 @@ async function rowHtml(r: Row, jwt: string, nowIsoStr: string) {
     return html`<div class="row">${head}<div class="msg">${c.answered(label)}</div>
 ${canUndo ? undoForm(r.oid, await csrf(jwt, `undo:${r.oid}`), c.undo) : ""}</div>`;
   }
+  if (r.startUtc > nowIsoStr) return html`<div class="row">${head}</div>`; // outcome buttons only once the call has started
   const link = (v: Outcome, cls: string) =>
     html`<a class="btn ${cls}" href="/amma/confirm?intro=${r.introId}&v=${v}">${c[OUTCOMES[v]]}</a>`;
-  return html`<div class="row">${head}${link("SESSION", "")}${link("NOT_FIT", "")}${link("MISSED", "")}
-<div class="small">${link("RUDE", "")}</div></div>`;
+  return html`<div class="row">${head}<div class="msg">${c.howDidItGo}</div>${link("SESSION", "")}${link("NOT_FIT", "")}${link("MISSED", "")}
+<div class="rude">${link("RUDE", "")}</div></div>`;
 }
 
-export const amma = new Hono<{ Bindings: Env; Variables: { jwt: string } }>();
+export const amma = new Hono<{ Bindings: Env; Variables: { jwt: string; email: string } }>();
 
 amma.use("*", async (c, next) => {
-  const jwt = await allowedJwt(c.env, c.req.header("Cf-Access-Jwt-Assertion"));
-  if (!jwt) return c.text("Forbidden", 403, { "Cache-Control": "no-store" });
-  c.set("jwt", jwt);
+  const who = await allowedJwt(c.env, c.req.header("Cf-Access-Jwt-Assertion"));
+  if (!who) return c.text("Forbidden", 403, { "Cache-Control": "no-store" });
+  c.set("jwt", who.jwt);
+  c.set("email", who.email);
   if (c.req.method === "POST") {
     // Browsers always send Origin on a POST; a missing or foreign one is refused.
     if (c.req.header("Origin") !== new URL(c.req.url).origin) return c.text("Forbidden", 403, { "Cache-Control": "no-store" });
@@ -137,19 +139,25 @@ amma.use("*", async (c, next) => {
   c.res.headers.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'");
 });
 
+// Who did it: the Access e-mail goes in audit_log (D1 only, never in git or logs).
+const audit = (c: Ctx, action: string, target: string, detail: string) =>
+  c.env.DB.prepare("INSERT INTO audit_log (actor, action, target, detail) VALUES (?1, ?2, ?3, ?4)").bind(c.get("email"), action, target, detail).run();
+
 amma.get("/", async (c) => {
   const now = Date.now();
   const today = istDay(now);
   const tomorrow = istDay(now + 86_400_000);
   const nowStr = iso(now);
   const cp = t();
-  const section = async (title: string, from: string, to: string) => {
+  const section = async (title: string, from: string, to: string, empty: string) => {
     const rows = await rowsBetween(c.env, dayStartUtc(from), dayStartUtc(to));
     const items = await Promise.all(rows.map((r) => rowHtml(r, c.get("jwt"), nowStr)));
-    return html`<h2>${title}</h2>${rows.length ? items : html`<p>${cp.nothing}</p>`}`;
+    return html`<h2>${title} · ${formatIstParts(dayStartUtc(from)).day}</h2>${rows.length ? items : html`<p class="msg">${empty}</p>`}`;
   };
   const dayAfter = istDay(now + 2 * 86_400_000);
-  return c.html(page(html`<h1>${cp.title}</h1>${await section(cp.today, today, tomorrow)}${await section(cp.tomorrow, tomorrow, dayAfter)}`));
+  const todayHtml = await section(cp.today, today, tomorrow, cp.nothingToday);
+  const tomorrowHtml = await section(cp.tomorrow, tomorrow, dayAfter, cp.nothingTomorrow);
+  return c.html(page(html`<h1>${cp.title}</h1><a class="btn go refresh" href="/amma">${cp.refresh}</a>${todayHtml}${tomorrowHtml}`));
 });
 
 const message = (c: Ctx, text: string, status: 200 | 400 | 403 | 404 | 409) =>
@@ -170,6 +178,7 @@ amma.get("/confirm", async (c) => {
   const v = c.req.query("v");
   const intro = Number.isInteger(id) ? await introFor(c.env, id) : null;
   if (!intro || intro.state !== "PAID" || !isOutcome(v)) return message(c, t().notFound, 404);
+  if (intro.startUtc > iso(Date.now())) return message(c, t().notYet, 409);
   const cp = t();
   const token = await csrf(c.get("jwt"), `outcome:${id}:${v}`);
   return c.html(
@@ -191,6 +200,7 @@ amma.post("/outcome", async (c) => {
   const intro = await introFor(c.env, id);
   if (!intro || intro.state !== "PAID") return message(c, cp.notFound, 404);
   const now = Date.now();
+  if (intro.startUtc > iso(now)) return message(c, cp.notYet, 409);
   // One atomic write: refused if this call already has an outcome. Effects are NOT applied here (Ticket 06).
   const res = await c.env.DB
     .prepare(
@@ -201,6 +211,7 @@ amma.post("/outcome", async (c) => {
     .run();
   if (!res.meta.changes) return message(c, cp.alreadyAnswered, 409);
   const oid = res.meta.last_row_id;
+  await audit(c, "AMMA_OUTCOME", `intro:${id}`, v);
   return c.html(
     page(html`<p class="msg">${cp.saved(config.undoMinutes)}</p>${undoForm(oid, await csrf(c.get("jwt"), `undo:${oid}`), cp.undo)}
 <a class="btn go" href="/amma">${cp.back}</a>`),
@@ -212,9 +223,12 @@ amma.post("/undo", async (c) => {
   const oid = Number(f.outcome);
   if (!Number.isInteger(oid) || f.csrf !== (await csrf(c.get("jwt"), `undo:${oid}`))) return c.text("Forbidden", 403);
   const cp = t();
+  const was = await c.env.DB.prepare("SELECT intro_id AS introId, value FROM outcomes WHERE id = ?1").bind(oid).first<{ introId: number; value: string }>();
   const res = await c.env.DB
     .prepare("DELETE FROM outcomes WHERE id = ?1 AND undo_until > ?2 AND applied_at IS NULL")
     .bind(oid, iso(Date.now()))
     .run();
-  return res.meta.changes ? message(c, cp.undone, 200) : message(c, cp.undoTooLate, 409);
+  if (!res.meta.changes) return message(c, cp.undoTooLate, 409);
+  await audit(c, "AMMA_UNDO", `intro:${was?.introId}`, was?.value ?? "");
+  return message(c, cp.undone, 200);
 });

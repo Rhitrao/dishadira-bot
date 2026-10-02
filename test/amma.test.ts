@@ -6,8 +6,8 @@ import { bookingChoice } from "../src/booking";
 import { generateSlots } from "../src/slots";
 import { addPerson, newDb } from "./db";
 
-// All data is synthetic. Mon 2026-10-05, 11:30 IST. Real Access is never called: the JWKS fetch is mocked.
-const NOW = Date.parse("2026-10-05T06:00:00Z");
+// All data is synthetic. Mon 2026-10-05, 15:30 IST (calls at 14:00-15:15 have started). Real Access is never called: the JWKS fetch is mocked.
+const NOW = Date.parse("2026-10-05T10:00:00Z");
 const ORIGIN = "https://bot.example.test";
 const AUD = "test-aud";
 const TEAM = "testteam";
@@ -142,6 +142,69 @@ describe("page", () => {
   });
 });
 
+describe("page layout", () => {
+  it("has the date header, a Refresh button and empty-day messages", async () => {
+    const page = await (await get("/amma")).text();
+    expect(page).toContain("Today · Mon 5 Oct");
+    expect(page).toContain("Tomorrow · Tue 6 Oct");
+    expect(page).toMatch(/<a class="btn go refresh" href="\/amma">Refresh<\/a>/);
+    expect(page).toContain("No calls today");
+    expect(page).toContain("No calls tomorrow");
+    await booking("2026-10-05", 0, "Priya");
+    const busy = await (await get("/amma")).text();
+    expect(busy).not.toContain("No calls today");
+    expect(busy).toContain("No calls tomorrow");
+  });
+  it("before the start time only the Call button shows; tomorrow never has outcome buttons", async () => {
+    const { introId } = await booking("2026-10-05", 8, "Later"); // 16:00 IST, not started
+    await booking("2026-10-06", 0, "Tomorrow");
+    const page = await (await get("/amma")).text();
+    expect(page).toContain("Later");
+    expect(page).toContain("Tomorrow");
+    expect(page).not.toMatch(/How did it go|Not right fit|Missed|Report rude|\/amma\/confirm/);
+    expect((await get(`/amma/confirm?intro=${introId}&v=MISSED`)).status).toBe(409);
+    expect(await outcomeCount()).toBe(0);
+  });
+  it("after the start time: 'How did it go?' above the three buttons, Report rude separate, red and smaller", async () => {
+    await booking("2026-10-05", 0, "Priya");
+    const page = await (await get("/amma")).text();
+    const at = (x: string) => page.indexOf(x, page.indexOf('class="row"'));
+    expect(at("How did it go?")).toBeGreaterThan(0);
+    expect(at("How did it go?")).toBeLessThan(at(">Session<"));
+    expect(at(">Session<")).toBeLessThan(at(">Not right fit<"));
+    expect(at(">Not right fit<")).toBeLessThan(at(">Missed<"));
+    expect(at(">Missed<")).toBeLessThan(at("Report rude"));
+    expect(page).toMatch(/\.rude\{margin-top:40px\}\.rude a\.btn\{[^}]*font-size:18px[^}]*color:#b00000/);
+    expect(page).toMatch(/<div class="rude"><a [^>]*>Report rude<\/a><\/div>/);
+  });
+  it("an outcome POST for a call that has not started is refused", async () => {
+    const { introId } = await booking("2026-10-05", 8, "Later");
+    const res = await post("/amma/outcome", { intro: String(introId), v: "MISSED", csrf: "x" });
+    expect(res.status).toBe(403); // no valid token can exist: the confirm screen is refused
+    expect(await outcomeCount()).toBe(0);
+  });
+});
+
+describe("audit", () => {
+  const audits = async () => (await db.prepare("SELECT actor, action, target, detail FROM audit_log ORDER BY id").all()).results;
+  it("records who tapped each outcome and each undo", async () => {
+    const { introId } = await booking("2026-10-05", 0, "Priya");
+    const saved = await (await confirm(introId, "MISSED")).text();
+    expect(await audits()).toEqual([{ actor: AMMA, action: "AMMA_OUTCOME", target: `intro:${introId}`, detail: "MISSED" }]);
+    await post("/amma/undo", { outcome: hidden(saved, "outcome"), csrf: hidden(saved, "csrf") });
+    expect(await audits()).toHaveLength(2);
+    expect((await audits())[1]).toEqual({ actor: AMMA, action: "AMMA_UNDO", target: `intro:${introId}`, detail: "MISSED" });
+  });
+  it("a refused undo or a refused second outcome is not logged as a change", async () => {
+    const { introId } = await booking("2026-10-05", 0, "Priya");
+    const saved = await (await confirm(introId)).text();
+    await confirm(introId, "SESSION"); // refused
+    vi.setSystemTime(NOW + 11 * 60_000);
+    await post("/amma/undo", { outcome: hidden(saved, "outcome"), csrf: hidden(saved, "csrf") }); // too late
+    expect(await audits()).toHaveLength(1);
+  });
+});
+
 describe("outcomes", () => {
   it("a tap only opens a confirm screen; nothing is saved until Yes", async () => {
     const { introId } = await booking("2026-10-05", 0, "Priya");
@@ -222,7 +285,7 @@ describe("safety", () => {
 
 describe("one open intro per person", () => {
   const run = async (conv: number, i: number) => {
-    await db.prepare("UPDATE conversations SET last_user_at = '2026-10-05T06:00:00Z' WHERE id = ?1").bind(conv).run();
+    await db.prepare("UPDATE conversations SET last_user_at = '2026-10-05T10:00:00Z' WHERE id = ?1").bind(conv).run();
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 404 })));
     await bookingChoice({ ...(env() as object), SENDS: "true", WA_TOKEN: "t", WA_PHONE_ID: "1" } as never, `slot_PROTECTION_${generateSlots("2026-10-05", "CALL")[i].startUtc}`, conv, `m${i}${conv}`);
   };

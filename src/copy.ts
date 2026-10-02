@@ -11,7 +11,11 @@ export type AmmaCopy = {
   title: string;
   today: string;
   tomorrow: string;
-  nothing: string;
+  nothingToday: string;
+  nothingTomorrow: string;
+  refresh: string;
+  howDidItGo: string;
+  notYet: string;
   protection: string;
   healing: string;
   kindCall: string;
@@ -91,7 +95,11 @@ const en: Copy = {
     title: "Calls and sessions",
     today: "Today",
     tomorrow: "Tomorrow",
-    nothing: "Nothing booked.",
+    nothingToday: "No calls today",
+    nothingTomorrow: "No calls tomorrow",
+    refresh: "Refresh",
+    howDidItGo: "How did it go?",
+    notYet: "This call has not started yet.",
     protection: "Protection",
     healing: "Healing",
     kindCall: `Call ${rupees(config.prices.introPaise)}`,
@@ -175,7 +183,11 @@ const kn: Copy = {
     title: "KN_TODO title",
     today: "KN_TODO today",
     tomorrow: "KN_TODO tomorrow",
-    nothing: "KN_TODO nothing booked",
+    nothingToday: "KN_TODO no calls today",
+    nothingTomorrow: "KN_TODO no calls tomorrow",
+    refresh: "KN_TODO refresh",
+    howDidItGo: "KN_TODO how did it go",
+    notYet: "KN_TODO not yet",
     protection: "KN_TODO protection",
     healing: "KN_TODO healing",
     kindCall: "KN_TODO call",

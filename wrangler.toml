@@ -18,10 +18,3 @@ OWNER_APPROVED = "false"
 NEW_BOOKINGS = "false"
 SENDS = "false"
 PAYMENT_MODE = "test"
-
-# Empty placeholders; fail closed (everyone gets 403 on /amma). Rohit sets the real values in Cloudflare, never in git.
-# Check that a deploy does not overwrite the dashboard values with these empty ones (use --keep-vars).
-ACCESS_TEAM = ""
-ACCESS_AUD = ""
-AMMA_EMAIL = ""
-ROHIT_EMAIL = ""

@@ -35,10 +35,11 @@ Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far:
 - Page: Today / Tomorrow (IST), PAID call intros and CONFIRMED sessions only; first name, service, kind, tel: button. Outcome buttons -> GET confirm screen -> POST Yes -> `outcomes` row (undo_until = now + 10 min, no effects) -> POST undo. A second outcome on the same call is refused (atomic insert). Ticket 06 must apply effects only when `undo_until` has passed and `applied_at` is null.
 - Safety: POST-only changes, Origin must equal the Worker's origin (missing = 403), per-form CSRF token = SHA-256 of form scope + the visitor's own Access JWT (no new secret; a stale page after Access re-issues the JWT gives 403 -> reload), escaped output via hono/html, `Cache-Control: no-store`, CSP, no JavaScript.
 - Copy: `amma` section in `src/copy.ts` (English final, Kannada KN_TODO). The page uses English for now.
-- Env: `AMMA_EMAIL`, `ROHIT_EMAIL` added to `SECRET_NAMES`; empty placeholders for them and ACCESS_TEAM / ACCESS_AUD added under `[vars]` in wrangler.toml.
-- Checks (local and GitHub Actions on PR 5): typecheck, vitest 72/72, wrangler dry-run: all passed.
+- Env: `AMMA_EMAIL`, `ROHIT_EMAIL` added to `SECRET_NAMES`. They and ACCESS_TEAM / ACCESS_AUD are Cloudflare secrets only (README note); nothing in wrangler.toml.
+- Checks (local and GitHub Actions on PR 5): typecheck, vitest 78/78, wrangler dry-run: all passed.
 - Credits: not visible to Claude; check the Usage page.
-- Open questions: (1) the empty `[vars]` in wrangler.toml may overwrite values set in the Cloudflare dashboard on deploy; set real values as dashboard secrets / use `--keep-vars`, or tell me to remove the placeholders from the toml. (2) Rohit's e-mail can also see /amma and tap outcomes (for support). OK?
+- PR 5 follow-ups (Rohit's review): placeholders removed from wrangler.toml; every outcome and undo is written to `audit_log` (actor = Access email, actions AMMA_OUTCOME / AMMA_UNDO, target `intro:<id>`, detail = outcome value; only successful changes); outcome buttons show only once the call's start time (IST) has passed, and the confirm screen and POST refuse a call that has not started; "How did it go?" line, Report rude separate (red, smaller, gap); header "Today · Mon 5 Oct", Refresh button, "No calls today/tomorrow".
+- Open questions: Rohit's e-mail can also see /amma and tap outcomes (for support); it is logged in audit_log. OK?
 - Next: Ticket 06 (Outcomes + ₹700), after Rohit merges the Ticket 05 PR.
 
 ## Session notes (Ticket 04)
