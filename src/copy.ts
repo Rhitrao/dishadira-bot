@@ -6,6 +6,35 @@ import { config } from "./config";
 export type Lang = "en" | "kn";
 export type FaqId = (typeof config.faqIds)[number];
 
+// Labels for Amma's page (/amma). Never any chat or health wording here.
+export type AmmaCopy = {
+  title: string;
+  today: string;
+  tomorrow: string;
+  nothing: string;
+  protection: string;
+  healing: string;
+  kindCall: string;
+  kindSession: string;
+  btnCall: string;
+  btnSession: string;
+  btnNotFit: string;
+  btnMissed: string;
+  btnRude: string;
+  confirm: (label: string, name: string, time: string) => string;
+  yes: string;
+  back: string;
+  saved: (minutes: number) => string;
+  undo: string;
+  undone: string;
+  answered: (label: string) => string;
+  alreadyAnswered: string;
+  undoTooLate: string;
+  expired: string;
+  notFound: string;
+  noName: string;
+};
+
 export type Copy = {
   greeting: string;
   menuBody: string;
@@ -21,6 +50,8 @@ export type Copy = {
   noSlots: string;
   slotTaken: string;
   alreadyHolding: string;
+  callAlreadyBooked: (day: string, time: string) => string;
+  amma: AmmaCopy;
   payBody: string;
   payLabel: string; // max 20 chars
   payFailed: string;
@@ -55,6 +86,34 @@ const en: Copy = {
   noSlots: "There are no free call times right now. Please check again later.",
   slotTaken: "Sorry, that time was just taken. Please choose another.",
   alreadyHolding: "You already have a time held for you. Please use the payment button above, or wait a few minutes and try again.",
+  callAlreadyBooked: (day, time) => `Your call is already booked for ${day} ${time}. Shantha Rao will call you then.`,
+  amma: {
+    title: "Calls and sessions",
+    today: "Today",
+    tomorrow: "Tomorrow",
+    nothing: "Nothing booked.",
+    protection: "Protection",
+    healing: "Healing",
+    kindCall: `Call ${rupees(config.prices.introPaise)}`,
+    kindSession: `Session ${rupees(config.prices.sessionPaise)}`,
+    btnCall: "Call",
+    btnSession: "Session",
+    btnNotFit: "Not right fit",
+    btnMissed: "Missed",
+    btnRude: "Report rude",
+    confirm: (label, name, time) => `Confirm: ${label} for ${name}, ${time}?`,
+    yes: "Yes",
+    back: "Back",
+    saved: (m) => `Saved. Undo (${m} min)`,
+    undo: "Undo",
+    undone: "Undone.",
+    answered: (label) => `Saved: ${label}`,
+    alreadyAnswered: "This call already has an answer. If it was a mistake, please tell Rohit.",
+    undoTooLate: "Sorry, it is too late to undo this.",
+    expired: "This page has expired. Please go back and try again.",
+    notFound: "Not found.",
+    noName: "Customer",
+  },
   payBody:
     `Your time is held for ${config.holdMinutes} minutes. Tap below to pay ${rupees(config.prices.introPaise)}. ` +
     "Please don't pay twice.",
@@ -111,6 +170,34 @@ const kn: Copy = {
   noSlots: "KN_TODO no slots",
   slotTaken: "KN_TODO slot taken",
   alreadyHolding: "KN_TODO already holding",
+  callAlreadyBooked: (day, time) => `KN_TODO call already booked ${day} ${time}`,
+  amma: {
+    title: "KN_TODO title",
+    today: "KN_TODO today",
+    tomorrow: "KN_TODO tomorrow",
+    nothing: "KN_TODO nothing booked",
+    protection: "KN_TODO protection",
+    healing: "KN_TODO healing",
+    kindCall: "KN_TODO call",
+    kindSession: "KN_TODO session",
+    btnCall: "KN_TODO call",
+    btnSession: "KN_TODO session",
+    btnNotFit: "KN_TODO not right fit",
+    btnMissed: "KN_TODO missed",
+    btnRude: "KN_TODO report rude",
+    confirm: (label, name, time) => `KN_TODO confirm ${label} ${name} ${time}`,
+    yes: "KN_TODO yes",
+    back: "KN_TODO back",
+    saved: (m) => `KN_TODO saved ${m}`,
+    undo: "KN_TODO undo",
+    undone: "KN_TODO undone",
+    answered: (label) => `KN_TODO saved ${label}`,
+    alreadyAnswered: "KN_TODO already answered",
+    undoTooLate: "KN_TODO too late",
+    expired: "KN_TODO expired",
+    notFound: "KN_TODO not found",
+    noName: "KN_TODO customer",
+  },
   payBody: "KN_TODO pay body",
   payLabel: "KN_TODO pay",
   payFailed: "KN_TODO pay failed",

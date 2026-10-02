@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-02 (Ticket 04 session)
+Updated: 2026-10-02 (Ticket 05 session)
 
 ## Payment provider
 Cashfree (KYC submitted by owner: pending). Razorpay: not used.
@@ -28,6 +28,18 @@ Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far:
 
 ## Blocked
 (none)
+
+## Session notes (Ticket 05)
+- Fix from Ticket 04: one open intro per person. A PAID intro, or a HELD intro whose hold is still live, makes "Book a ₹99 call" reply "Your call is already booked for {day} {time}" and nothing else (`src/booking.ts`, check 1b). Tests in `test/amma.test.ts`.
+- Built `src/amma.ts` (mounted at /amma): Worker verifies `Cf-Access-Jwt-Assertion` with jose (JWKS at `https://<ACCESS_TEAM>.cloudflareaccess.com/cdn-cgi/access/certs`, audience `ACCESS_AUD`, issuer from team); only `AMMA_EMAIL` / `ROHIT_EMAIL` pass; empty vars fail closed (403). `ACCESS_TEAM` may be the team name or full domain.
+- Page: Today / Tomorrow (IST), PAID call intros and CONFIRMED sessions only; first name, service, kind, tel: button. Outcome buttons -> GET confirm screen -> POST Yes -> `outcomes` row (undo_until = now + 10 min, no effects) -> POST undo. A second outcome on the same call is refused (atomic insert). Ticket 06 must apply effects only when `undo_until` has passed and `applied_at` is null.
+- Safety: POST-only changes, Origin must equal the Worker's origin (missing = 403), per-form CSRF token = SHA-256 of form scope + the visitor's own Access JWT (no new secret; a stale page after Access re-issues the JWT gives 403 -> reload), escaped output via hono/html, `Cache-Control: no-store`, CSP, no JavaScript.
+- Copy: `amma` section in `src/copy.ts` (English final, Kannada KN_TODO). The page uses English for now.
+- Env: `AMMA_EMAIL`, `ROHIT_EMAIL` added to `SECRET_NAMES`; empty placeholders for them and ACCESS_TEAM / ACCESS_AUD added under `[vars]` in wrangler.toml.
+- Checks (local): typecheck, vitest 72/72, wrangler dry-run: all passed.
+- Credits: not visible to Claude; check the Usage page.
+- Open questions: (1) the empty `[vars]` in wrangler.toml may overwrite values set in the Cloudflare dashboard on deploy; set real values as dashboard secrets / use `--keep-vars`, or tell me to remove the placeholders from the toml. (2) Rohit's e-mail can also see /amma and tap outcomes (for support). OK?
+- Next: Ticket 06 (Outcomes + ₹700), after Rohit merges the Ticket 05 PR.
 
 ## Session notes (Ticket 04)
 - Fixed Ticket 02 bug: the "one active hold per person" check in `holdSlot` now counts only unexpired HELD rows (BOOKED no longer blocks a later session hold). Test added. Overlap check unchanged.

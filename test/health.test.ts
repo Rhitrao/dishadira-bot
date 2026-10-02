@@ -10,8 +10,8 @@ describe("routes", () => {
     expect(body.version).toBeTruthy();
   });
 
-  it.each(["/amma", "/admin"])("%s is a 501 stub", async (path) => {
-    const res = await app.request(path);
+  it("/admin is a 501 stub", async () => {
+    const res = await app.request("/admin");
     expect(res.status).toBe(501);
   });
 });

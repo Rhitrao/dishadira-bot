@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "./env";
+import { amma } from "./amma";
 import { reconcile } from "./pay/apply";
 import { cashfree } from "./pay/cashfree";
 import { cashfreeWebhook } from "./pay/webhook";
@@ -17,7 +18,7 @@ const notImplemented = (c: { json: (b: unknown, s: 501) => Response }) =>
 app.get("/wa/webhook", verifyWebhook);
 app.post("/wa/webhook", receiveWebhook);
 app.post("/pay/cashfree/webhook", (c) => cashfreeWebhook(c));
-app.all("/amma", notImplemented);
+app.route("/amma", amma);
 app.all("/admin", notImplemented);
 
 export const RECONCILE_CRON = "*/2 * * * *";

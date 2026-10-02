@@ -43,6 +43,6 @@ describe("config", () => {
   });
 
   it("names every required secret", () => {
-    expect(SECRET_NAMES).toHaveLength(10);
+    expect(SECRET_NAMES).toHaveLength(12);
   });
 });

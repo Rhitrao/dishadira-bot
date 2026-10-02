@@ -5,7 +5,7 @@ import type { Env } from "./env";
 import { cashfree } from "./pay/cashfree";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, type Out } from "./send";
-import { availableSlots, formatIst, holdSlot, iso, nextWorkingDays, type Slot } from "./slots";
+import { availableSlots, formatIst, formatIstParts, holdSlot, iso, nextWorkingDays, type Slot } from "./slots";
 
 const SERVICES = config.services as readonly string[];
 const nowIso = () => iso(Date.now());
@@ -74,6 +74,20 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
   const blocked = await db.prepare("SELECT 1 FROM blocks WHERE wa_id = ?1").bind(conv.wa_id).first();
   if (blocked) {
     await db.prepare("UPDATE conversations SET mode = 'BLOCKED' WHERE id = ?1").bind(conv.id).run();
+    return;
+  }
+
+  // 1b. One open intro per person: PAID (call not done yet) or HELD with a live hold.
+  const open = await db
+    .prepare(
+      `SELECT s.start_utc AS startUtc FROM intros i JOIN slots s ON s.id = i.slot_id
+       WHERE i.conversation_id = ?1 AND (i.state = 'PAID' OR (i.state = 'HELD' AND s.hold_until > ?2)) LIMIT 1`,
+    )
+    .bind(conv.id, nowIso())
+    .first<{ startUtc: string }>();
+  if (open) {
+    const p = formatIstParts(open.startUtc);
+    await send({ type: "text", text: cp.callAlreadyBooked(p.day, p.time) }, "booked");
     return;
   }
 
