@@ -14,7 +14,7 @@ export async function scoreboard(env: Env, nowMs = Date.now()): Promise<Scoreboa
   const since = iso(nowMs - 7 * 86_400_000);
   const n = async (sql: string) => (await env.DB.prepare(sql).bind(since).first<{ n: number }>())!.n;
   const refunds = (await env.DB
-    .prepare("SELECT COUNT(*) AS n, COALESCE(SUM(p.amount_paise), 0) AS paise FROM refunds r JOIN payments p ON p.id = r.payment_id WHERE r.state = 'REFUNDED' AND r.created_at >= ?1")
+    .prepare("SELECT COUNT(*) AS n, COALESCE(SUM(COALESCE(p.paid_paise, p.amount_paise)), 0) AS paise FROM refunds r JOIN payments p ON p.id = r.payment_id WHERE r.state = 'REFUNDED' AND r.created_at >= ?1")
     .bind(since)
     .first<{ n: number; paise: number }>())!;
   return {

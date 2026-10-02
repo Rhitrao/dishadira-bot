@@ -7,6 +7,9 @@ import { runDigest, digestText } from "../src/report";
 import { sendAlerts } from "../src/mail";
 import { bookingsOpen, sendsOn } from "../src/switches";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat } from "../src/watch";
+import { applyStatus } from "../src/pay/apply";
+import { cashfree } from "../src/pay/cashfree";
+import { requestRefund } from "../src/pay/refund";
 import { sendMessage } from "../src/send";
 import { generateSlots } from "../src/slots";
 import { addPerson, newDb } from "./db";
@@ -194,14 +197,30 @@ describe("refunds", () => {
     expect(refundPosts()).toHaveLength(1);
     expect((await auditRows()).filter((a) => a.action === "ADMIN_APPROVE_REFUND")).toHaveLength(1);
   });
-  it("Keep removes the waiting refund and sends nothing", async () => {
+  it("Keep (no refund) marks the row DECLINED, keeps it, audits who, and sends nothing", async () => {
     const { payId } = await paidIntro();
     await db.prepare("INSERT INTO refunds (payment_id,reason,requested_by,state) VALUES (?1,'RUDE','amma','PENDING_APPROVAL')").bind(payId).run();
     await attention("RUDE_REFUND_APPROVAL", `payment:${payId}`);
     await press("keep");
     expect(refundPosts()).toHaveLength(0);
-    expect(await count("SELECT COUNT(*) AS n FROM refunds")).toBe(0);
+    expect(await db.prepare("SELECT state FROM refunds WHERE payment_id = ?1").bind(payId).first()).toEqual({ state: "DECLINED" });
     expect(await count("SELECT COUNT(*) AS n FROM attention WHERE resolved_at IS NULL")).toBe(0);
+    const a = (await auditRows()).find((r) => r.action === "ADMIN_KEEP_NO_REFUND")!;
+    expect(a.actor).toBe(ROHIT);
+    expect(a.detail).toContain(`declined by ${ROHIT}`);
+    // a declined payment can never get a second refund row
+    expect(await requestRefund(env(), cashfree(env()), payId, "ADMIN", ROHIT)).toBe("EXISTS");
+    expect(refundPosts()).toHaveLength(0);
+  });
+  it("refunding a PAYMENT_MISMATCH payment returns the amount actually paid, not the price", async () => {
+    const { payId } = await paidIntro({ payState: "PENDING" });
+    const link = (await db.prepare("SELECT provider_link_id AS l FROM payments WHERE id = ?1").bind(payId).first<{ l: string }>())!.l;
+    await applyStatus(env(), cashfree(env()), { linkId: link, status: "PAID", paidPaise: 15000, currency: "INR", orderId: "order-x" });
+    expect(await db.prepare("SELECT state, paid_paise AS paid FROM payments WHERE id = ?1").bind(payId).first()).toEqual({ state: "UNKNOWN", paid: 15000 });
+    await attention("PAYMENT_MISMATCH", `payment:${payId}`);
+    await press("refund");
+    expect(refundPosts()).toHaveLength(1);
+    expect(JSON.parse(refundPosts()[0][1].body).refund_amount).toBe(150);
   });
   it("Refund on a late payment uses requestRefund (ADMIN) once; a failed refund is retried with the same id", async () => {
     const { payId, introId } = await paidIntro();
