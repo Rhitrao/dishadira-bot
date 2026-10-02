@@ -75,6 +75,7 @@ export type Copy = {
   rescheduled: (day: string, time: string, businessNumber: string) => string;
   rescheduleNotAvailable: string;
   missedFinal: string;
+  reminder: (kind: "call" | "session", day: string, time: string) => string;
   askPrompt: string;
   ack: string;
   faqBody: string;
@@ -167,6 +168,8 @@ const en: Copy = {
   rescheduleNotAvailable: "Sorry, this call cannot be moved again. A person will look into it.",
   missedFinal:
     "We were not able to reach you for the second time, so we are closing this booking. Thank you for your interest, and you are welcome to write to us again.",
+  reminder: (kind, day, time) =>
+    `Reminder: your ${kind} with Shantha Rao is tomorrow, ${day} at ${time} (India time). Please keep your phone with you.`,
   askPrompt: "Please type your question below.",
   ack: "Thanks, a person will reply within 24 hours.",
   faqBody: "Choose a topic.",
@@ -265,6 +268,7 @@ const kn: Copy = {
   rescheduled: (day, time, number) => `KN_TODO rescheduled ${day} ${time} ${number}`,
   rescheduleNotAvailable: "KN_TODO reschedule not available",
   missedFinal: "KN_TODO missed final",
+  reminder: (kind, day, time) => `KN_TODO reminder ${kind} ${day} ${time}`,
   askPrompt: "KN_TODO ask prompt",
   ack: "KN_TODO ack",
   faqBody: "KN_TODO faq body",
