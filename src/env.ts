@@ -12,6 +12,8 @@ export const SECRET_NAMES = [
   "ACCESS_AUD",
   "ACCESS_TEAM",
   "DIGEST_TO",
+  "AMMA_EMAIL",
+  "ROHIT_EMAIL",
 ] as const;
 
 export type SecretName = (typeof SECRET_NAMES)[number];
