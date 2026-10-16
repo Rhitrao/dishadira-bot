@@ -35,7 +35,7 @@ name = "dishadira-bot-test"
 [[env.test.d1_databases]]
 binding = "DB"
 database_name = "dishadira-bot-test"
-database_id = "00000000-0000-0000-0000-000000000001"
+database_id = "75c61d91-e1b4-43ce-a0a7-29fcbd2966b9"
 migrations_dir = "migrations"
 
 [env.test.triggers]
@@ -56,7 +56,7 @@ name = "dishadira-bot-live"
 [[env.live.d1_databases]]
 binding = "DB"
 database_name = "dishadira-bot-live"
-database_id = "00000000-0000-0000-0000-000000000002"
+database_id = "fbda8944-e733-49c2-ac09-5d38e4dddab7"
 migrations_dir = "migrations"
 
 [env.live.triggers]
