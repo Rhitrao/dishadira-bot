@@ -44,7 +44,7 @@ crons = ["0 13 * * *", "30 15 * * *", "*/2 * * * *"]
 [env.test.vars]
 OWNER_APPROVED = "false"
 NEW_BOOKINGS = "false"
-SENDS = "true"
+SENDS = "false"
 PAYMENT_MODE = "test"
 
 [[env.test.send_email]]
