@@ -78,9 +78,15 @@ describe("POST /wa/webhook", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("rejects a validly signed but malformed payload without storing", async () => {
-    expect((await post({ entry: "nope" })).status).toBe(400);
+  it("a validly signed payload we cannot use is acknowledged with 200 and stores nothing", async () => {
+    for (const body of [{ entry: "nope" }, {}, [], "x", null, { entry: [null, 5, { changes: "x" }] }]) {
+      expect((await post(body)).status).toBe(200);
+    }
+    const raw = "not json";
+    const res = await app.request("/wa/webhook", { method: "POST", body: raw, headers: { "X-Hub-Signature-256": await sign(raw) } }, env());
+    expect(res.status).toBe(200);
     expect(await count("SELECT COUNT(*) n FROM events")).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("first message -> greeting with language buttons, sent once; replay sends nothing new", async () => {
@@ -238,6 +244,11 @@ describe("sendMessage", () => {
 
   it("builds list, CTA and approved-template payloads within Meta limits", async () => {
     const { buildPayload } = await import("../src/send");
+    expect(config.graphVersion).toBe("v26.0");
+    const list = buildPayload({ type: "list", body: "x", button: "Pick a time", rows: [{ id: "a", title: "t" }] }, PHONE) as { interactive: { action: { button: string; sections: { title: string }[] } } };
+    expect(list.interactive.action.sections[0].title).toBe("Pick a time"); // v26 docs: section title required
+    expect(list.interactive.action.sections[0].title.length).toBeLessThanOrEqual(24);
+    expect(() => buildPayload({ type: "list", body: "x", button: "a button text over twenty", rows: [{ id: "a", title: "t" }] }, PHONE)).toThrow();
     expect(() => buildPayload({ type: "buttons", body: "x", buttons: [1, 2, 3, 4].map((i) => ({ id: `${i}`, title: "t" })) }, PHONE)).toThrow();
     expect(() => buildPayload({ type: "list", body: "x", button: "b", rows: Array.from({ length: 11 }, (_, i) => ({ id: `${i}`, title: "t" })) }, PHONE)).toThrow();
     expect(() => buildPayload({ type: "cta", body: "x", label: "a label way over twenty", url: "https://example.com" }, PHONE)).toThrow();
@@ -299,5 +310,111 @@ describe("session offer follow-up", () => {
     await post(inbound("wamid.H1", { type: "text", text: { body: "hi" } }, "919999999998"));
     await post(inbound("wamid.H2", { type: "text", text: { body: "hi again" } }, "919999999998"));
     expect(lists()).toHaveLength(0);
+  });
+});
+
+
+describe("webhook payloads we do not use (ticket 09)", () => {
+  const field = (name: string, value: object) => ({ entry: [{ id: "1", changes: [{ field: name, value }] }] });
+  const events = async () => (await db.prepare("SELECT event_key, status, error, payload FROM events ORDER BY id").all<{ event_key: string; status: string; error: string | null; payload: string }>()).results;
+
+  it("other fields (calls, security, account_update, template status) return 200 and do nothing", async () => {
+    for (const [name, value] of [
+      ["calls", { calls: [{ id: "wacid.1", from: PHONE, event: "connect" }] }],
+      ["security", { event: "PIN_CHANGED" }],
+      ["account_update", { event: "PARTNER_REMOVED" }],
+      ["message_template_status_update", { event: "APPROVED", message_template_name: "reminder" }],
+      ["phone_number_quality_update", {}],
+      ["something_new_in_v27", "not even an object"],
+    ] as const) {
+      expect((await post(field(name, value as object))).status, name).toBe(200);
+    }
+    expect(await count("SELECT COUNT(*) n FROM events")).toBe(0);
+    expect(await count("SELECT COUNT(*) n FROM conversations")).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("a field-less change in the old shape (the existing fixtures) is still processed", async () => {
+    expect((await post(text("wamid.F1"))).status).toBe(200);
+    expect(await count("SELECT COUNT(*) n FROM messages WHERE direction = 'IN'")).toBe(1);
+  });
+
+  it("one message that fails the schema is skipped with a reason code, the rest of the batch runs, and a redelivery adds no rows", async () => {
+    const other = "919999999998";
+    const batch = field("messages", {
+      messages: [
+        { id: "wamid.G1", from: PHONE, timestamp: now(), type: "text", text: { body: "hi" } },
+        { id: "wamid.G2", from: other, timestamp: now(), type: "text", text: { body: 42 } }, // body is not a string
+        { from: other, type: "text" }, // no id
+        "garbage",
+        { id: "wamid.G3", from: other, timestamp: now(), type: "text", text: { body: "hi" } },
+      ],
+      statuses: [{ id: "wamid.OUTX" }, { id: "wamid.OUTY", status: "delivered" }],
+    });
+    expect((await post(batch)).status).toBe(200);
+    expect(await count("SELECT COUNT(*) n FROM messages WHERE direction = 'IN'")).toBe(2); // G1 and G3
+    const rows = (await events()).filter((r) => r.event_key.startsWith("skip:"));
+    expect(rows).toHaveLength(4); // G2, no id, "garbage", the status without a status
+    expect(rows.every((r) => r.error === "SCHEMA_INVALID" && r.status === "PROCESSED")).toBe(true);
+    expect(rows.map((r) => r.event_key)).toContain("skip:wamid.G2");
+    expect(JSON.stringify(rows)).not.toContain(PHONE);
+    expect(JSON.stringify(rows)).not.toContain(other);
+
+    const before = await count("SELECT COUNT(*) n FROM events");
+    expect((await post(batch)).status).toBe(200);
+    expect(await count("SELECT COUNT(*) n FROM events")).toBe(before);
+  });
+
+  it("a signature failure is still 401, even for a payload we would ignore", async () => {
+    expect((await post(field("calls", {}), "wrong-secret")).status).toBe(401);
+  });
+});
+
+describe("usernames and BSUID (ticket 09)", () => {
+  const BSUID = "IN.AAAAAAAAAAAAAAAAAAAA"; // synthetic
+  const skips = async () => (await db.prepare("SELECT event_key, error FROM events WHERE event_key LIKE 'skip:%' ORDER BY id").all<{ event_key: string; error: string }>()).results;
+
+  it("a message with no `from`, only a user id, is skipped as NO_PHONE: no crash, no conversation, nothing sent", async () => {
+    const body = wrap({
+      contacts: [{ profile: { name: "Someone", username: "someone" }, user_id: BSUID }],
+      messages: [{ id: "wamid.U1", from_user_id: BSUID, timestamp: now(), type: "text", text: { body: "hi" } }],
+    });
+    expect((await post(body)).status).toBe(200);
+    expect(await skips()).toEqual([{ event_key: "skip:wamid.U1", error: "NO_PHONE" }]);
+    expect(await count("SELECT COUNT(*) n FROM conversations")).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("a BSUID where the phone number used to be is skipped too", async () => {
+    expect((await post(wrap({ messages: [{ id: "wamid.U2", from: BSUID, from_user_id: BSUID, timestamp: now(), type: "text", text: { body: "hi" } }] }))).status).toBe(200);
+    expect(await skips()).toEqual([{ event_key: "skip:wamid.U2", error: "NO_PHONE" }]);
+    expect(await count("SELECT COUNT(*) n FROM conversations")).toBe(0);
+  });
+
+  it("a normal message that also carries user_id is handled as before (the phone number is still the key)", async () => {
+    const body = wrap({
+      contacts: [{ profile: { name: "Test Person", username: "tp" }, wa_id: PHONE, user_id: BSUID, parent_user_id: "IN.parent" }],
+      messages: [{ id: "wamid.U3", from: PHONE, from_user_id: BSUID, timestamp: now(), type: "text", text: { body: "hi" } }],
+      statuses: [{ id: "wamid.OUTZ", status: "delivered", recipient_id: PHONE, recipient_user_id: BSUID }],
+    });
+    expect((await post(body)).status).toBe(200);
+    expect(await skips()).toEqual([]);
+    expect(await count("SELECT COUNT(*) n FROM conversations")).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // the greeting
+  });
+
+  it("system messages (number or user id changed) are skipped, not treated as customer text", async () => {
+    const body = wrap({
+      messages: [{ id: "wamid.U4", from: PHONE, timestamp: now(), type: "system", system: { body: "User changed from A to B", type: "user_changed_user_id", user_id: BSUID, previous_user_id: "IN.old" } }],
+    });
+    expect((await post(body)).status).toBe(200);
+    expect(await skips()).toEqual([{ event_key: "skip:wamid.U4", error: "SYSTEM_MESSAGE" }]);
+    expect(await count("SELECT COUNT(*) n FROM attention")).toBe(0);
+  });
+
+  it("a status for a BSUID recipient with no phone number is accepted", async () => {
+    const body = wrap({ statuses: [{ id: "wamid.OUTQ", status: "read", recipient_user_id: BSUID }] });
+    expect((await post(body)).status).toBe(200);
+    expect(await skips()).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-02 (Ticket 08b session)
+Updated: 2026-10-17 (Ticket 09 session)
 
 ## Payment provider
 Cashfree (KYC submitted by owner: pending). Razorpay: not used.
@@ -22,12 +22,32 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [x] 06 Outcomes + ₹700 (PR https://github.com/Rhitrao/dishadira-bot/pull/6, CI green)
 - [x] 07 Rohit's console (PR https://github.com/Rhitrao/dishadira-bot/pull/7, CI green)
 - [x] 08 Reminders + go-live (PR https://github.com/Rhitrao/dishadira-bot/pull/8, CI green)
+- [ ] 09 Test bot ready to send (branch `t09-test-sends`, PR: see below)
+- [ ] 10 Razorpay replaces Cashfree (not started)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
 
 ## Blocked
 (none)
+
+## Open question for Rohit (Ticket 09): WhatsApp usernames and BSUID
+Meta now sends a business-scoped user id (BSUID) in `user_id` / `from_user_id` on every message webhook, and `from` (the phone number) is left out when the person has a username and Meta cannot share the number. Today the bot identifies a person by phone number (`conversations.wa_id` is UNIQUE and is also the address we send to). Right now such a message is skipped (events row `skip:<message id>`, error `NO_PHONE`) and the person gets no reply, no booking and no "needs attention" item. Decision needed before real ads run:
+1. Do we key people by BSUID when there is no phone number (new `conversations.user_id` column, `wa_id` nullable, send with the `recipient` field instead of `to`)? That touches bookings, payments, refunds, blocks and the admin/Amma pages.
+2. Or do we ask such a person to message from a number we can see / treat them as "needs attention" so Rohit answers by hand?
+3. Payments and refunds are phone-keyed (`once per person`, blocks); a BSUID-only person needs the same protections.
+Not redesigned in this ticket on purpose.
+
+## Session notes (Ticket 09)
+- Sending is on for the test Worker only: `[env.test.vars] SENDS = "true"` (NEW_BOOKINGS and OWNER_APPROVED stay "false"; top level and `[env.live.vars]` untouched, all "false"). `test/release.test.ts`: the three flags must be "false" at the top level and in live; in test each must be exactly "true" or "false". `[observability] enabled = true` at the top level and repeated for `env.test` / `env.live` (cheap and harmless; I did not find out whether wrangler inherits it).
+- `graphVersion` is `v26.0`. Checked Meta's current docs for text, reply buttons, list and CTA payloads. One change: a list message section's `title` is listed as required (max 24 chars), our payload had none, so `buildPayload` now sets the section title to the list button text (which must be 1-20 chars). Reply buttons (max 3, title 20) and list limits (10 rows, row title 24) unchanged. I could not confirm the template payload against v26 docs (the page I fetched had no body details); it is the standard `template.name` + `language.code` + body text parameters, and nothing in the changelog says it changed. Worth one real test send once a template is approved.
+- Webhook (`src/whatsapp.ts`): after the signature check (still 401) the answer is 200 for anything we do not use: not JSON, no `entry`, other fields (calls, security, account_update, template status ...). Each message / status is validated on its own; a bad one is skipped with one `events` row (`skip:<message id or hash>`, status PROCESSED, error = reason code `SCHEMA_INVALID`, `NO_PHONE` or `SYSTEM_MESSAGE`; the item itself is never stored) and the rest of the batch runs. Redelivery adds no rows. A database error while handling a real message still returns 500 so Meta retries (outbound dedupe keys prevent double sends). This replaces the old 400 for a malformed body.
+- BSUID: `from` is optional, `from_user_id` accepted, `contacts[].wa_id` optional. A message with no `from`, or a `from` that is not 8-15 digits, is skipped as `NO_PHONE`; `type: "system"` (user changed number / user id) is skipped as `SYSTEM_MESSAGE`. See the open question above.
+- Logging: only six `console.*` calls exist (webhook ignored/skipped reason, email skipped/failed code, and a new `app.onError` that logs method + route, never the error text). `test/logging.test.ts` runs the skip, ignore, 500 and email-failure paths with a phone number, name, message text, e-mail address and payment id in the input and fails if any log line has 10+ digits or contains them; it also fails if a new `console.*` call appears in `src/` without being added to the audited list.
+- Docs risks seen (v26 / 2026): `from` may be missing for username users; `wa_id` in contacts is "CHANGED" (can be a BSUID-era value); `user_changed_user_id` and `user_changed_number` system messages; Meta says the marketing endpoint accepts a `recipient` BSUID instead of `to`; `paid_messaging_account_id` is deprecated in favour of `messaging_account_id` (not used by us).
+- Checks (local): typecheck, vitest 148/148 (15 new), `wrangler deploy --dry-run` top level, `--env test` (SENDS "true") and `--env live` (SENDS "false") all passed. GitHub Actions: see PR.
+- Credits: not visible to Claude; check the Usage page.
+- Next: Rohit merges, then `wrangler deploy --env test` via the Deploy workflow and sends a message to the Meta test number. Ticket 10 not started.
 
 ## Session notes (Ticket 08b)
 - Ticket 08 ticked with its PR link.

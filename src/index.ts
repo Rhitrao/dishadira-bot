@@ -17,6 +17,12 @@ export const VERSION = "0.1.0";
 
 const app = new Hono<{ Bindings: Env }>();
 
+// Log the route and nothing else: error text can carry user data.
+app.onError((_e, c) => {
+  console.error("unhandled error", c.req.method, c.req.routePath);
+  return c.text("error", 500);
+});
+
 app.get("/health", (c) => c.json({ ok: true, version: VERSION }));
 
 app.get("/wa/webhook", verifyWebhook);

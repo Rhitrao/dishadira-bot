@@ -37,7 +37,7 @@ export const config = {
   },
   // Sender for Rohit's emails: an address on the Disha Dira domain (public website domain), verified in Cloudflare Email Service by Rohit.
   mail: { from: "bot@disha-dira.com" },
-  graphVersion: "v23.0",
+  graphVersion: "v26.0",
   windowHours: 24,
   // Template registry. Flip approved to true only after Meta approves the template (owner decision).
   templates: {

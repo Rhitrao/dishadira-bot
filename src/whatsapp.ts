@@ -10,9 +10,11 @@ import { raiseAttention, sendMessage, type Out } from "./send";
 
 type C = Context<{ Bindings: Env }>;
 
+// Everything Meta sends is checked loosely at the edges and strictly per message, so one odd item never costs the batch.
 const message = z.object({
   id: z.string().min(1),
-  from: z.string().min(1),
+  from: z.string().min(1).optional(), // omitted when the sender has a username and no phone number can be shared
+  from_user_id: z.string().optional(), // BSUID (business-scoped user id); not used yet, see STATUS.md
   timestamp: z.string().optional(),
   type: z.string(),
   text: z.object({ body: z.string() }).optional(),
@@ -26,20 +28,12 @@ const message = z.object({
   referral: z.object({ source_id: z.string().optional() }).optional(),
 });
 const status = z.object({ id: z.string().min(1), status: z.string() });
-const payload = z.object({
-  entry: z.array(
-    z.object({
-      changes: z.array(
-        z.object({
-          value: z.object({
-            contacts: z.array(z.object({ wa_id: z.string(), profile: z.object({ name: z.string().optional() }).optional() })).optional(),
-            messages: z.array(message).optional(),
-            statuses: z.array(status).optional(),
-          }),
-        }),
-      ),
-    }),
-  ),
+const contact = z.object({ wa_id: z.string().optional(), profile: z.object({ name: z.string().optional() }).optional() });
+const envelope = z.object({ entry: z.array(z.unknown()) });
+const entrySchema = z.object({ changes: z.array(z.unknown()) });
+const changeSchema = z.object({
+  field: z.string().optional(),
+  value: z.object({ contacts: z.array(z.unknown()).optional(), messages: z.array(z.unknown()).optional(), statuses: z.array(z.unknown()).optional() }),
 });
 type Msg = z.infer<typeof message>;
 
@@ -66,28 +60,90 @@ export async function receiveWebhook(c: C) {
   if (!(await validSignature(raw, c.req.header("X-Hub-Signature-256"), c.env.WA_APP_SECRET))) {
     return c.text("invalid signature", 401);
   }
-  let parsed;
+  // From here on the answer is 200 unless a database error means "try again": a signed payload we don't use is not an error.
+  let json: unknown;
   try {
-    parsed = payload.safeParse(JSON.parse(raw));
+    json = JSON.parse(raw);
   } catch {
-    return c.text("bad json", 400);
+    console.log("wa webhook ignored: not json");
+    return c.text("ignored");
   }
-  if (!parsed.success) return c.text("bad payload", 400);
+  const top = envelope.safeParse(json);
+  if (!top.success) {
+    console.log("wa webhook ignored: no entry");
+    return c.text("ignored");
+  }
 
   let failed = false;
-  for (const entry of parsed.data.entry) {
-    for (const { value } of entry.changes) {
-      const names = new Map((value.contacts ?? []).map((k) => [k.wa_id, k.profile?.name]));
-      for (const m of value.messages ?? []) {
-        failed = !(await once(c.env, m.id, { type: m.type }, () => handleMessage(c.env, m, names.get(m.from)))) || failed;
+  for (const e of top.data.entry) {
+    const entry = entrySchema.safeParse(e);
+    if (!entry.success) continue;
+    for (const ch of entry.data.changes) {
+      const field = (ch as { field?: unknown } | null)?.field;
+      if (typeof field === "string" && field !== "messages") continue; // calls, security, account_update, template status ...: not ours
+      const change = changeSchema.safeParse(ch);
+      if (!change.success) {
+        await skip(c.env, ch, "SCHEMA_INVALID");
+        continue;
       }
-      for (const s of value.statuses ?? []) {
-        failed = !(await once(c.env, `status:${s.id}:${s.status}`, { status: s.status }, () => handleStatus(c.env, s))) || failed;
+      const { value } = change.data;
+      const names = new Map<string, string | undefined>();
+      for (const k of value.contacts ?? []) {
+        const parsedContact = contact.safeParse(k);
+        if (parsedContact.success && parsedContact.data.wa_id) names.set(parsedContact.data.wa_id, parsedContact.data.profile?.name);
+      }
+      for (const item of value.messages ?? []) {
+        const m = message.safeParse(item);
+        if (!m.success) {
+          await skip(c.env, item, "SCHEMA_INVALID");
+          continue;
+        }
+        const reason = skipReason(m.data);
+        if (reason) {
+          await skip(c.env, item, reason, m.data.id);
+          continue;
+        }
+        failed = !(await once(c.env, m.data.id, { type: m.data.type }, () => handleMessage(c.env, m.data, m.data.from!, names.get(m.data.from!)))) || failed;
+      }
+      for (const item of value.statuses ?? []) {
+        const s = status.safeParse(item);
+        if (!s.success) {
+          await skip(c.env, item, "SCHEMA_INVALID");
+          continue;
+        }
+        failed = !(await once(c.env, `status:${s.data.id}:${s.data.status}`, { status: s.data.status }, () => handleStatus(c.env, s.data))) || failed;
       }
     }
   }
   // A retriable error makes Meta redeliver; outbound dedupe keys keep the retry from double-sending.
   return failed ? c.text("retry", 500) : c.text("ok");
+}
+
+// Messages the bot cannot act on. Identity by BSUID is a design question (STATUS.md), so no phone number means skip.
+function skipReason(m: Msg): string | null {
+  if (m.type === "system") return "SYSTEM_MESSAGE"; // number or user id changed: a notice, not a person talking
+  if (!m.from || !/^\d{8,15}$/.test(m.from)) return "NO_PHONE"; // missing, or a BSUID where a phone number used to be
+  return null;
+}
+
+// One events row per skipped item, with a reason code. The key is the message id, or a hash of the item when it has none;
+// the item itself is never stored, so the row holds no phone number, name or text.
+async function skip(env: Env, item: unknown, reason: string, id?: string): Promise<void> {
+  let key = id;
+  if (!key) {
+    const maybe = (item as { id?: unknown } | null)?.id;
+    key = typeof maybe === "string" && maybe ? maybe : await sha256(JSON.stringify(item) ?? "null");
+  }
+  console.log("wa webhook skipped", reason);
+  await env.DB
+    .prepare("INSERT OR IGNORE INTO events (provider, event_key, payload, status, error, processed_at) VALUES ('whatsapp', ?1, ?2, 'PROCESSED', ?3, ?4)")
+    .bind(`skip:${key}`, JSON.stringify({ reason }), reason, nowIso())
+    .run();
+}
+
+async function sha256(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 // Event receipt is not processing: a replay of a PROCESSED event does nothing, a FAILED one is retried.
@@ -124,7 +180,7 @@ async function handleStatus(env: Env, s: { id: string; status: string }): Promis
   }
 }
 
-async function handleMessage(env: Env, m: Msg, name: string | undefined): Promise<void> {
+async function handleMessage(env: Env, m: Msg, from: string, name: string | undefined): Promise<void> {
   const db = env.DB;
   const secs = Number(m.timestamp);
   const at = (Number.isFinite(secs) && secs > 0 ? new Date(secs * 1000) : new Date()).toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -137,13 +193,13 @@ async function handleMessage(env: Env, m: Msg, name: string | undefined): Promis
          source_ad_id = COALESCE(source_ad_id, excluded.source_ad_id),
          last_user_at = CASE WHEN last_user_at IS NULL OR last_user_at < excluded.last_user_at THEN excluded.last_user_at ELSE last_user_at END`,
     )
-    .bind(m.from, name ?? null, at, m.referral?.source_id ?? null)
+    .bind(from, name ?? null, at, m.referral?.source_id ?? null)
     .run();
   await db
     .prepare("UPDATE conversations SET mode = 'BLOCKED' WHERE wa_id = ?1 AND mode != 'BLOCKED' AND EXISTS (SELECT 1 FROM blocks WHERE wa_id = ?1)")
-    .bind(m.from)
+    .bind(from)
     .run();
-  const conv = await db.prepare("SELECT id, mode, locale FROM conversations WHERE wa_id = ?1").bind(m.from).first<{ id: number; mode: string; locale: string }>();
+  const conv = await db.prepare("SELECT id, mode, locale FROM conversations WHERE wa_id = ?1").bind(from).first<{ id: number; mode: string; locale: string }>();
   if (!conv) throw new Error("conversation missing");
 
   const choice = m.interactive?.button_reply?.id ?? m.interactive?.list_reply?.id ?? null;
