@@ -3,14 +3,14 @@ import type { D1Database } from "@cloudflare/workers-types";
 import app from "../src/index";
 import { config } from "../src/config";
 import { applyDueOutcomes, rescheduleChoice } from "../src/outcomes";
-import { cashfree } from "../src/pay/cashfree";
+import { razorpay } from "../src/pay/razorpay";
 import { retryRefunds } from "../src/pay/refund";
 import { sessionChoice } from "../src/session";
 import { generateSlots, holdSlot, type Slot } from "../src/slots";
 import { addPerson, newDb } from "./db";
+import { FakeRazorpay, paidEvent as rzpPaid, refundEvent as rzpRefund, rzpEnv, rzpHeaders } from "./razorpay";
 
-// All data is synthetic. Mon 2026-10-05, 11:30 IST. fetch is mocked: real Cashfree and Meta are never called.
-const SECRET = "test-cashfree-secret";
+// All data is synthetic. Mon 2026-10-05, 11:30 IST. fetch is mocked: real Razorpay and Meta are never called.
 const NOW = Date.parse("2026-10-05T06:00:00Z");
 const MIN = 60_000;
 const call = (i: number, ymd = "2026-10-05") => generateSlots(ymd, "CALL")[i];
@@ -20,50 +20,29 @@ let db: D1Database;
 let close: () => Promise<void>;
 let fetchMock: ReturnType<typeof vi.fn>;
 let n = 0;
-let refundStore: Map<string, { status: string }>;
-let refundDown = false; // Cashfree unreachable: the POST throws before anything is stored
-let refundLostAnswer = false; // Cashfree stores the refund, but the answer never arrives
+let fake: FakeRazorpay; // fake.refundDown: Razorpay unreachable; fake.refundLostAnswer: Razorpay stores the refund but the answer never arrives
 
 const env = (o: Record<string, string> = {}) =>
-  ({ DB: db, SENDS: "true", NEW_BOOKINGS: "true", PAYMENT_MODE: "test", CASHFREE_APP_ID: "test-app", CASHFREE_SECRET: SECRET, WA_TOKEN: "tok", WA_PHONE_ID: "1000", ...o }) as never;
-const provider = () => cashfree(env());
+  ({ DB: db, SENDS: "true", NEW_BOOKINGS: "true", ...rzpEnv(), WA_TOKEN: "tok", WA_PHONE_ID: "1000", ...o }) as never;
+const provider = () => razorpay(env());
 const at = (ms: number) => vi.setSystemTime(ms);
 const count = async (sql: string) => (await db.prepare(sql).first<{ n: number }>())!.n;
 const calls = (host: string, method?: string) =>
   fetchMock.mock.calls.filter((c) => String(c[0]).includes(host) && (!method || (c[1] as { method: string }).method === method));
 const waSent = () => calls("graph.facebook.com").map((c) => JSON.parse((c[1] as { body: string }).body));
-const refundPosts = () => calls("/refunds", "POST").map((c) => JSON.parse((c[1] as { body: string }).body));
+const refundPosts = () => fake.posts("/refund").map((c) => c.body as Record<string, unknown>);
 const runCron = (nowMs = Date.now()) => applyDueOutcomes(env(), provider(), nowMs);
 
 beforeEach(async () => {
   ({ db, close } = await newDb());
-  refundStore = new Map();
-  refundDown = false;
-  refundLostAnswer = false;
+  fake = new FakeRazorpay();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
   fetchMock = vi.fn(async (url: string, init: { method: string; body?: string }) => {
     const u = String(url);
     const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
     if (u.includes("graph.facebook.com")) return json({ messages: [{ id: `wamid.OUT${++n}` }] });
-    const refund = /\/orders\/([^/]+)\/refunds(?:\/([^/]+))?$/.exec(u);
-    if (refund) {
-      if (init.method === "POST") {
-        if (refundDown) throw new TypeError("network down");
-        const b = JSON.parse(init.body!);
-        if (refundStore.has(b.refund_id)) return json({ message: "refund_id already exists" }, 400);
-        refundStore.set(b.refund_id, { status: "PENDING" });
-        if (refundLostAnswer) throw new TypeError("connection reset");
-        return json({ cf_refund_id: 900 + refundStore.size, refund_status: "PENDING" });
-      }
-      const r = refundStore.get(refund[2]);
-      return r ? json({ cf_refund_id: 900, refund_id: refund[2], refund_status: r.status }) : json({ message: "not found" }, 404);
-    }
-    if (u.endsWith("/links") && init.method === "POST") {
-      const b = JSON.parse(init.body!);
-      return json({ link_id: b.link_id, link_status: "ACTIVE", link_url: `https://payments-test.cashfree.com/links/${b.link_id}` });
-    }
-    return json({}, 404);
+    return fake.handle(u, init as never) ?? json({}, 404);
   });
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -88,8 +67,8 @@ async function seedPaid(slot: Slot = call(0), o: { conv?: number; payerRef?: str
   const i = await db.prepare("INSERT INTO intros (conversation_id,slot_id,service,state) VALUES (?1,?2,'PROTECTION','PAID')").bind(conv, s.meta.last_row_id).run();
   const k = ++linkN;
   const p = await db
-    .prepare("INSERT INTO payments (provider,purpose,target_id,provider_link_id,provider_order_id,amount_paise,state,payer_ref) VALUES ('cashfree','INTRO',?1,?2,?3,9900,'PAID',?4)")
-    .bind(i.meta.last_row_id, `di-intro-s${k}`, `order_s${k}`, o.payerRef ?? null)
+    .prepare("INSERT INTO payments (provider,purpose,target_id,provider_link_id,provider_order_id,amount_paise,state,payer_ref) VALUES ('razorpay','INTRO',?1,?2,?3,9900,'PAID',?4)")
+    .bind(i.meta.last_row_id, `di-intro-s${k}`, `pay_s${k}`, o.payerRef ?? null)
     .run();
   return { conv, introId: i.meta.last_row_id, payId: p.meta.last_row_id, slotId: s.meta.last_row_id };
 }
@@ -105,26 +84,14 @@ async function tap(introId: number, value: string, tappedMs = NOW) {
 const introState = async (id: number) => (await db.prepare("SELECT state, reschedule_count AS rc FROM intros WHERE id = ?1").bind(id).first<{ state: string; rc: number }>())!;
 const payState = async (id: number) => (await db.prepare("SELECT state FROM payments WHERE id = ?1").bind(id).first<{ state: string }>())!.state;
 
-async function sign(raw: string, ts = "1759644000000") {
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(ts + raw)))));
-}
 async function hook(body: unknown) {
   const raw = JSON.stringify(body);
-  const headers = { "x-webhook-timestamp": "1759644000000", "x-webhook-signature": await sign(raw) };
-  return app.request("/pay/cashfree/webhook", { method: "POST", body: raw, headers }, env());
+  return app.request("/pay/razorpay/webhook", { method: "POST", body: raw, headers: await rzpHeaders(raw) }, env());
 }
-const paidEvent = (link: string, paid: string, time = "2026-10-05T12:00:00+05:30") => ({
-  type: "PAYMENT_LINK_EVENT",
-  event_time: time,
-  data: {
-    link_id: link, link_status: "PAID", link_currency: "INR", link_amount_paid: paid,
-    link_url: `https://payments-test.cashfree.com/links/${link}`, order: { order_id: `order_${link}`, transaction_id: 1 },
-  },
-});
-const refundEvent = (refundId: string, status: string, time: string) => ({
-  type: "REFUND_STATUS_WEBHOOK", event_time: time, data: { refund: { refund_id: refundId, refund_status: status, order_id: "x" } },
-});
+const rupees = (v: string) => Math.round(Number(v) * 100);
+// `time` only makes the body (and so the event id) differ, like a later delivery of the same fact.
+const paidEvent = (link: string, paid: string, time = "") => rzpPaid(link, { amount: rupees(paid), paymentId: `pay_${link.replace(/\W/g, "")}`, createdAt: 1759644000 + time.length });
+const refundEvent = (refundId: string, status: "processed" | "failed", at = 0) => rzpRefund(refundId, status, "pay_x", 1759644000 + at);
 
 describe("applying outcomes", () => {
   it("nothing happens before undo_until; then it is applied", async () => {
@@ -192,7 +159,7 @@ describe("NOT_FIT refunds", () => {
     at(NOW + 11 * MIN);
     await runCron();
     expect((await introState(a.introId)).state).toBe("CALLED_NOT_FIT");
-    expect(refundPosts()).toEqual([{ refund_id: `refund-${a.payId}`, refund_amount: 99, refund_note: expect.any(String), refund_speed: "STANDARD" }]);
+    expect(refundPosts()).toEqual([{ amount: 9900, speed: "normal", receipt: `refund-${a.payId}`, notes: { refund_id: `refund-${a.payId}`, reason: expect.any(String) } }]);
     expect(await payState(a.payId)).toBe("REFUND_PENDING");
     expect(waSent()[0].text.body).toBe("Thank you for speaking with Shantha Rao. She feels a session isn't the right fit just now, so we've refunded your ₹99.");
   });
@@ -342,9 +309,9 @@ describe("₹700 session", () => {
     expect(await db.prepare("SELECT state FROM sessions WHERE id = ?1").bind(a.sid).first()).toEqual({ state: "HELD" });
     const pay = (await db.prepare("SELECT id, provider_link_id AS link, amount_paise AS amt, state FROM payments WHERE purpose = 'SESSION'").first<{ id: number; link: string; amt: number; state: string }>())!;
     expect(pay).toMatchObject({ amt: 70000, state: "PENDING" });
-    const body = JSON.parse((calls("/links", "POST")[0][1] as { body: string }).body);
-    expect(body.link_amount).toBe(700);
-    expect(body.link_expiry_time).toBe("2026-10-05T11:50:00+05:30"); // now (11:30 IST) + 20-minute hold
+    const body = fake.posts("/payment_links")[0].body as Record<string, unknown>;
+    expect(body).toMatchObject({ amount: 70000, accept_partial: false, reference_id: pay.link });
+    expect(body.expire_by).toBe(Date.parse("2026-10-05T06:20:00Z") / 1000); // now (11:30 IST) + 20-minute hold
     expect(waSent().at(-1).interactive.action.parameters.display_text).toBe("Pay ₹700");
 
     expect((await hook(paidEvent(pay.link, "700.00"))).status).toBe(200);
@@ -388,9 +355,9 @@ describe("₹700 session", () => {
     await sessionChoice(env(), `sess_${a.sid}_${sessionSlot(3).startUtc}`, a.conv, "m1");
     const first = (await db.prepare("SELECT provider_link_id AS l FROM payments WHERE purpose = 'SESSION'").first<{ l: string }>())!.l;
     await hook(paidEvent(first, "700.00"));
-    await db.prepare("INSERT INTO payments (provider,purpose,target_id,provider_link_id,amount_paise,state) VALUES ('cashfree','SESSION',?1,'di-session-dup',70000,'PENDING')").bind(a.sid).run();
+    await db.prepare("INSERT INTO payments (provider,purpose,target_id,provider_link_id,amount_paise,state) VALUES ('razorpay','SESSION',?1,'di-session-dup',70000,'PENDING')").bind(a.sid).run();
     await hook(paidEvent("di-session-dup", "700.00", "2026-10-05T12:05:00+05:30"));
-    expect(refundPosts()).toEqual([{ refund_id: expect.stringMatching(/^refund-\d+$/), refund_amount: 700, refund_note: expect.any(String), refund_speed: "STANDARD" }]);
+    expect(refundPosts()).toEqual([{ amount: 70000, speed: "normal", receipt: expect.stringMatching(/^refund-\d+$/), notes: { refund_id: expect.stringMatching(/^refund-\d+$/), reason: expect.any(String) } }]);
     expect(await db.prepare("SELECT state FROM sessions WHERE id = ?1").bind(a.sid).first()).toEqual({ state: "CONFIRMED" });
   });
 });
@@ -404,21 +371,21 @@ describe("refund safety", () => {
     return a;
   }
 
-  it("a crash before Cashfree answers: the retry uses the SAME refund_id and refunds once", async () => {
-    refundDown = true;
+  it("a crash before Razorpay answers: the retry uses the SAME refund_id and refunds once", async () => {
+    fake.refundDown = true;
     const a = await notFitApplied(); // the POST throws: refund stays PENDING
     expect(await db.prepare("SELECT state, provider_refund_id AS id FROM refunds").first()).toEqual({ state: "PENDING", id: null });
     expect(await payState(a.payId)).toBe("REFUND_PENDING");
-    refundDown = false;
+    fake.refundDown = false;
     at(NOW + 14 * MIN);
     await retryRefunds(env(), provider());
     await retryRefunds(env(), provider()); // same minute again: the lease stops it
-    const ids = refundPosts().map((b) => b.refund_id);
+    const ids = refundPosts().map((b) => b.receipt);
     expect(ids).toEqual([`refund-${a.payId}`, `refund-${a.payId}`]);
-    expect(refundStore.size).toBe(1);
+    expect(fake.refunds).toHaveLength(1);
     expect(await count("SELECT COUNT(*) AS n FROM refunds")).toBe(1);
-    // Cashfree later says SUCCESS: polled, then REFUNDED. Further runs do nothing.
-    refundStore.get(`refund-${a.payId}`)!.status = "SUCCESS";
+    // Razorpay later says processed: polled, then REFUNDED. Further runs do nothing.
+    fake.refunds[0].status = "processed";
     at(NOW + 17 * MIN);
     await retryRefunds(env(), provider());
     expect(await payState(a.payId)).toBe("REFUNDED");
@@ -428,38 +395,38 @@ describe("refund safety", () => {
     expect(refundPosts()).toHaveLength(2);
   });
 
-  it("a lost answer (Cashfree stored the refund): the retry finds it and never sends a second one", async () => {
-    refundLostAnswer = true;
+  it("a lost answer (Razorpay stored the refund): the retry finds it and never sends a second one", async () => {
+    fake.refundLostAnswer = true;
     const a = await notFitApplied();
-    expect(refundStore.size).toBe(1);
-    refundLostAnswer = false;
+    expect(fake.refunds).toHaveLength(1);
+    fake.refundLostAnswer = false;
     at(NOW + 14 * MIN);
     await retryRefunds(env(), provider());
     expect(refundPosts()).toHaveLength(1);
-    expect(await db.prepare("SELECT provider_refund_id AS id FROM refunds").first()).toEqual({ id: "900" });
+    expect(await db.prepare("SELECT provider_refund_id AS id FROM refunds").first()).toEqual({ id: fake.refunds[0].id });
     expect(await payState(a.payId)).toBe("REFUND_PENDING");
   });
 
   it("FAILED raises attention; payments never move backwards", async () => {
     const a = await notFitApplied();
-    refundStore.get(`refund-${a.payId}`)!.status = "REJECTED";
+    fake.refunds[0].status = "failed";
     at(NOW + 14 * MIN);
     await retryRefunds(env(), provider());
     expect(await payState(a.payId)).toBe("REFUND_FAILED");
     expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'REFUND_FAILED'")).toBe(1);
     // A verified refund webhook says SUCCESS (money did go out): FAILED -> REFUNDED is allowed ...
-    expect((await hook(refundEvent(`refund-${a.payId}`, "SUCCESS", "2026-10-05T12:00:00+05:30"))).status).toBe(200);
+    expect((await hook(refundEvent(`refund-${a.payId}`, "processed"))).status).toBe(200);
     expect(await payState(a.payId)).toBe("REFUNDED");
     // ... but a stray later FAILED never moves it back, and a replay does nothing.
-    await hook(refundEvent(`refund-${a.payId}`, "REJECTED", "2026-10-05T12:01:00+05:30"));
-    await hook(refundEvent(`refund-${a.payId}`, "SUCCESS", "2026-10-05T12:00:00+05:30"));
+    await hook(refundEvent(`refund-${a.payId}`, "failed", 60));
+    await hook(refundEvent(`refund-${a.payId}`, "processed")); // replay of the first one
     expect(await payState(a.payId)).toBe("REFUNDED");
     expect(await db.prepare("SELECT state FROM refunds").first()).toEqual({ state: "REFUNDED" });
   });
 
   it("the refund webhook is signature-checked", async () => {
-    const raw = JSON.stringify(refundEvent("refund-1", "SUCCESS", "2026-10-05T12:00:00+05:30"));
-    const res = await app.request("/pay/cashfree/webhook", { method: "POST", body: raw, headers: { "x-webhook-timestamp": "1", "x-webhook-signature": btoa("bad") } }, env());
+    const raw = JSON.stringify(refundEvent("refund-1", "processed"));
+    const res = await app.request("/pay/razorpay/webhook", { method: "POST", body: raw, headers: await rzpHeaders(raw, { secret: "wrong" }) }, env());
     expect(res.status).toBe(401);
     expect(await count("SELECT COUNT(*) AS n FROM events")).toBe(0);
   });

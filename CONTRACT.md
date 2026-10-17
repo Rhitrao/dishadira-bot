@@ -1,5 +1,5 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-10-02 (v3). Governs implementation; owner decisions govern live activation.
+Version: 2026-10-17 (v3.1: payment provider is Razorpay). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma) and never sees chats. Rohit = owner, sole operator.
 Goal: turn Click-to-WhatsApp ad enquiries into paid sessions; Amma only ever speaks to people who have paid.
@@ -20,7 +20,7 @@ Reference only: github.com/ArnasDon/wacrm (MIT) for webhook verification, dedupe
 Copy small pieces only, keep its MIT notice in a NOTICE file, never vendor the app.
 Browser-only development (Claude Code web + GitHub Actions). Nothing runs on Rohit's Chromebook.
 Payments go through a PaymentProvider interface: createLink, getStatus, verifyWebhook, refund.
-Implement Cashfree first; Razorpay may be added later behind the same interface. Never both in one flow.
+Razorpay (Payment Links) is the one provider, behind that interface. Only one provider may be in the code at a time.
 
 States
 Conversation: BOT | HUMAN | BLOCKED. Free text that isn't a menu choice -> stays BOT, raises a "needs attention" item.
@@ -58,7 +58,7 @@ Outcome taps: Session -> send session_offer; Not right fit -> refund ₹99 after
 Amma not tapping within 3 hours of a call -> attention item. "Amma away" switch: pause new bookings and raise attention
   for every affected booking (offer new time or refund).
 Duplicates/reordered events never duplicate bookings, money, links, refunds or outbound messages.
-Verify raw-body signatures (Meta X-Hub-Signature-256, Cashfree webhook signature) before trusting or storing.
+Verify raw-body signatures (Meta X-Hub-Signature-256, Razorpay X-Razorpay-Signature) before trusting or storing.
 Before returning 200, commit the event and its business change plus any reply intent, or return a retriable error.
 Outbound sends: PENDING -> SENDING -> SENT | FAILED | UNKNOWN, claimed atomically. No blind resend after a timeout.
 Outside the 24-hour window only approved templates: call_booked, session_offer, session_confirmed, reminder,

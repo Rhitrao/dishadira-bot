@@ -8,13 +8,14 @@ import { sendAlerts } from "../src/mail";
 import { bookingsOpen, sendsOn } from "../src/switches";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat } from "../src/watch";
 import { applyStatus } from "../src/pay/apply";
-import { cashfree } from "../src/pay/cashfree";
+import { razorpay } from "../src/pay/razorpay";
 import { requestRefund } from "../src/pay/refund";
 import { sendMessage } from "../src/send";
 import { generateSlots } from "../src/slots";
 import { addPerson, newDb } from "./db";
+import { FakeRazorpay, rzpEnv } from "./razorpay";
 
-// All data is synthetic. Mon 2026-10-05, 15:30 IST. Access, Cashfree, Meta and email are mocked: nothing real is called.
+// All data is synthetic. Mon 2026-10-05, 15:30 IST. Access, Razorpay, Meta and email are mocked: nothing real is called.
 const NOW = Date.parse("2026-10-05T10:00:00Z");
 const ORIGIN = "https://bot.example.test";
 const AUD = "test-aud";
@@ -32,8 +33,8 @@ let session: string | undefined;
 
 const env = (o: Record<string, unknown> = {}) =>
   ({
-    DB: db, ACCESS_TEAM: TEAM, ACCESS_AUD: AUD, AMMA_EMAIL: AMMA, ROHIT_EMAIL: ROHIT, NEW_BOOKINGS: "true", SENDS: "true", PAYMENT_MODE: "test",
-    CASHFREE_APP_ID: "test-app", CASHFREE_SECRET: "test-secret", WA_TOKEN: "tok", WA_PHONE_ID: "1000", DIGEST_TO: "ops@example.test",
+    DB: db, ACCESS_TEAM: TEAM, ACCESS_AUD: AUD, AMMA_EMAIL: AMMA, ROHIT_EMAIL: ROHIT, NEW_BOOKINGS: "true", SENDS: "true", ...rzpEnv(),
+    WA_TOKEN: "tok", WA_PHONE_ID: "1000", DIGEST_TO: "ops@example.test",
     EMAIL: { send: async (m: (typeof emails)[number]) => { if (emailDown) throw Object.assign(new Error("down"), { code: "E_DELIVERY_FAILED" }); emails.push(m); return { messageId: "x" }; } },
     ...o,
   }) as never;
@@ -43,12 +44,13 @@ beforeAll(async () => {
   priv = kp.privateKey;
   jwks = { keys: [{ ...(await exportJWK(kp.publicKey)), kid: "k1", alg: "RS256", use: "sig" }] };
 });
-let refundStore: Set<string>;
+let fake: FakeRazorpay;
 beforeEach(async () => {
   session = undefined;
   emails = [];
   emailDown = false;
-  refundStore = new Set();
+  fake = new FakeRazorpay();
+  fake.refundStatusOnCreate = "processed";
   ({ db, close } = await newDb());
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
@@ -57,15 +59,7 @@ beforeEach(async () => {
     const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
     if (u.includes("/cdn-cgi/access/certs")) return json(jwks);
     if (u.includes("graph.facebook.com")) return json({ messages: [{ id: "wamid.OUT" }] });
-    const refund = /\/orders\/([^/]+)\/refunds(?:\/([^/]+))?$/.exec(u);
-    if (refund) {
-      if (init.method === "POST") {
-        refundStore.add(JSON.parse(init.body!).refund_id);
-        return json({ cf_refund_id: 901, refund_status: "SUCCESS" });
-      }
-      return refundStore.has(refund[2]) ? json({ refund_status: "SUCCESS" }) : json({}, 404);
-    }
-    return json({}, 404);
+    return fake.handle(u, init as never) ?? json({}, 404);
   });
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -98,7 +92,7 @@ async function press(action: string, extra: Record<string, string> = {}, e: unkn
 }
 const count = async (sql: string) => (await db.prepare(sql).first<{ n: number }>())!.n;
 const waSent = () => fetchMock.mock.calls.filter((c) => String(c[0]).includes("graph.facebook.com"));
-const refundPosts = () => fetchMock.mock.calls.filter((c) => String(c[0]).includes("/refunds") && (c[1] as { method: string }).method === "POST");
+const refundPosts = () => fake.posts("/refund").map((c) => c.body as Record<string, unknown>);
 
 let wa = 919200000000;
 async function person(o: { lastUserAt?: string | null; name?: string } = {}) {
@@ -114,8 +108,8 @@ async function paidIntro(o: { ymd?: string; i?: number; payState?: string; conv?
   const slot = await db.prepare("INSERT INTO slots (kind,start_utc,end_utc,owner_id,state) VALUES ('CALL',?1,?2,?3,'BOOKED')").bind(s.startUtc, s.endUtc, conv).run();
   const intro = await db.prepare("INSERT INTO intros (conversation_id,slot_id,service,state) VALUES (?1,?2,'PROTECTION','PAID')").bind(conv, slot.meta.last_row_id).run();
   const n = ++k;
-  const pay = await db.prepare("INSERT INTO payments (provider,purpose,target_id,provider_link_id,provider_order_id,amount_paise,state) VALUES ('cashfree','INTRO',?1,?2,?3,9900,?4)")
-    .bind(intro.meta.last_row_id, `link${n}`, `order${n}`, o.payState ?? "PAID").run();
+  const pay = await db.prepare("INSERT INTO payments (provider,purpose,target_id,provider_link_id,provider_order_id,amount_paise,state) VALUES ('razorpay','INTRO',?1,?2,?3,9900,?4)")
+    .bind(intro.meta.last_row_id, `link${n}`, `pay_order${n}`, o.payState ?? "PAID").run();
   return { conv, introId: intro.meta.last_row_id, payId: pay.meta.last_row_id };
 }
 async function confirmedSession(ymd: string, i: number, name: string) {
@@ -187,7 +181,7 @@ describe("refunds", () => {
     const first = await press("approve");
     expect(first.headers.get("Location")).toBe("/admin?m=approved");
     expect(refundPosts()).toHaveLength(1);
-    expect(JSON.parse(refundPosts()[0][1].body).refund_id).toBe(`refund-${payId}`);
+    expect(refundPosts()[0].receipt).toBe(`refund-${payId}`);
     expect((await db.prepare("SELECT state FROM refunds WHERE payment_id = ?1").bind(payId).first<{ state: string }>())!.state).toBe("REFUNDED");
     expect((await db.prepare("SELECT state FROM payments WHERE id = ?1").bind(payId).first<{ state: string }>())!.state).toBe("REFUNDED");
     // the same stale page pressed again: nothing new goes out
@@ -209,18 +203,18 @@ describe("refunds", () => {
     expect(a.actor).toBe(ROHIT);
     expect(a.detail).toContain(`declined by ${ROHIT}`);
     // a declined payment can never get a second refund row
-    expect(await requestRefund(env(), cashfree(env()), payId, "ADMIN", ROHIT)).toBe("EXISTS");
+    expect(await requestRefund(env(), razorpay(env()), payId, "ADMIN", ROHIT)).toBe("EXISTS");
     expect(refundPosts()).toHaveLength(0);
   });
   it("refunding a PAYMENT_MISMATCH payment returns the amount actually paid, not the price", async () => {
     const { payId } = await paidIntro({ payState: "PENDING" });
     const link = (await db.prepare("SELECT provider_link_id AS l FROM payments WHERE id = ?1").bind(payId).first<{ l: string }>())!.l;
-    await applyStatus(env(), cashfree(env()), { linkId: link, status: "PAID", paidPaise: 15000, currency: "INR", orderId: "order-x" });
+    await applyStatus(env(), razorpay(env()), { linkId: link, status: "PAID", paidPaise: 15000, currency: "INR", orderId: "pay_x" });
     expect(await db.prepare("SELECT state, paid_paise AS paid FROM payments WHERE id = ?1").bind(payId).first()).toEqual({ state: "UNKNOWN", paid: 15000 });
     await attention("PAYMENT_MISMATCH", `payment:${payId}`);
     await press("refund");
     expect(refundPosts()).toHaveLength(1);
-    expect(JSON.parse(refundPosts()[0][1].body).refund_amount).toBe(150);
+    expect(refundPosts()[0].amount).toBe(15000); // paise
   });
   it("Refund on a late payment uses requestRefund (ADMIN) once; a failed refund is retried with the same id", async () => {
     const { payId, introId } = await paidIntro();
@@ -236,7 +230,7 @@ describe("refunds", () => {
     await attention("REFUND_FAILED", `payment:${p2.payId}`);
     await press("refund");
     expect(await count("SELECT COUNT(*) AS n FROM refunds")).toBe(2);
-    expect(refundStore.has(`refund-${p2.payId}`)).toBe(true);
+    expect(fake.refunds.some((r) => r.receipt === `refund-${p2.payId}`)).toBe(true);
   });
 });
 

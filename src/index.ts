@@ -5,9 +5,9 @@ import { amma } from "./amma";
 import { sendAlerts } from "./mail";
 import { applyDueOutcomes } from "./outcomes";
 import { reconcile } from "./pay/apply";
-import { cashfree } from "./pay/cashfree";
+import { razorpay } from "./pay/razorpay";
 import { retryRefunds } from "./pay/refund";
-import { cashfreeWebhook } from "./pay/webhook";
+import { razorpayWebhook } from "./pay/webhook";
 import { sendReminders } from "./remind";
 import { runDigest } from "./report";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat } from "./watch";
@@ -27,7 +27,7 @@ app.get("/health", (c) => c.json({ ok: true, version: VERSION }));
 
 app.get("/wa/webhook", verifyWebhook);
 app.post("/wa/webhook", receiveWebhook);
-app.post("/pay/cashfree/webhook", (c) => cashfreeWebhook(c));
+app.post("/pay/razorpay/webhook", (c) => razorpayWebhook(c));
 app.route("/amma", amma);
 app.route("/admin", admin);
 
@@ -42,7 +42,7 @@ const scheduled = async (event: { cron: string }, env: Env) => {
   if (event.cron === DIGEST_CRON) return runDigest(env).catch(() => undefined);
   if (event.cron === REMINDER_CRON) return sendReminders(env).then(() => undefined, () => undefined);
   if (event.cron !== RECONCILE_CRON) return;
-  const provider = cashfree(env);
+  const provider = razorpay(env);
   await recordHeartbeat(env).catch(() => 0);
   // One failing job must not stop the others; each is safe to run again.
   for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);

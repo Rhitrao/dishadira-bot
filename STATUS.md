@@ -1,13 +1,13 @@
 # STATUS
-Updated: 2026-10-17 (Ticket 09 session)
+Updated: 2026-10-17 (Ticket 10 session)
 
 ## Payment provider
-Cashfree (KYC submitted by owner: pending). Razorpay: not used.
+Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
 
 ## Owner setup
 - [x] Domain disha-dira.com registered (Hostinger), moving DNS to Cloudflare
 - [ ] Website v1.1 uploaded to Cloudflare Pages; custom domain attached
-- [ ] Cashfree KYC approved
+- [ ] Razorpay onboarding approved (Live Mode keys)
 - [ ] Meta business portfolio + developer app + test number
 - [ ] Airtel SIM bought; registered on Cloud API (not the WhatsApp app)
 - [ ] 5 utility templates submitted / approved
@@ -23,7 +23,7 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [x] 07 Rohit's console (PR https://github.com/Rhitrao/dishadira-bot/pull/7, CI green)
 - [x] 08 Reminders + go-live (PR https://github.com/Rhitrao/dishadira-bot/pull/8, CI green)
 - [ ] 09 Test bot ready to send (PR https://github.com/Rhitrao/dishadira-bot/pull/11)
-- [ ] 10 Razorpay replaces Cashfree (not started)
+- [ ] 10 Razorpay replaces the previous payment provider (this PR; see Ticket 10 notes)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
@@ -37,6 +37,27 @@ Meta now sends a business-scoped user id (BSUID) in `user_id` / `from_user_id` o
 2. Or do we ask such a person to message from a number we can see / treat them as "needs attention" so Rohit answers by hand?
 3. Payments and refunds are phone-keyed (`once per person`, blocks); a BSUID-only person needs the same protections.
 Not redesigned in this ticket on purpose.
+
+## Rohit: steps to do by hand for Razorpay (Ticket 10)
+Nothing below was done by Claude; no keys, webhooks or settings were touched. Test copy first (full list: `docs/GO-LIVE.md` steps 4 and 9).
+1. [ ] Razorpay dashboard in **Test Mode** → Account & Settings → API Keys → Generate Key. Put the key id (`rzp_test_...`) into the Worker secret `RAZORPAY_KEY_ID` and the key secret (shown once) into `RAZORPAY_KEY_SECRET` on `dishadira-bot-test` (Cloudflare → Workers → `dishadira-bot-test` → Settings → Variables and Secrets). Never paste them into GitHub or chat.
+2. [ ] Invent a long random phrase and set it as `RAZORPAY_WEBHOOK_SECRET` on `dishadira-bot-test`.
+3. [ ] Razorpay (Test Mode) → Account & Settings → Webhooks → Add New Webhook: URL `https://bot-test.disha-dira.com/pay/razorpay/webhook`, Secret = the same phrase as step 2, Active events exactly: `payment_link.paid`, `payment_link.expired`, `payment_link.cancelled`, `refund.processed`, `refund.failed`.
+4. [ ] Run **Actions → Deploy → test** (the Worker still needs the old secret names removed: delete `CASHFREE_APP_ID`, `CASHFREE_SECRET`, `CASHFREE_WEBHOOK_SECRET` from both Workers if they exist).
+5. [ ] `NEW_BOOKINGS` is still `"false"` everywhere. When you want to try a test booking, switch it on for the test Worker yourself (ticket 10 does not change it), then follow `docs/GO-LIVE.md` step 11 with Razorpay's test card / test UPI.
+6. [ ] Live later: Live Mode keys only appear after Razorpay approves the account; repeat steps 1-3 for `dishadira-bot-live` with different values and `https://bot.disha-dira.com/pay/razorpay/webhook`. A `rzp_test_` key on the live Worker (or the reverse) makes the bot refuse to create links.
+7. [ ] Check on the first test payment that the Razorpay webhook log (dashboard → Webhooks) shows 200 for each of the five events.
+
+## Session notes (Ticket 10)
+- Step 0 (own commit): a person who wrote while SENDS was off never got a greeting or an ack. Cause: the "already greeted" lookup (`greet:<conv>`) and the "ack in the last 24h" lookup counted SKIPPED and FAILED outbound rows as sent, and `messages.dedupe_key` is UNIQUE, so `sendMessage` also answered DUPLICATE for the same key. Both lookups now count only SENT, SENDING, UNKNOWN (`WENT_OUT` in `src/whatsapp.ts`), and `sendMessage` reuses a SKIPPED or FAILED row with the same dedupe key (one caller wins the UPDATE; SENT, SENDING, PENDING and UNKNOWN never resend). Audit of other "was this sent?" lookups: none exist besides these two and the dedupe insert itself; reminders return before writing while SENDS is paused. Side effect, on purpose: a replayed/retried intent whose first row was SKIPPED or FAILED now sends if sends are on (it never double-sends).
+- `src/pay/razorpay.ts` replaces the previous provider (file, config block, secrets, route `/pay/razorpay/webhook`, payments/events `provider = 'razorpay'`, tests, GO-LIVE, CONTRACT). Secrets: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` (all three used). `config.razorpay`: base URL, `minLinkExpiryMinutes` 15 (documented by Razorpay: expire_by at least 15 minutes ahead; `holdMinutes` is 20 and a config test keeps it at or above), `pollAfterMinutes` 2.
+- Key/mode rule: `rzp_test_` / `rzp_live_` is checked against `PAYMENT_MODE` in `createLink`; any mismatch (or no valid key) throws before any request, so the existing "link failed" path runs (hold freed, `LINK_CREATE_FAILED` attention). Mode on a status read comes from the key, so a Worker whose key and PAYMENT_MODE disagree also refuses to treat a read payment as paid (PAYMENT_MISMATCH).
+- Tests: every payment test moved to Razorpay-shaped fixtures in `test/razorpay.ts` (a fake Razorpay API and signed webhook builders; fake ids; fake keys built from pieces). Covered: wrong amount/currency, duplicate payment refund, late payment (three ways), expired/cancelled, out-of-order events, webhook replay (same event id, and a different body with the same id), cron vs webhook race, refund crash/lost answer/failed/replay, double-tap approve, mode mismatch, signature (wrong secret, missing, non-hex, base64, tampered body, no secret), ignored events, plus one-provider and secret-name checks.
+- Not verified (docs pages would not load or are silent): the exact payload of `payment_link.paid` / `expired` / `cancelled` (the code reads `payload.payment_link.entity.{reference_id, amount_paid, currency}` and `payload.payment.entity.{id, amount, currency}` and tolerates missing parts; the cron status read repairs gaps), whether the list-by-reference_id rows include `payments` (the code fetches the link by its id when they do not), Razorpay's webhook retry schedule, and test card / UPI details. Check on the first real Test Mode payment.
+- Checks (local): typecheck, vitest, `wrangler deploy --dry-run` top level, `--env test`, `--env live`. GitHub Actions: see PR.
+- Credits: not visible to Claude; check the Usage page.
+- Open questions: (1) Payment ids stored: `provider_order_id` and `provider_payment_id` both hold Razorpay's `pay_` id (refunds need it); OK? (2) The customer phone sent to Razorpay is the last 10 digits (Razorpay accepts 8-14 characters); the WhatsApp profile name goes with it. Both are personal data Razorpay holds: is that acceptable for the privacy page? (3) A refund Rohit makes by hand in the Razorpay dashboard raises an `UNKNOWN_REFUND` attention item when its webhook arrives (it has no receipt of ours).
+- Next: Rohit does the steps above, then a Test Mode booking and refund per GO-LIVE step 11.
 
 ## Session notes (Ticket 09)
 - Sending is on for the test Worker only: `[env.test.vars] SENDS = "true"` (NEW_BOOKINGS and OWNER_APPROVED stay "false"; top level and `[env.live.vars]` untouched, all "false"). `test/release.test.ts`: the three flags must be "false" at the top level and in live; in test each must be exactly "true" or "false". `[observability] enabled = true` at the top level and repeated for `env.test` / `env.live` (cheap and harmless; I did not find out whether wrangler inherits it).
@@ -73,7 +94,7 @@ Not redesigned in this ticket on purpose.
   - Nothing was missing; added `test/release.test.ts` (deploy config) as an extra.
 - Checks (local): typecheck, vitest all passed, `wrangler deploy --dry-run` for the top level, `--env test` and `--env live` passed. GitHub Actions: see PR.
 - Credits: not visible to Claude; check the Usage page.
-- Open questions: (1) `session_offer` outside 24h: the template has no button, and the code does not read template quick-reply taps, so the customer replies in text, which becomes a "needs attention" item for Rohit to answer inside the new window. Do you want a quick-reply button wired in a later ticket? (2) Access for /amma and /admin needs a custom domain (docs assume `bot.disha-dira.com` and `bot-test.disha-dira.com`); `wrangler.toml` has no `routes`, so please confirm a dashboard-added custom domain survives a deploy. (3) Sandbox payments are recognised as test mode only if Cashfree's sandbox link URL contains `payments-test.` (code assumption); step 11 of GO-LIVE.md tests it. (4) `OWNER_APPROVED` is not read by any code yet. (5) Real business number is still the placeholder in `src/config.ts`.
+- Open questions: (1) `session_offer` outside 24h: the template has no button, and the code does not read template quick-reply taps, so the customer replies in text, which becomes a "needs attention" item for Rohit to answer inside the new window. Do you want a quick-reply button wired in a later ticket? (2) Access for /amma and /admin needs a custom domain (docs assume `bot.disha-dira.com` and `bot-test.disha-dira.com`); `wrangler.toml` has no `routes`, so please confirm a dashboard-added custom domain survives a deploy. (3) was about recognising sandbox payments from the link URL; Ticket 10 replaced that with the key-prefix rule. (4) `OWNER_APPROVED` is not read by any code yet. (5) Real business number is still the placeholder in `src/config.ts`.
 - Next: Rohit follows `docs/GO-LIVE.md`; Kannada copy from `docs/COPY.md`.
 
 ## Session notes (Ticket 07)
@@ -84,14 +105,14 @@ Not redesigned in this ticket on purpose.
 - Email (`src/mail.ts`): Cloudflare Email Service `send_email` binding `EMAIL` (`[[send_email]]` in wrangler.toml, structured `env.EMAIL.send({to, from, subject, text})`, no library), recipient = secret `DIGEST_TO`, sender `config.mail.from` (`bot@disha-dira.com`, the public site domain). Missing binding or DIGEST_TO: logged and skipped. Alerts: REFUND_FAILED, REFUND_STUCK, PAYMENT_MISMATCH, UNKNOWN_PAYMENT_LINK, OUTCOME_FAILED, HEARTBEAT_STALE (15 min); one email per kind per IST day (a settings row claimed before sending, released if the send fails).
 - Checks (local): typecheck, vitest 116/116 (17 new in test/admin.test.ts), wrangler dry-run: all passed. GitHub Actions: passed on PR 7.
 - Credits: not visible to Claude; check the Usage page.
-- Open questions: (1) Is `disha-dira.com` (or another address) onboarded and verified as a sender in Cloudflare Email Service? The code uses `bot@disha-dira.com`; change `config.mail.from` if not. (2) Refunding a PAYMENT_MISMATCH payment uses the expected amount (₹99 / ₹700), not what was actually paid; check the paid amount in Cashfree first. (3) Replies are deduplicated by item + text, so the identical text sent twice to one item is blocked on purpose. (4) Admin replies are not stored beyond the normal `messages` row; the audit row has no text.
+- Open questions: (1) Is `disha-dira.com` (or another address) onboarded and verified as a sender in Cloudflare Email Service? The code uses `bot@disha-dira.com`; change `config.mail.from` if not. (2) Refunding a PAYMENT_MISMATCH payment uses the expected amount (₹99 / ₹700), not what was actually paid; check the paid amount in the payment dashboard first. (3) Replies are deduplicated by item + text, so the identical text sent twice to one item is blocked on purpose. (4) Admin replies are not stored beyond the normal `messages` row; the audit row has no text.
 - Next: Ticket 08 (Reminders + go-live), after Rohit merges the Ticket 07 PR.
 
 ## Session notes (Ticket 06)
 - Cron (`*/2`) now runs three jobs, each safe to repeat: `applyDueOutcomes` (src/outcomes.ts), `retryRefunds` (src/pay/refund.ts), `reconcile` (now also polls SESSION payments).
 - Outcomes: claimed with `UPDATE outcomes SET applied_at … WHERE applied_at IS NULL AND undo_until <= now`; effects are idempotent, a thrown error releases the claim and raises attention. SESSION -> CALLED_SESSION + sessions row OFFERED + button "Choose a time" (session_offer template outside 24h). NOT_FIT -> refund (once per person by conversation/wa_id or payer ref, `notFitRefundsPerDay` per IST day, enforced inside the INSERT) + kind message; refused -> attention `NOT_FIT_REFUND_REFUSED`, nothing sent. MISSED -> list of free call slots; pick -> same guarded hold, then intro RESCHEDULED + slot BOOKED + old slot freed in one batch, free of charge; second miss -> intro MISSED (reschedule_count 1) + polite message, no refund. RUDE -> conversation BLOCKED + blocks row, refund row `PENDING_APPROVAL` (payment stays PAID), attention `RUDE_REFUND_APPROVAL`, nothing sent. Rude is applied after the undo window, like the others.
 - ₹700 (src/session.ts): `sess_offer_<id>` -> next 5 weekdays, max 10 SESSION slots -> `sess_<id>_<start>` -> hold -> session HELD + payment SESSION 70000 -> link expiring with the hold. Only after intro CALLED_SESSION (or `override_by`) and only for the person it was offered to. `applyStatus` now prices by purpose; paid -> session CONFIRMED + slot BOOKED + `session_confirmed`; a late payment never takes a slot (session EXPIRED, attention `LATE_PAYMENT_NO_SLOT`).
-- Refunds: one engine (`requestRefund`). refund_id is always `refund-<payment id>`, plus an `x-idempotency-key` header. Cashfree's create-refund page does not say what a repeated refund_id returns, so a retry first GETs the refund (`/orders/{id}/refunds/{refund_id}`) and only POSTs if it is 404. A transport error leaves it PENDING (retried every ~2 min, lease 60 s); only the provider saying REJECTED/CANCELLED makes it FAILED (-> REFUND_FAILED + attention); not confirmed after 30 min -> attention `REFUND_STUCK`. Refund webhook (`REFUND_STATUS_WEBHOOK`) is handled with the same signature check. Payment moves are conditional on the previous state; a late SUCCESS may repair FAILED, nothing goes backwards from REFUNDED.
+- Refunds: one engine (`requestRefund`). refund_id is always `refund-<payment id>`, and a retry first looks the refund up with the provider and only creates it when none exists (provider details: see Ticket 10). A transport error leaves it PENDING (retried every ~2 min, lease 60 s); only the provider saying the refund failed makes it FAILED (-> REFUND_FAILED + attention); not confirmed after 30 min -> attention `REFUND_STUCK`. The refund webhook is handled with the same signature check. Payment moves are conditional on the previous state; a late SUCCESS may repair FAILED, nothing goes backwards from REFUNDED.
 - Migration 0003: `payments.payer_ref`, `outcomes.slot_id` (+ unique with intro, so a rescheduled call gets its own outcome), `refunds` rebuilt (states add PENDING_APPROVAL, new `attempt_at`). Amma's page now also lists RESCHEDULED calls and shows "Done: <outcome>" with no buttons once applied.
 - Behaviour change in an older test: a refund POST that errors used to become FAILED at once; now it stays PENDING and is retried (see above). The old test checks REJECTED instead.
 - Checks (local): typecheck, vitest 99/99, wrangler dry-run: all passed. GitHub Actions: see PR.
@@ -114,12 +135,8 @@ Not redesigned in this ticket on purpose.
 
 ## Session notes (Ticket 04)
 - Fixed Ticket 02 bug: the "one active hold per person" check in `holdSlot` now counts only unexpired HELD rows (BOOKED no longer blocks a later session hold). Test added. Overlap check unchanged.
-- Built: `src/pay/provider.ts` (interface), `src/pay/cashfree.ts` (Payment Links; doc pages listed in its header comment), `src/pay/apply.ts` (one apply function for webhook and cron, plus `reconcile`), `src/pay/webhook.ts` (POST /pay/cashfree/webhook), `src/booking.ts` (service -> slot list -> guarded hold/link step), cron `*/2 * * * *` in wrangler.toml, copy in `src/copy.ts`.
+- Built: `src/pay/provider.ts` (interface), the provider in `src/pay/` (Payment Links; doc pages listed in its header comment), `src/pay/apply.ts` (one apply function for webhook and cron, plus `reconcile`), `src/pay/webhook.ts` (the payment webhook route), `src/booking.ts` (service -> slot list -> guarded hold/link step), cron `*/2 * * * *` in wrangler.toml, copy in `src/copy.ts`.
 - Booking respects the NEW_BOOKINGS switch: while it is not "true", "Book a ₹99 call" still replies "Booking opens soon." (contract: flags default safe).
-- **Webhook secret:** Cashfree signs webhooks (base64 HMAC-SHA256 of `x-webhook-timestamp` + raw body) with the payment gateway secret key, i.e. the same value as `CASHFREE_SECRET`. There is no separate webhook secret, so `CASHFREE_WEBHOOK_SECRET` is NOT used by the code and can stay unset.
-- Provider ids: payment `provider_payment_id` and `provider_order_id` both store the Cashfree order id (a webhook gives order id + transaction id, the status read gives only order ids; one id keeps both paths consistent). Refunds go to `POST /pg/orders/{order_id}/refunds` with `refund_id = refund-<payment id>`.
-- Assumptions to check in the Cashfree sandbox (not confirmable from docs): minimum link expiry (assumed 15 min, `config.cashfree.minLinkExpiryMinutes`; hold is 20), API version `2025-01-01` in config, `GET /pg/links/{id}` returns the same fields as the create response, `GET /pg/links/{id}/orders` returns an array. The webhook doc says "form data format" in one line but shows JSON; the code expects JSON.
-- Owner steps (not done here): set the webhook URL in the Cashfree dashboard to `<worker url>/pay/cashfree/webhook` (Payment Link events); set `config.businessNumber` (currently a placeholder); flip `call_booked` approved when Meta approves it (outside the 24h window the confirmation uses that template).
 - Known gaps (Ticket 06/07): refund completion webhooks are not handled (refunds stay REFUND_PENDING unless the provider answers SUCCESS at once); a crash between inserting a refunds row and calling the provider leaves it PENDING with no retry; `REFUND_FAILED`/`UNKNOWN` payments only raise attention items (email alerts come in Ticket 07).
 - Checks (local): typecheck, vitest 55/55, wrangler dry-run: all passed. GitHub Actions on PR 4: check passed.
 - Credits: not visible to Claude; check the Usage page.
@@ -149,7 +166,6 @@ Not redesigned in this ticket on purpose.
 
 ## Session notes (Ticket 01)
 - Checks (local and GitHub Actions on PR 1): typecheck, vitest 10/10, gitleaks (no leaks), wrangler deploy --dry-run: all passed.
-- Cashfree KYC left unticked (owner said dashboard live, Payment Links activation unconfirmed).
 - Credits: not visible from inside the session; check the Usage page.
 - Open questions: none.
 - Next: Ticket 02 (Data + slots), after Rohit merges PR 1.
