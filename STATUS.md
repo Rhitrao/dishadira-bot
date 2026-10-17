@@ -22,7 +22,7 @@ Cashfree (KYC submitted by owner: pending). Razorpay: not used.
 - [x] 06 Outcomes + ₹700 (PR https://github.com/Rhitrao/dishadira-bot/pull/6, CI green)
 - [x] 07 Rohit's console (PR https://github.com/Rhitrao/dishadira-bot/pull/7, CI green)
 - [x] 08 Reminders + go-live (PR https://github.com/Rhitrao/dishadira-bot/pull/8, CI green)
-- [ ] 09 Test bot ready to send (branch `t09-test-sends`, PR: see below)
+- [ ] 09 Test bot ready to send (PR https://github.com/Rhitrao/dishadira-bot/pull/11)
 - [ ] 10 Razorpay replaces Cashfree (not started)
 
 ## Credits
