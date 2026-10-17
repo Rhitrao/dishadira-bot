@@ -20,7 +20,7 @@ const nowIso = () => iso(Date.now());
 export async function applyStatus(env: Env, provider: PaymentProvider, ev: PayStatus): Promise<Applied> {
   const db = env.DB;
   const pay = await db
-    .prepare("SELECT id, purpose, target_id, state, amount_paise FROM payments WHERE provider = 'cashfree' AND provider_link_id = ?1")
+    .prepare("SELECT id, purpose, target_id, state, amount_paise FROM payments WHERE provider = 'razorpay' AND provider_link_id = ?1")
     .bind(ev.linkId)
     .first<Payment>();
   if (!pay) {
@@ -190,12 +190,12 @@ async function confirm(env: Env, conversationId: number, paymentId: number, star
   );
 }
 
-// Cron: payments still PENDING after config.cashfree.pollAfterMinutes get a status read, then the same logic as the webhook.
+// Cron: payments still PENDING after config.razorpay.pollAfterMinutes get a status read, then the same logic as the webhook.
 export async function reconcile(env: Env, provider: PaymentProvider, nowMs = Date.now()): Promise<number> {
-  const cutoff = iso(nowMs - config.cashfree.pollAfterMinutes * 60_000);
+  const cutoff = iso(nowMs - config.razorpay.pollAfterMinutes * 60_000);
   const { results } = await env.DB
     .prepare(
-      `SELECT provider_link_id FROM payments WHERE provider = 'cashfree' AND state = 'PENDING'
+      `SELECT provider_link_id FROM payments WHERE provider = 'razorpay' AND state = 'PENDING'
          AND provider_link_id IS NOT NULL AND COALESCE(updated_at, created_at) < ?1 ORDER BY id LIMIT 25`,
     )
     .bind(cutoff)

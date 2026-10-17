@@ -1,6 +1,6 @@
 // The one refund path (duplicate payments, "not the right fit", rude reports). refunds.payment_id is UNIQUE, so a payment can
 // never have two refunds. The provider call always uses refund-<payment id> as refund_id, so a retry after a crash or a lost
-// answer asks Cashfree "do you already have it?" first and only creates it when there is none.
+// answer asks Razorpay "do you already have it?" first and only creates it when there is none.
 // Payments only move forward: PAID -> REFUND_PENDING -> REFUNDED | REFUND_FAILED (every UPDATE below names the state it leaves).
 import { config } from "../config";
 import type { Env } from "../env";

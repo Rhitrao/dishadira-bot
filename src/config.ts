@@ -28,11 +28,9 @@ export const config = {
   // Placeholder until the Airtel number exists; the owner sets the real one here, never in git history.
   businessNumber: "+91 00000 00000",
   booking: { leadMinutes: 60, workingDays: 3, maxListRows: 10 },
-  cashfree: {
-    apiVersion: "2025-01-01",
-    sandboxBase: "https://sandbox.cashfree.com/pg",
-    liveBase: "https://api.cashfree.com/pg",
-    minLinkExpiryMinutes: 15, // assumed provider minimum; holdMinutes must stay >= this
+  razorpay: {
+    baseUrl: "https://api.razorpay.com/v1", // test and live are the same host: the key (rzp_test_ / rzp_live_) decides
+    minLinkExpiryMinutes: 15, // Razorpay: expire_by must be at least 15 minutes ahead; holdMinutes must stay >= this
     pollAfterMinutes: 2,
   },
   // Sender for Rohit's emails: an address on the Disha Dira domain (public website domain), verified in Cloudflare Email Service by Rohit.

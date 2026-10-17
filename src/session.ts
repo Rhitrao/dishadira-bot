@@ -4,7 +4,7 @@ import { config } from "./config";
 import { copyFor } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
-import { cashfree } from "./pay/cashfree";
+import { razorpay } from "./pay/razorpay";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, type Out } from "./send";
 import { availableSlots, formatIst, holdSlot, iso, nextWorkingDays, type Slot } from "./slots";
@@ -14,7 +14,7 @@ type Conv = { id: number; wa_id: string; display_name: string | null; locale: st
 type Session = { id: number; state: string; conversation_id: number; service: string; intro_state: string | null; override_by: string | null };
 
 // Handles sess_offer_<sessionId> and sess_<sessionId>_<startUtc>. Returns false for any other choice.
-export async function sessionChoice(env: Env, choice: string | null, convId: number, msgId: string, provider: PaymentProvider = cashfree(env)): Promise<boolean> {
+export async function sessionChoice(env: Env, choice: string | null, convId: number, msgId: string, provider: PaymentProvider = razorpay(env)): Promise<boolean> {
   const offer = /^sess_offer_(\d+)$/.exec(choice ?? "");
   const pick = /^sess_(\d+)_(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$/.exec(choice ?? "");
   if (!offer && !pick) return false;
@@ -117,9 +117,9 @@ async function startSession(env: Env, provider: PaymentProvider, conv: Conv, ses
     return;
   }
 
-  const linkId = `di-session-${ses.id}-${nowMs}`; // unique per attempt, <= 50 chars
+  const linkId = `di-session-${ses.id}-${nowMs}`; // unique per attempt, <= 40 chars (Razorpay reference_id limit)
   const pay = await db
-    .prepare("INSERT INTO payments (provider, purpose, target_id, provider_link_id, amount_paise) VALUES ('cashfree', 'SESSION', ?1, ?2, ?3)")
+    .prepare("INSERT INTO payments (provider, purpose, target_id, provider_link_id, amount_paise) VALUES ('razorpay', 'SESSION', ?1, ?2, ?3)")
     .bind(ses.id, linkId, config.prices.sessionPaise)
     .run();
   const payId = pay.meta.last_row_id;

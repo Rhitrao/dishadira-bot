@@ -3,7 +3,7 @@ import { config } from "./config";
 import { copyFor } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
-import { cashfree } from "./pay/cashfree";
+import { razorpay } from "./pay/razorpay";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, type Out } from "./send";
 import { availableSlots, formatIst, formatIstParts, holdSlot, iso, nextWorkingDays, type Slot } from "./slots";
@@ -14,7 +14,7 @@ const nowIso = () => iso(Date.now());
 type Conv = { id: number; wa_id: string; display_name: string | null; locale: string };
 
 // Handles menu_book, svc_<SERVICE> and slot_<SERVICE>_<startUtc>. Returns false for any other choice.
-export async function bookingChoice(env: Env, choice: string | null, convId: number, msgId: string, provider: PaymentProvider = cashfree(env)): Promise<boolean> {
+export async function bookingChoice(env: Env, choice: string | null, convId: number, msgId: string, provider: PaymentProvider = razorpay(env)): Promise<boolean> {
   if (!choice || !(choice === "menu_book" || choice.startsWith("svc_") || choice.startsWith("slot_"))) return false;
   const conv = await env.DB.prepare("SELECT id, wa_id, display_name, locale FROM conversations WHERE id = ?1").bind(convId).first<Conv>();
   if (!conv) return false;
@@ -113,9 +113,9 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
   // 3. Intro (HELD) and payment (CREATING), then the link.
   const intro = await db.prepare("INSERT INTO intros (conversation_id, slot_id, service) VALUES (?1, ?2, ?3)").bind(conv.id, slot?.id ?? null, service).run();
   const introId = intro.meta.last_row_id;
-  const linkId = `di-intro-${introId}`; // unique, tied to the intro; <= 50 chars, [A-Za-z0-9_-]
+  const linkId = `di-intro-${introId}`; // unique, tied to the intro; <= 40 chars (Razorpay reference_id limit)
   const pay = await db
-    .prepare("INSERT INTO payments (provider, purpose, target_id, provider_link_id, amount_paise) VALUES ('cashfree', 'INTRO', ?1, ?2, ?3)")
+    .prepare("INSERT INTO payments (provider, purpose, target_id, provider_link_id, amount_paise) VALUES ('razorpay', 'INTRO', ?1, ?2, ?3)")
     .bind(introId, linkId, config.prices.introPaise)
     .run();
   const payId = pay.meta.last_row_id;

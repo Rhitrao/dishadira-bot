@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
 import { config } from "../src/config";
 import { SECRET_NAMES } from "../src/env";
@@ -44,5 +45,18 @@ describe("config", () => {
 
   it("names every required secret", () => {
     expect(SECRET_NAMES).toHaveLength(12);
+  });
+
+  it("Razorpay's secrets are the payment secrets, and the provider config is complete", () => {
+    for (const name of ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET"]) expect(SECRET_NAMES).toContain(name);
+    expect(SECRET_NAMES.filter((n) => /KEY_ID|CASH|STRIPE|PAYPAL|PAYU/i.test(n))).toEqual(["RAZORPAY_KEY_ID"]);
+    expect(config.razorpay.baseUrl).toBe("https://api.razorpay.com/v1");
+    expect(config.razorpay.minLinkExpiryMinutes).toBeGreaterThan(0);
+    expect(config.razorpay.pollAfterMinutes).toBeGreaterThan(0);
+  });
+
+  it("only one payment provider is in the code at a time", () => {
+    const files = Object.keys(import.meta.glob("../src/pay/*.ts")).map((f) => f.split("/").pop());
+    expect(files.sort()).toEqual(["apply.ts", "provider.ts", "razorpay.ts", "refund.ts", "webhook.ts"]);
   });
 });

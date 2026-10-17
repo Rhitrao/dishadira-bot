@@ -54,7 +54,7 @@ describe("day-before reminders", () => {
   it("the cron at 13:00 UTC runs the reminders, once", async () => {
     const conv = await person(true);
     await call(conv, "2026-10-06", 0);
-    const e = env({ CASHFREE_APP_ID: "a", CASHFREE_SECRET: "b" });
+    const e = env({ RAZORPAY_KEY_ID: "a", RAZORPAY_KEY_SECRET: "b" });
     await (app as unknown as { scheduled: (ev: { cron: string }, e: unknown) => Promise<void> }).scheduled({ cron: "0 13 * * *" }, e);
     expect(sent()).toHaveLength(1);
     expect(config.windowHours).toBe(24);

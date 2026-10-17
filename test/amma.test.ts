@@ -4,7 +4,7 @@ import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose";
 import app from "../src/index";
 import { bookingChoice } from "../src/booking";
 import { applyDueOutcomes } from "../src/outcomes";
-import { cashfree } from "../src/pay/cashfree";
+import { razorpay } from "../src/pay/razorpay";
 import { generateSlots } from "../src/slots";
 import { addPerson, newDb } from "./db";
 
@@ -315,7 +315,7 @@ describe("after the outcome is applied", () => {
     expect((await confirm(a.introId, "SESSION")).status).toBe(200);
     expect(await (await get("/amma")).text()).toContain("Undo");
     vi.setSystemTime(NOW + 11 * 60_000);
-    await applyDueOutcomes(env(), cashfree(env()));
+    await applyDueOutcomes(env(), razorpay(env()));
     const page = await (await get("/amma")).text();
     expect(page).toContain("Done: Session");
     expect(page).not.toContain("Undo");

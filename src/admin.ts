@@ -7,7 +7,7 @@ import { config } from "./config";
 import type { Env } from "./env";
 import { heartbeatStale, sendAlerts } from "./mail";
 import { approveRefund, declineRefund, requestRefund, retryFailedRefund } from "./pay/refund";
-import { cashfree } from "./pay/cashfree";
+import { razorpay } from "./pay/razorpay";
 import { bookingsBetween, dayRange, firstName, scoreboard, scoreLines, type DayItem } from "./report";
 import { raiseAwayItems } from "./watch";
 import { sendMessage } from "./send";
@@ -227,7 +227,7 @@ admin.post("/refund", (c) =>
   itemAction(c, "refund", async (item) => {
     const pay = await paymentOf(c.env, item.target);
     if (!pay) return "nopay";
-    const provider = cashfree(c.env);
+    const provider = razorpay(c.env);
     let did = false;
     if (pay.refundState === "FAILED") did = await retryFailedRefund(c.env, provider, pay.id);
     else if (!pay.refundState && ["PAID", "UNKNOWN"].includes(pay.state)) did = (await requestRefund(c.env, provider, pay.id, "ADMIN", c.get("email"))) === "CREATED";
@@ -241,7 +241,7 @@ admin.post("/refund", (c) =>
 admin.post("/approve", (c) =>
   itemAction(c, "approve", async (item) => {
     const pay = await paymentOf(c.env, item.target);
-    if (!pay || !(await approveRefund(c.env, cashfree(c.env), pay.id))) return "gone";
+    if (!pay || !(await approveRefund(c.env, razorpay(c.env), pay.id))) return "gone";
     await resolveItem(c, item.id);
     await audit(c, "ADMIN_APPROVE_REFUND", `payment:${pay.id}`, item.kind);
     return "approved";

@@ -113,8 +113,17 @@ export async function sendMessage(env: Env, conversationId: number, out: Out, de
     .prepare("INSERT OR IGNORE INTO messages (conversation_id, direction, dedupe_key, kind, body) VALUES (?1, 'OUT', ?2, ?3, ?4)")
     .bind(conversationId, dedupeKey, out.type, summary(out))
     .run();
-  if (!ins.meta.changes) return "DUPLICATE";
-  const id = ins.meta.last_row_id;
+  let id = ins.meta.last_row_id;
+  if (!ins.meta.changes) {
+    // A row that never went out (SENDS was off, or Meta refused it) does not count as sent, so the same intent may try again.
+    // SENT, SENDING, PENDING and UNKNOWN never do: the message may be on its way. One caller wins the UPDATE.
+    const again = await db
+      .prepare("UPDATE messages SET status = 'PENDING', updated_at = ?2 WHERE dedupe_key = ?1 AND direction = 'OUT' AND status IN ('SKIPPED', 'FAILED') RETURNING id")
+      .bind(dedupeKey, nowIso())
+      .first<{ id: number }>();
+    if (!again) return "DUPLICATE";
+    id = again.id;
+  }
 
   const setStatus = (status: string, waId: string | null = null) =>
     db
