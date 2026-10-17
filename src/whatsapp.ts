@@ -37,6 +37,9 @@ const changeSchema = z.object({
 });
 type Msg = z.infer<typeof message>;
 
+// Outbound statuses that count as "already sent". UNKNOWN may have been delivered, so it is never sent again.
+const WENT_OUT = "('SENT', 'SENDING', 'UNKNOWN')";
+
 const nowIso = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
 export function verifyWebhook(c: C) {
@@ -228,7 +231,8 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     );
 
   // First contact: greeting + language choice, once per person ever (the key is per conversation).
-  const greeted = await db.prepare("SELECT 1 FROM messages WHERE dedupe_key = ?1").bind(`greet:${conv.id}`).first();
+  // Only a message that really went out counts: a SKIPPED row (SENDS was off) or a FAILED one is not a greeting.
+  const greeted = await db.prepare(`SELECT 1 FROM messages WHERE dedupe_key = ?1 AND status IN ${WENT_OUT}`).bind(`greet:${conv.id}`).first();
   if (!greeted) {
     await sendMessage(
       env,
@@ -288,7 +292,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
   await raiseAttention(db, "FREE_TEXT", `conv:${conv.id}`);
   const since = new Date(Date.now() - config.windowHours * 3600_000).toISOString().replace(/\.\d{3}Z$/, "Z");
   const recent = await db
-    .prepare("SELECT 1 FROM messages WHERE conversation_id = ?1 AND direction = 'OUT' AND dedupe_key LIKE '%:ack' AND created_at > ?2")
+    .prepare(`SELECT 1 FROM messages WHERE conversation_id = ?1 AND direction = 'OUT' AND dedupe_key LIKE '%:ack' AND status IN ${WENT_OUT} AND created_at > ?2`)
     .bind(conv.id, since)
     .first();
   if (!recent) await send({ type: "text", text: cp.ack }, "ack");

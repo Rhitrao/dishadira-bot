@@ -205,6 +205,61 @@ describe("POST /wa/webhook", () => {
   });
 });
 
+describe("messages written while SENDS was off (ticket 10, step 0)", () => {
+  const out = async () => (await db.prepare("SELECT dedupe_key, status FROM messages WHERE direction = 'OUT' ORDER BY id").all<{ dedupe_key: string; status: string }>()).results;
+  const greetings = () => sent().filter((b) => b.interactive?.body.text.includes("booking assistant"));
+
+  it("greeting skipped while SENDS was off is sent once SENDS is on, and only once after that", async () => {
+    sends = "false";
+    await post(text("wamid.S1"));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await out()).toEqual([{ dedupe_key: expect.stringMatching(/^greet:/), status: "SKIPPED" }]);
+
+    sends = "true";
+    await post(text("wamid.S2"));
+    expect(greetings()).toHaveLength(1);
+    expect(await count("SELECT COUNT(*) n FROM messages WHERE dedupe_key LIKE 'greet:%'")).toBe(1); // the skipped row was reused
+    expect(await count("SELECT COUNT(*) n FROM messages WHERE dedupe_key LIKE 'greet:%' AND status = 'SENT'")).toBe(1);
+
+    await post(text("wamid.S3"));
+    await post(text("wamid.S3")); // replay too
+    expect(greetings()).toHaveLength(1);
+  });
+
+  it("a greeting that Meta refused (FAILED) is tried again on the next message", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 400 }));
+    await post(text("wamid.S4"));
+    expect((await out())[0].status).toBe("FAILED");
+    await post(text("wamid.S5"));
+    expect(greetings()).toHaveLength(2); // one refused, one delivered
+    expect((await out())[0].status).toBe("SENT");
+    await post(text("wamid.S6"));
+    expect(greetings()).toHaveLength(2);
+  });
+
+  it("an UNKNOWN greeting (timeout) is never sent again", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("timeout"));
+    await post(text("wamid.S7"));
+    expect((await out())[0].status).toBe("UNKNOWN");
+    await post(text("wamid.S8"));
+    expect(greetings()).toHaveLength(1);
+  });
+
+  it("the free-text acknowledgement skipped while SENDS was off is sent once it is back on, then once per 24h", async () => {
+    await post(text("wamid.A0")); // greeting, delivered
+    sends = "false";
+    await post(text("wamid.A1", "my question"));
+    expect((await out()).map((r) => r.status)).toEqual(["SENT", "SKIPPED"]);
+
+    sends = "true";
+    await post(text("wamid.A2", "my question again"));
+    const acks = () => sent().filter((b) => b.type === "text");
+    expect(acks()).toHaveLength(1);
+    await post(text("wamid.A3", "and again"));
+    expect(acks()).toHaveLength(1);
+  });
+});
+
 describe("sendMessage", () => {
   async function person(lastUserAt: string | null) {
     const r = await db.prepare("INSERT INTO conversations (wa_id, last_user_at) VALUES (?1, ?2)").bind(PHONE, lastUserAt).run();
