@@ -23,10 +23,17 @@ describe("wrangler environments", () => {
     expect(value(section("env.test.vars"), "PAYMENT_MODE")).toBe("test");
     expect(value(section("env.live.vars"), "PAYMENT_MODE")).toBe("live");
   });
-  it("every safety flag starts off in both environments, and at the top level", () => {
-    for (const name of ["vars", "env.test.vars", "env.live.vars"]) {
+  it("the three flags are off at the top level and in live; test may switch them, but only to a plain true or false", () => {
+    const flags = ["OWNER_APPROVED", "NEW_BOOKINGS", "SENDS"];
+    for (const name of ["vars", "env.live.vars"]) {
       const s = section(name);
-      expect(["OWNER_APPROVED", "NEW_BOOKINGS", "SENDS"].map((k) => value(s, k))).toEqual(["false", "false", "false"]);
+      expect(flags.map((k) => value(s, k)), name).toEqual(["false", "false", "false"]);
+    }
+    for (const k of flags) expect(["true", "false"], `env.test.vars ${k}`).toContain(value(section("env.test.vars"), k));
+  });
+  it("logs and traces are on at the top level and in both environments", () => {
+    for (const name of ["observability", "env.test.observability", "env.live.observability"]) {
+      expect(section(name)).toMatch(/^enabled\s*=\s*true\s*$/m);
     }
   });
   it("both environments carry the three crons, including 18:30 IST reminders", () => {

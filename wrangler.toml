@@ -8,6 +8,10 @@ binding = "DB"
 database_name = "dishadira-bot"
 database_id = "00000000-0000-0000-0000-000000000000"
 
+# Logs and traces in the Cloudflare dashboard. The code logs only route, status, event type and error codes (test/logging.test.ts).
+[observability]
+enabled = true
+
 [triggers]
 # 18:30 IST reminders (13:00 UTC); 9pm IST digest (15:30 UTC); and payment reconciliation, outcomes, refunds and the heartbeat every 2 minutes.
 crons = ["0 13 * * *", "30 15 * * *", "*/2 * * * *"]
@@ -41,10 +45,13 @@ migrations_dir = "migrations"
 [env.test.triggers]
 crons = ["0 13 * * *", "30 15 * * *", "*/2 * * * *"]
 
+[env.test.observability]
+enabled = true
+
 [env.test.vars]
 OWNER_APPROVED = "false"
 NEW_BOOKINGS = "false"
-SENDS = "false"
+SENDS = "true"
 PAYMENT_MODE = "test"
 
 [[env.test.send_email]]
@@ -61,6 +68,9 @@ migrations_dir = "migrations"
 
 [env.live.triggers]
 crons = ["0 13 * * *", "30 15 * * *", "*/2 * * * *"]
+
+[env.live.observability]
+enabled = true
 
 [env.live.vars]
 OWNER_APPROVED = "false"

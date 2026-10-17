@@ -27,7 +27,8 @@ export async function raiseAttention(db: D1Database, kind: string, target: strin
     .run();
 }
 
-// Meta limits: 3 reply buttons, 20-char button titles, 10 list rows, 24-char row titles, 20-char CTA label.
+// Meta limits: 3 reply buttons, 20-char button titles, 10 list rows, 24-char row titles, 20-char list button and CTA label.
+// A list section needs a title (docs for v26 list it as required, max 24 chars); the button text doubles as that title.
 export function buildPayload(out: Out, to: string): Record<string, unknown> {
   const base = { messaging_product: "whatsapp", recipient_type: "individual", to };
   switch (out.type) {
@@ -48,13 +49,14 @@ export function buildPayload(out: Out, to: string): Record<string, unknown> {
     case "list":
       if (out.rows.length < 1 || out.rows.length > 10) throw new Error("list: 1 to 10 rows");
       if (out.rows.some((r) => r.title.length > 24)) throw new Error("row title over 24 chars");
+      if (out.button.length < 1 || out.button.length > 20) throw new Error("list button text: 1 to 20 chars");
       return {
         ...base,
         type: "interactive",
         interactive: {
           type: "list",
           body: { text: out.body },
-          action: { button: out.button, sections: [{ rows: out.rows.map((r) => ({ id: r.id, title: r.title })) }] },
+          action: { button: out.button, sections: [{ title: out.button, rows: out.rows.map((r) => ({ id: r.id, title: r.title })) }] },
         },
       };
     case "cta":
