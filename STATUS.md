@@ -23,7 +23,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [x] 07 Rohit's console (PR https://github.com/Rhitrao/dishadira-bot/pull/7, CI green)
 - [x] 08 Reminders + go-live (PR https://github.com/Rhitrao/dishadira-bot/pull/8, CI green)
 - [ ] 09 Test bot ready to send (PR https://github.com/Rhitrao/dishadira-bot/pull/11)
-- [ ] 10 Razorpay replaces the previous payment provider (this PR; see Ticket 10 notes)
+- [ ] 10 Razorpay replaces the previous payment provider (PR https://github.com/Rhitrao/dishadira-bot/pull/12)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
