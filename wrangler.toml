@@ -50,7 +50,7 @@ enabled = true
 
 [env.test.vars]
 OWNER_APPROVED = "false"
-NEW_BOOKINGS = "false"
+NEW_BOOKINGS = "true"
 SENDS = "true"
 PAYMENT_MODE = "test"
 
