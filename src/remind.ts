@@ -2,10 +2,10 @@
 // Free text inside the 24-hour window, the `reminder` template outside it. The dedupe key is per booking (intro or session + slot),
 // so a second run, or a rescheduled call, never sends the same reminder twice. While SENDS is paused nothing is written at all,
 // so no dedupe row blocks the reminder if Rohit resumes sends the same evening.
-import { copyFor } from "./copy";
+import { copyFor, langOf } from "./copy";
 import type { Env } from "./env";
 import { sendOrTemplate } from "./send";
-import { formatIstParts, iso, istDay } from "./slots";
+import { formatIstLang, iso, istDay } from "./slots";
 import { sendsOn } from "./switches";
 
 const DAY = 86_400_000;
@@ -31,12 +31,16 @@ export async function sendReminders(env: Env, nowMs = Date.now()): Promise<numbe
   let sent = 0;
   for (const [kind, rows] of [["call", calls], ["session", sessions]] as const) {
     for (const r of rows) {
-      const { day, time } = formatIstParts(r.start);
+      const lang = langOf(r.locale);
+      const cp = copyFor(lang);
+      const en = formatIstLang(r.start, "en");
+      const hi = formatIstLang(r.start, "hi");
+      const p = lang === "hi" ? hi : en;
       const res = await sendOrTemplate(
         env,
         r.conv,
-        { type: "text", text: copyFor(r.locale).reminder(kind, day, time) },
-        { type: "template", name: "reminder", params: [kind, day, time] },
+        { type: "text", text: kind === "call" ? cp.reminderCall(p.day, p.time) : cp.reminderSession(p.day, p.time) },
+        { type: "template", name: "reminder", params: [copyFor("en")[kind === "call" ? "wordCall" : "wordSession"], en.day, en.time], paramsHi: [copyFor("hi")[kind === "call" ? "wordCall" : "wordSession"], hi.day, hi.time] },
         `reminder:${kind}:${r.id}:${r.slotId}`,
       ).catch(() => "FAILED");
       if (res === "SENT") sent++;

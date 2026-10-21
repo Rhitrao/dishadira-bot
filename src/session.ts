@@ -1,25 +1,30 @@
 // The ₹700 session: "Choose a time" -> next free SESSION slots -> guarded hold -> sessions row HELD + payment -> link that expires with the hold.
 // Payment success is applied by src/pay/apply.ts (bookSession). A session can only be offered after CALLED_SESSION (see outcomes.ts).
 import { config } from "./config";
-import { copyFor } from "./copy";
+import { copyFor, langOf } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
 import { razorpay } from "./pay/razorpay";
 import type { PaymentProvider } from "./pay/provider";
+import { loadConv, sendDays, sendTimes } from "./booking";
 import { raiseAttention, sendMessage, type Out } from "./send";
-import { availableSlots, formatIst, holdSlot, iso, nextWorkingDays, type Slot } from "./slots";
+import { formatIstLang, holdSlot, iso, istDay } from "./slots";
 
 const nowIso = () => iso(Date.now());
-type Conv = { id: number; wa_id: string; display_name: string | null; locale: string };
+type Conv = NonNullable<Awaited<ReturnType<typeof loadConv>>>;
 type Session = { id: number; state: string; conversation_id: number; service: string; intro_state: string | null; override_by: string | null };
 
-// Handles sess_offer_<sessionId> and sess_<sessionId>_<startUtc>. Returns false for any other choice.
+// The session picker is the same day-then-time steps as the call (no age, service or who-for steps):
+// sess_offer_<sessionId> -> day buttons sday_<sessionId>_<ymd> -> time list sess_<sessionId>_<startUtc>, whose last row smore_<sessionId> shows the days again.
+// Handles all four. Returns false for any other choice.
 export async function sessionChoice(env: Env, choice: string | null, convId: number, msgId: string, provider: PaymentProvider = razorpay(env)): Promise<boolean> {
   const offer = /^sess_offer_(\d+)$/.exec(choice ?? "");
   const pick = /^sess_(\d+)_(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$/.exec(choice ?? "");
-  if (!offer && !pick) return false;
+  const day = /^sday_(\d+)_(\d{4}-\d{2}-\d{2})$/.exec(choice ?? "");
+  const more = /^smore_(\d+)$/.exec(choice ?? "");
+  if (!offer && !pick && !day && !more) return false;
   const db = env.DB;
-  const conv = await db.prepare("SELECT id, wa_id, display_name, locale FROM conversations WHERE id = ?1").bind(convId).first<Conv>();
+  const conv = await loadConv(db, convId);
   if (!conv) return false;
   const cp = copyFor(conv.locale);
   const send = (out: Out, step: string) => sendMessage(env, conv.id, out, `${msgId}:${step}`);
@@ -32,7 +37,7 @@ export async function sessionChoice(env: Env, choice: string | null, convId: num
     await db.prepare("UPDATE conversations SET mode = 'BLOCKED' WHERE id = ?1").bind(conv.id).run();
     return true;
   }
-  const sid = Number((offer ?? pick)![1]);
+  const sid = Number((offer ?? pick ?? day ?? more)![1]);
   // Only after CALLED_SESSION (or an audited operator override), and only the person it was offered to.
   const ses = await db
     .prepare(
@@ -47,8 +52,12 @@ export async function sessionChoice(env: Env, choice: string | null, convId: num
     await raiseAttention(db, "SESSION_NOT_OFFERABLE", `session:${sid}`);
     return true;
   }
-  if (offer) {
-    await sendSlotList(env, conv, sid, msgId);
+  if (offer || more) {
+    await sendSessionDays(env, conv, sid, msgId);
+    return true;
+  }
+  if (day) {
+    await showSessionTimes(env, conv, sid, day[2], msgId);
     return true;
   }
   await startSession(env, provider, conv, ses, pick![2], msgId);
@@ -71,20 +80,16 @@ export async function openOfferId(db: Env["DB"], convId: number): Promise<number
   return row?.id ?? null;
 }
 
-async function sendSlotList(env: Env, conv: Conv, sid: number, msgId: string): Promise<void> {
-  const cp = copyFor(conv.locale);
-  const nowMs = Date.now();
-  const free: Slot[] = [];
-  for (const ymd of nextWorkingDays(nowMs, 5)) {
-    free.push(...(await availableSlots(env.DB, "SESSION", ymd, nowMs + config.booking.leadMinutes * 60_000)));
-  }
-  const rows = free.slice(0, config.booking.maxListRows).map((s) => ({ id: `sess_${sid}_${s.startUtc}`, title: formatIst(s.startUtc) }));
-  if (!rows.length) {
-    await sendMessage(env, conv.id, { type: "text", text: cp.noSessionSlots }, `${msgId}:nosessions`);
-    await raiseAttention(env.DB, "NO_SESSION_SLOTS", `session:${sid}`);
-    return;
-  }
-  await sendMessage(env, conv.id, { type: "list", body: cp.sessionSlotBody, button: cp.slotListButton, rows }, `${msgId}:sessionslots`);
+async function sendSessionDays(env: Env, conv: Conv, sid: number, msgId: string): Promise<void> {
+  if (!(await sendDays(env, conv, "SESSION", (ymd) => `sday_${sid}_${ymd}`, msgId))) await raiseAttention(env.DB, "NO_SESSION_SLOTS", `session:${sid}`); // a person follows up
+}
+
+// The times of one day; if the day filled up meanwhile, say so and show the days again.
+async function showSessionTimes(env: Env, conv: Conv, sid: number, ymd: string, msgId: string): Promise<void> {
+  const ok = await sendTimes(env, conv, "SESSION", ymd, (u) => `sess_${sid}_${u}`, `smore_${sid}`, msgId);
+  if (ok) return;
+  await sendMessage(env, conv.id, { type: "text", text: copyFor(conv.locale).slotTaken }, `${msgId}:taken`);
+  await sendSessionDays(env, conv, sid, `${msgId}:again`);
 }
 
 async function startSession(env: Env, provider: PaymentProvider, conv: Conv, ses: Session, startUtc: string, msgId: string): Promise<void> {
@@ -98,7 +103,7 @@ async function startSession(env: Env, provider: PaymentProvider, conv: Conv, ses
     if (hold.reason === "ALREADY_HOLDING") await send({ type: "text", text: cp.alreadyHolding }, "holding");
     else {
       await send({ type: "text", text: cp.slotTaken }, "taken");
-      await sendSlotList(env, conv, ses.id, `${msgId}:again`);
+      await showSessionTimes(env, conv, ses.id, istDay(Date.parse(startUtc)), `${msgId}:again`);
     }
     return;
   }
@@ -133,7 +138,8 @@ async function startSession(env: Env, provider: PaymentProvider, conv: Conv, ses
       expiresAtUtc: hold.holdUntil, // expires with the hold
     });
     await db.prepare("UPDATE payments SET state = 'PENDING', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();
-    await send({ type: "cta", body: cp.sessionPayBody, label: cp.sessionPayLabel, url: link.url }, "pay");
+    const p = formatIstLang(startUtc, langOf(conv.locale));
+    await send({ type: "cta", body: cp.sessionPayBody(p.day, p.time), label: cp.sessionPayLabel, url: link.url }, "pay");
   } catch {
     await db.prepare("UPDATE payments SET state = 'FAILED', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();
     await db.prepare("UPDATE sessions SET state = 'OFFERED', updated_at = ?2 WHERE id = ?1 AND state = 'HELD'").bind(ses.id, nowIso()).run();

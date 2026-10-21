@@ -1,10 +1,10 @@
 // Applies a payment fact (verified webhook or provider status read) to our rows.
 // Every step is idempotent, so a replay, or a webhook racing the cron, can never double-book, double-refund or double-send.
 import { config } from "../config";
-import { copyFor } from "../copy";
+import { copyFor, langOf } from "../copy";
 import type { Env } from "../env";
 import { raiseAttention, sendOrTemplate } from "../send";
-import { formatIstParts, iso } from "../slots";
+import { formatIstLang, iso } from "../slots";
 import type { PayStatus, PaymentProvider } from "./provider";
 import { requestRefund } from "./refund";
 
@@ -167,12 +167,15 @@ async function bookSession(env: Env, pay: Payment): Promise<Applied> {
   }
   await db.prepare("UPDATE sessions SET state = 'CONFIRMED', updated_at = ?2 WHERE id = ?1 AND state IN ('HELD','EXPIRED')").bind(ses.id, now).run();
   const conv = await db.prepare("SELECT locale FROM conversations WHERE id = ?1").bind(ses.conversation_id).first<{ locale: string }>();
-  const { day, time } = formatIstParts(slot.start_utc);
+  const lang = langOf(conv?.locale);
+  const en = formatIstLang(slot.start_utc, "en");
+  const hi = formatIstLang(slot.start_utc, "hi");
+  const p = lang === "hi" ? hi : en;
   await sendOrTemplate(
     env,
     ses.conversation_id,
-    { type: "text", text: copyFor(conv?.locale ?? "en").sessionConfirmed(day, time) },
-    { type: "template", name: "session_confirmed", params: [day, time] },
+    { type: "text", text: copyFor(lang).sessionConfirmed(p.day, p.time) },
+    { type: "template", name: "session_confirmed", params: [en.day, en.time], paramsHi: [hi.day, hi.time] },
     `paid:${pay.id}`,
   );
   return "BOOKED";
@@ -180,12 +183,19 @@ async function bookSession(env: Env, pay: Payment): Promise<Applied> {
 
 async function confirm(env: Env, conversationId: number, paymentId: number, startUtc: string): Promise<void> {
   const conv = await env.DB.prepare("SELECT locale FROM conversations WHERE id = ?1").bind(conversationId).first<{ locale: string }>();
-  const { day, time } = formatIstParts(startUtc);
+  const intro = await env.DB
+    .prepare("SELECT i.call_lang AS callLang FROM payments p JOIN intros i ON i.id = p.target_id WHERE p.id = ?1 AND p.purpose = 'INTRO'")
+    .bind(paymentId)
+    .first<{ callLang: string | null }>();
+  const lang = langOf(conv?.locale);
+  const en = formatIstLang(startUtc, "en");
+  const hi = formatIstLang(startUtc, "hi");
+  const p = lang === "hi" ? hi : en;
   await sendOrTemplate(
     env,
     conversationId,
-    { type: "text", text: copyFor(conv?.locale ?? "en").confirmed(day, time, config.businessNumber) },
-    { type: "template", name: "call_booked", params: [day, time, config.businessNumber] },
+    { type: "text", text: copyFor(lang).confirmed(p.day, p.time, langOf(intro?.callLang ?? conv?.locale), config.businessNumber) },
+    { type: "template", name: "call_booked", params: [en.day, en.time, config.businessNumber], paramsHi: [hi.day, hi.time, config.businessNumber] },
     `paid:${paymentId}`, // dedupe key: one confirmation per payment
   );
 }

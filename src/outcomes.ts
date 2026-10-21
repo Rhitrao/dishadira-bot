@@ -3,13 +3,13 @@
 // changes), so a failed attempt is released and simply tried again.
 import { config } from "./config";
 import { freeCallSlots } from "./booking";
-import { copyFor } from "./copy";
+import { copyFor, langOf } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
 import { requestRefund } from "./pay/refund";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
-import { formatIst, formatIstParts, holdSlot, iso } from "./slots";
+import { formatIstLang, holdSlot, iso } from "./slots";
 
 const nowIso = () => iso(Date.now());
 type Due = { id: number; introId: number; value: string };
@@ -123,11 +123,14 @@ async function applyOne(env: Env, provider: PaymentProvider, o: Due): Promise<vo
     }
     const rows = (await freeCallSlots(env, Date.now()))
       .slice(0, config.booking.maxListRows)
-      .map((s) => ({ id: `resched_${intro.id}_${s.startUtc}`, title: formatIst(s.startUtc) }));
+      .map((s) => {
+        const p = formatIstLang(s.startUtc, langOf(intro.locale));
+        return { id: `resched_${intro.id}_${s.startUtc}`, title: p.time, description: p.day }; // the day is too long to share a 24-character title in Hindi
+      });
     if (!rows.length) {
       await raiseAttention(db, "NO_CALL_SLOTS_FOR_RESCHEDULE", `intro:${intro.id}`);
     } else {
-      await sendMessage(env, intro.conv, { type: "list", body: cp.missedOffer, button: cp.slotListButton, rows }, key("resched"));
+      await sendMessage(env, intro.conv, { type: "list", body: cp.missedOffer, button: cp.listButtonTimes, rows }, key("resched"));
     }
     await audit(env, o, `intro MISSED, reschedule offered (${rows.length} slots)`);
     return;
@@ -192,7 +195,7 @@ export async function rescheduleChoice(env: Env, choice: string | null, convId: 
     return true;
   }
   await db.prepare("INSERT INTO audit_log (at, actor, action, target, detail) VALUES (?1, 'system', 'RESCHEDULED', ?2, ?3)").bind(now, `intro:${introId}`, m[2]).run();
-  const p = formatIstParts(m[2]);
+  const p = formatIstLang(m[2], langOf(conv.locale));
   await send({ type: "text", text: cp.rescheduled(p.day, p.time, config.businessNumber) }, "done");
   return true;
 }

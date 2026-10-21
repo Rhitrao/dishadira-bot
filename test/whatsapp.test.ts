@@ -96,7 +96,7 @@ describe("POST /wa/webhook", () => {
     expect(body.to).toBe(PHONE);
     expect(body.interactive.body.text).toContain("booking assistant");
     expect(body.interactive.body.text).toContain("Shantha Rao");
-    expect(body.interactive.action.buttons.map((b: { reply: { title: string } }) => b.reply.title)).toEqual(["English", "ಕನ್ನಡ"]);
+    expect(body.interactive.action.buttons.map((b: { reply: { title: string } }) => b.reply.title)).toEqual(["English", "हिंदी"]);
 
     expect((await post(text("wamid.B1"))).status).toBe(200); // replay
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -134,7 +134,7 @@ describe("POST /wa/webhook", () => {
 
     await post(button("wamid.E1", "lang_en"));
     const menu = sent()[0].interactive.action.buttons.map((b: { reply: { title: string } }) => b.reply.title);
-    expect(menu).toEqual(["Book a ₹99 call", "How it works", "Ask a question"]);
+    expect(menu).toEqual(["Book ₹99 call", "How it works", "Talk to a person"]);
     fetchMock.mockClear();
 
     await post(button("wamid.E2", "menu_book"));
@@ -144,7 +144,7 @@ describe("POST /wa/webhook", () => {
 
     await post(button("wamid.E3", "menu_how"));
     const rows = sent()[0].interactive.action.sections[0].rows;
-    expect(rows.map((r: { id: string }) => r.id)).toEqual(config.faqIds.map((id) => `faq_${id}`));
+    expect(rows.map((r: { id: string }) => r.id)).toEqual([...config.faqIds.map((id) => `faq_${id}`), "menu_lang"]);
     expect(rows.length).toBeLessThanOrEqual(10);
     fetchMock.mockClear();
 
@@ -164,7 +164,7 @@ describe("POST /wa/webhook", () => {
     expect(sent()[0].text.body).toBe("Thanks, a person will reply within 24 hours.");
     expect(await count("SELECT COUNT(*) n FROM attention WHERE kind = 'FREE_TEXT' AND resolved_at IS NULL")).toBe(1);
 
-    await post(text("wamid.F3", "hello?"));
+    await post(text("wamid.F3", "is anyone there"));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(await count("SELECT COUNT(*) n FROM attention")).toBe(1);
   });
@@ -316,7 +316,7 @@ describe("sendMessage", () => {
 
 describe("session offer follow-up", () => {
   const tap = (id: string) => inbound(id, { type: "button", button: { payload: "Choose a time", text: "Choose a time" } });
-  const lists = () => sent().filter((b) => b.interactive?.type === "list");
+  const lists = () => sent().filter((b) => b.interactive?.type === "button" && b.interactive.action.buttons[0].reply.id.startsWith("sday_")); // the day buttons
 
   // A greeted person with an intro CALLED_SESSION and a session in the given state.
   async function offered(state = "OFFERED") {
@@ -329,11 +329,11 @@ describe("session offer follow-up", () => {
     return conv;
   }
 
-  it("a text reply after an offer gets the slot list, no attention item", async () => {
+  it("a text reply after an offer gets the day buttons, no attention item", async () => {
     await offered();
     await post(text("wamid.F1", "ok please"));
     expect(lists()).toHaveLength(1);
-    expect(lists()[0].interactive.action.sections[0].rows[0].id).toMatch(/^sess_\d+_/);
+    expect(lists()[0].interactive.action.buttons[0].reply.id).toMatch(/^sday_\d+_\d{4}-\d{2}-\d{2}$/);
     expect(await count("SELECT COUNT(*) n FROM attention")).toBe(0);
   });
 
@@ -354,7 +354,7 @@ describe("session offer follow-up", () => {
     bookings = "true";
     await post(text("wamid.G0")); // greeting
     fetchMock.mockClear();
-    await post(text("wamid.G1", "hello"));
+    await post(text("wamid.G1", "hello, can you help me"));
     expect(lists()).toHaveLength(0);
     expect(await count("SELECT COUNT(*) n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(1);
     expect(sent()[0].text.body).toBeTruthy();

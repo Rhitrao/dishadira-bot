@@ -147,6 +147,40 @@ describe("access", () => {
   });
 });
 
+describe("talk to a person (HUMAN_REQUEST)", () => {
+  async function humanChat(mode = "HUMAN") {
+    const conv = await person();
+    await db.prepare("UPDATE conversations SET mode = ?2 WHERE id = ?1").bind(conv, mode).run();
+    const item = await attention("HUMAN_REQUEST", `conv:${conv}`);
+    return { conv, item };
+  }
+  it("shows the customer's messages with a reply box, and says what resolving does", async () => {
+    const { conv } = await humanChat();
+    await db.prepare("INSERT INTO messages (conversation_id,direction,kind,body,status) VALUES (?1,'IN','text','please call me back','RECEIVED')").bind(conv).run();
+    const page = await (await get("/admin")).text();
+    expect(page).toContain("HUMAN REQUEST");
+    expect(page).toContain("please call me back");
+    expect(page).toContain("<textarea");
+    expect(page).toContain("hands the chat back to the bot");
+  });
+  it("resolving the item sets the chat back to BOT, with an audit row", async () => {
+    const { conv } = await humanChat();
+    expect((await press("resolve")).headers.get("Location")).toBe("/admin?m=resolved");
+    expect(await db.prepare("SELECT mode FROM conversations WHERE id = ?1").bind(conv).first()).toEqual({ mode: "BOT" });
+    expect(await count("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'ADMIN_HUMAN_DONE'")).toBe(1);
+  });
+  it("a blocked chat stays blocked, and other items leave a HUMAN chat as it is", async () => {
+    const blocked = await humanChat("BLOCKED");
+    await press("resolve");
+    expect(await db.prepare("SELECT mode FROM conversations WHERE id = ?1").bind(blocked.conv).first()).toEqual({ mode: "BLOCKED" });
+    const human = await person();
+    await db.prepare("UPDATE conversations SET mode = 'HUMAN' WHERE id = ?1").bind(human).run();
+    await attention("FREE_TEXT", `conv:${human}`);
+    await press("resolve");
+    expect(await db.prepare("SELECT mode FROM conversations WHERE id = ?1").bind(human).first()).toEqual({ mode: "HUMAN" });
+  });
+});
+
 describe("reply box", () => {
   it("refused outside the 24h window (even if forced), sent inside it", async () => {
     const old = await person({ lastUserAt: "2026-10-03T09:00:00Z" });

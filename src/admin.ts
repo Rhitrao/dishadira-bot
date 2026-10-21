@@ -60,11 +60,13 @@ const WORDS: Record<string, string> = {
   NOT_FIT_REFUND_REFUSED: "Amma said 'not right fit' but the refund limit (once per person, daily cap) stopped it. Nothing was sent.",
   NOT_FIT_NO_PAYMENT: "Amma said 'not right fit' but no paid payment was found.",
   UNKNOWN_PAYMENT_LINK: "A payment event arrived for a link we do not know.",
+  HUMAN_REQUEST: "A customer tapped 'Talk to a person'. The bot is quiet in this chat until you resolve this: resolving hands the chat back to the bot.",
+  MEDIA_FROM_CUSTOMER: "A customer with a booking, a held time or a payment in progress sent a photo, voice note or file (never downloaded). It may be a payment screenshot.",
   AMMA_NO_TAP: `Amma has not tapped an outcome ${config.limits.ammaTapReminderHours} hours after a call.`,
   AMMA_AWAY_CALL: "Amma is away. This call is booked: offer a new time or refund.",
   AMMA_AWAY_SESSION: "Amma is away. This session is booked: offer a new time or refund.",
 };
-const REPLY_KINDS = ["FREE_TEXT", "OUTSIDE_WINDOW", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION", "LATE_PAYMENT_NO_SLOT"];
+const REPLY_KINDS = ["FREE_TEXT", "HUMAN_REQUEST", "MEDIA_FROM_CUSTOMER", "OUTSIDE_WINDOW", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION", "LATE_PAYMENT_NO_SLOT"];
 const REFUND_KINDS = ["LATE_PAYMENT_NO_SLOT", "PAYMENT_MISMATCH", "DUPLICATE_PAYMENT", "REFUND_FAILED", "REFUND_STUCK", "OUTCOME_FAILED", "NOT_FIT_REFUND_REFUSED", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION"];
 
 type Item = { id: number; kind: string; target: string | null; createdAt: string };
@@ -219,6 +221,12 @@ admin.post("/resolve", (c) =>
     const res = await resolveItem(c, item.id);
     if (!res.meta.changes) return "gone";
     await audit(c, "ADMIN_RESOLVE", `attention:${item.id}`, `${item.kind}: ${String(f.note ?? "").slice(0, 200)}`);
+    if (item.kind === "HUMAN_REQUEST") {
+      // The person asked for a human and one has now answered: the chat goes back to the bot (a blocked chat stays blocked).
+      const conv = await convOf(c.env, item.target);
+      const back = conv ? await c.env.DB.prepare("UPDATE conversations SET mode = 'BOT' WHERE id = ?1 AND mode = 'HUMAN'").bind(conv.id).run() : null;
+      if (back?.meta.changes) await audit(c, "ADMIN_HUMAN_DONE", `conv:${conv!.id}`, "mode HUMAN -> BOT");
+    }
     return "resolved";
   }),
 );

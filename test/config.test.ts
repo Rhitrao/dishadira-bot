@@ -38,7 +38,7 @@ describe("config", () => {
   });
 
   it("lists languages, services and FAQ ids", () => {
-    expect(config.languages).toEqual(["en", "kn"]);
+    expect(config.languages).toEqual(["en", "hi"]);
     expect(config.services).toHaveLength(2);
     expect(new Set(config.faqIds).size).toBe(config.faqIds.length);
   });

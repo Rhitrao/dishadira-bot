@@ -296,12 +296,18 @@ describe("₹700 session", () => {
     expect(waSent().filter((m) => m.interactive?.type === "list")).toHaveLength(0);
   });
 
-  it("choose a time -> list (max 10 rows) -> hold + payment + link expiring with the hold -> paid -> CONFIRMED", async () => {
+  it("choose a time -> days -> times (max 10 rows) -> hold + payment + link expiring with the hold -> paid -> CONFIRMED", async () => {
     const a = await offered();
     await sessionChoice(env(), `sess_offer_${a.sid}`, a.conv, "m1");
-    const rows: { id: string; title: string }[] = waSent().find((m) => m.interactive?.type === "list").interactive.action.sections[0].rows;
-    expect(rows.length).toBeGreaterThan(0);
+    const days: { reply: { id: string } }[] = waSent().find((m) => m.interactive?.type === "button").interactive.action.buttons;
+    expect(days.length).toBeGreaterThan(0);
+    expect(days.length).toBeLessThanOrEqual(3);
+    expect(days[0].reply.id).toMatch(new RegExp(`^sday_${a.sid}_\\d{4}-\\d{2}-\\d{2}$`));
+    await sessionChoice(env(), days[0].reply.id, a.conv, "m1b");
+    const rows: { id: string; title: string }[] = waSent().find((m) => m.interactive?.type === "list").interactive.action.sections.flatMap((x: { rows: never[] }) => x.rows);
+    expect(rows.length).toBeGreaterThan(1);
     expect(rows.length).toBeLessThanOrEqual(10);
+    expect(rows.at(-1)!.id).toBe(`smore_${a.sid}`); // "Another day"
     expect(rows[0].id).toBe(`sess_${a.sid}_${rows[0].id.split("_")[2]}`);
 
     await sessionChoice(env(), rows[0].id, a.conv, "m2");
@@ -319,7 +325,7 @@ describe("₹700 session", () => {
     expect(await db.prepare("SELECT state FROM slots WHERE kind = 'SESSION' AND start_utc = ?1").bind(start).first()).toEqual({ state: "BOOKED" });
     const text: string = waSent().at(-1).text.body;
     expect(text).toContain("distance session");
-    expect(text).toMatch(/confirmed for \w{3} \d+ \w{3} at \d+:\d\d[ap]m/);
+    expect(text).toMatch(/confirmed for \w{3}, \d+ \w{3} at \d+:\d\d [ap]m/);
     await hook(paidEvent(pay.link, "700.00", "2026-10-05T12:00:01+05:30")); // replay
     expect(waSent().filter((m) => m.text?.body?.includes("distance session"))).toHaveLength(1);
   });

@@ -1,12 +1,13 @@
 import type { Context } from "hono";
 import { z } from "zod";
 import { config } from "./config";
-import { copyFor, LANGUAGE_BUTTONS } from "./copy";
+import { copyFor, LANGUAGE_BUTTONS, type Copy } from "./copy";
 import type { Env } from "./env";
 import { bookingChoice } from "./booking";
 import { rescheduleChoice } from "./outcomes";
 import { openOfferId, sessionChoice } from "./session";
 import { raiseAttention, sendMessage, type Out } from "./send";
+import { iso, istDay } from "./slots";
 
 type C = Context<{ Bindings: Env }>;
 
@@ -183,6 +184,48 @@ async function handleStatus(env: Env, s: { id: string; status: string }): Promis
   }
 }
 
+// A text that is only a greeting or menu word: lower-cased, with spaces, punctuation and emoji ignored ("Hello 🙏!" -> "hello").
+export function plainWord(text: string): string {
+  return text
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[\u200d\ufe0f]/g, "")
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+const MENU_WORDS = new Set(config.menuWords.map(plainWord));
+export const isMenuWord = (text: string) => MENU_WORDS.has(plainWord(text));
+
+// Messages that are not text and not a button tap. They are never downloaded.
+const MEDIA_TYPES = new Set(["audio", "image", "video", "sticker", "document", "location", "contacts"]);
+
+// A hold that has not lapsed, a payment link still open, or a booking (upcoming, or finished in the last 30 days).
+// A photo or voice note from such a person may be a payment screenshot, so a human should look.
+async function hasBookingContext(db: Env["DB"], convId: number, nowMs = Date.now()): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT 1 FROM conversations c WHERE c.id = ?1 AND (
+         EXISTS (SELECT 1 FROM slots WHERE owner_id = ?1 AND ((state = 'HELD' AND hold_until > ?2) OR (state = 'BOOKED' AND end_utc > ?3)))
+         OR EXISTS (SELECT 1 FROM payments p WHERE p.state IN ('CREATING', 'PENDING') AND p.created_at > ?4 AND (
+              (p.purpose = 'INTRO' AND p.target_id IN (SELECT id FROM intros WHERE conversation_id = ?1))
+              OR (p.purpose = 'SESSION' AND p.target_id IN (SELECT id FROM sessions WHERE conversation_id = ?1)))))`,
+    )
+    .bind(convId, iso(nowMs), iso(nowMs - 30 * 86_400_000), iso(nowMs - 86_400_000))
+    .first();
+  return row !== null;
+}
+
+const menuOut = (cp: Copy): Out => ({
+  type: "buttons",
+  body: cp.menuBody,
+  buttons: [
+    { id: "menu_book", title: cp.btnBook },
+    { id: "menu_how", title: cp.btnHow },
+    { id: "menu_person", title: cp.btnPerson },
+  ],
+});
+
 async function handleMessage(env: Env, m: Msg, from: string, name: string | undefined): Promise<void> {
   const db = env.DB;
   const secs = Number(m.timestamp);
@@ -202,7 +245,10 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     .prepare("UPDATE conversations SET mode = 'BLOCKED' WHERE wa_id = ?1 AND mode != 'BLOCKED' AND EXISTS (SELECT 1 FROM blocks WHERE wa_id = ?1)")
     .bind(from)
     .run();
-  const conv = await db.prepare("SELECT id, mode, locale FROM conversations WHERE wa_id = ?1").bind(from).first<{ id: number; mode: string; locale: string }>();
+  const conv = await db
+    .prepare("SELECT id, mode, locale, first_question_msg AS firstQuestion FROM conversations WHERE wa_id = ?1")
+    .bind(from)
+    .first<{ id: number; mode: string; locale: string; firstQuestion: string | null }>();
   if (!conv) throw new Error("conversation missing");
 
   const choice = m.interactive?.button_reply?.id ?? m.interactive?.list_reply?.id ?? null;
@@ -212,28 +258,20 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     .bind(conv.id, m.id, m.type, text, at)
     .run();
 
-  if (conv.mode !== "BOT") return; // BLOCKED and HUMAN conversations get no bot replies
+  if (conv.mode === "BLOCKED") return; // blocked people get no bot replies
 
   const cp = copyFor(conv.locale);
   const send = (out: Out, step: string) => sendMessage(env, conv.id, out, `${m.id}:${step}`);
-  const menu = (c2: typeof cp, step: string) =>
-    send(
-      {
-        type: "buttons",
-        body: c2.menuBody,
-        buttons: [
-          { id: "menu_book", title: c2.btnBook },
-          { id: "menu_how", title: c2.btnHow },
-          { id: "menu_ask", title: c2.btnAsk },
-        ],
-      },
-      step,
-    );
+  const menu = (c2: Copy, step: string) => send(menuOut(c2), step);
 
-  // First contact: greeting + language choice, once per person ever (the key is per conversation).
+  // First contact: one bilingual greeting + the two language buttons, once per person ever (the key is per conversation).
   // Only a message that really went out counts: a SKIPPED row (SENDS was off) or a FAILED one is not a greeting.
+  // If this first message was a real question (not a menu word), its id is kept and it is answered after the language tap.
   const greeted = await db.prepare(`SELECT 1 FROM messages WHERE dedupe_key = ?1 AND status IN ${WENT_OUT}`).bind(`greet:${conv.id}`).first();
   if (!greeted) {
+    if (text !== null && plainWord(text) !== "" && !isMenuWord(text)) {
+      await db.prepare("UPDATE conversations SET first_question_msg = COALESCE(first_question_msg, ?2) WHERE id = ?1").bind(conv.id, m.id).run();
+    }
     await sendMessage(
       env,
       conv.id,
@@ -242,7 +280,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
         body: cp.greeting,
         buttons: [
           { id: "lang_en", title: LANGUAGE_BUTTONS.en },
-          { id: "lang_kn", title: LANGUAGE_BUTTONS.kn },
+          { id: "lang_hi", title: LANGUAGE_BUTTONS.hi },
         ],
       },
       `greet:${conv.id}`,
@@ -250,10 +288,24 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     return;
   }
 
-  if (choice === "lang_en" || choice === "lang_kn") {
-    const locale = choice === "lang_kn" ? "kn" : "en";
-    await db.prepare("UPDATE conversations SET locale = ?2, consent_at = COALESCE(consent_at, ?3) WHERE id = ?1").bind(conv.id, locale, nowIso()).run();
-    await menu(copyFor(locale), "menu");
+  // HUMAN: button taps (booking, menu, FAQ, language) still work; typed text waits for Rohit in /admin and gets no bot reply.
+  const isTap = choice !== null || m.type === "button";
+  if (conv.mode !== "BOT" && !isTap) {
+    if (MEDIA_TYPES.has(m.type) && (await hasBookingContext(db, conv.id))) await raiseAttention(db, "MEDIA_FROM_CUSTOMER", `conv:${conv.id}`);
+    return;
+  }
+
+  // lang_kn: a language button from before Hindi replaced the third language; those chats continue in English.
+  if (choice === "lang_en" || choice === "lang_hi" || choice === "lang_kn") {
+    const locale = choice === "lang_hi" ? "hi" : "en";
+    await db.prepare("UPDATE conversations SET locale = ?2, consent_at = COALESCE(consent_at, ?3), first_question_msg = NULL WHERE id = ?1").bind(conv.id, locale, nowIso()).run();
+    const cp2 = copyFor(locale);
+    if (conv.firstQuestion) {
+      // Until the AI exists (ticket 13) a first-message question gets what any typed question gets: one acknowledgement and an item for Rohit.
+      await raiseAttention(db, "FREE_TEXT", `conv:${conv.id}`);
+      await sendMessage(env, conv.id, { type: "text", text: cp2.ack }, `${conv.firstQuestion}:ack`);
+    }
+    await menu(cp2, "menu");
     return;
   }
   if (await bookingChoice(env, choice, conv.id, m.id)) return;
@@ -265,13 +317,34 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
         type: "list",
         body: cp.faqBody,
         button: cp.faqButton,
-        rows: config.faqIds.map((id) => ({ id: `faq_${id}`, title: cp.faqTitles[id] })),
+        rows: [...config.faqIds.map((id) => ({ id: `faq_${id}`, title: cp.faqTitles[id] })), { id: "menu_lang", title: cp.changeLanguageRow }],
       },
       "faq",
     );
     return;
   }
+  if (choice === "menu_lang") {
+    await send(
+      {
+        type: "buttons",
+        body: cp.chooseLanguage,
+        buttons: [
+          { id: "lang_en", title: LANGUAGE_BUTTONS.en },
+          { id: "lang_hi", title: LANGUAGE_BUTTONS.hi },
+        ],
+      },
+      "lang",
+    );
+    return;
+  }
+  if (choice === "menu_person") {
+    await db.prepare("UPDATE conversations SET mode = 'HUMAN' WHERE id = ?1 AND mode = 'BOT'").bind(conv.id).run();
+    await raiseAttention(db, "HUMAN_REQUEST", `conv:${conv.id}`); // at most one open item per person
+    await send({ type: "text", text: cp.handoffAck }, "handoff");
+    return;
+  }
   if (choice === "menu_ask") {
+    // The old "Ask a question" button, still sitting in older chats.
     await send({ type: "text", text: cp.askPrompt }, "ask");
     return;
   }
@@ -282,10 +355,29 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     return;
   }
 
-  // Any text, or a template quick-reply tap, from someone with an open session offer gets the slot list.
+  // Not text: voice note, image, video, sticker, document, location, contact. Never downloaded.
+  if (MEDIA_TYPES.has(m.type)) {
+    if (await hasBookingContext(db, conv.id)) {
+      await raiseAttention(db, "MEDIA_FROM_CUSTOMER", `conv:${conv.id}`);
+      await send({ type: "text", text: cp.mediaNoticeCustomer }, "media");
+      return;
+    }
+    // Everyone else: the first one each (India) day gets the notice and the menu; later ones get nothing.
+    const first = await sendMessage(env, conv.id, { type: "text", text: cp.mediaNotice }, `media:${conv.id}:${istDay(Date.now())}`);
+    if (first !== "DUPLICATE") await menu(cp, "menu");
+    return;
+  }
+
+  // Any text, or a template quick-reply tap, from someone with an open session offer gets the session days.
   if (m.type === "text" || m.type === "button") {
     const sid = await openOfferId(db, conv.id);
     if (sid && (await sessionChoice(env, `sess_offer_${sid}`, conv.id, m.id))) return;
+  }
+
+  // A text that is only a greeting or menu word gets the menu: no attention item, no ack.
+  if (text !== null && isMenuWord(text)) {
+    await menu(cp, "menu");
+    return;
   }
 
   // Anything else is free text: stays BOT, raises attention, one acknowledgement per 24h.

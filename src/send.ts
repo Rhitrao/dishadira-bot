@@ -1,14 +1,20 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { config } from "./config";
+import { langOf } from "./copy";
 import type { Env } from "./env";
 import { sendsOn } from "./switches";
 
+export type ListRow = { id: string; title: string; description?: string };
+export type ListSection = { title: string; rows: ListRow[] };
+export type TemplateName = keyof typeof config.templates;
 export type Out =
   | { type: "text"; text: string }
   | { type: "buttons"; body: string; buttons: { id: string; title: string }[] }
-  | { type: "list"; body: string; button: string; rows: { id: string; title: string }[] }
+  // `rows` is one section titled like the button; `sections` is for lists that need their own section titles.
+  | { type: "list"; body: string; button: string; rows?: ListRow[]; sections?: ListSection[] }
   | { type: "cta"; body: string; label: string; url: string }
-  | { type: "template"; name: keyof typeof config.templates; params: string[] };
+  // `params` are the English wording's values; `paramsHi` the Hindi wording's (a Hindi person who gets the English template gets `params`).
+  | { type: "template"; name: TemplateName; params: string[]; paramsHi?: string[] };
 
 export type SendResult =
   | "SENT" | "FAILED" | "UNKNOWN" | "SKIPPED" // row written
@@ -27,10 +33,19 @@ export async function raiseAttention(db: D1Database, kind: string, target: strin
     .run();
 }
 
-// Meta limits: 3 reply buttons, 20-char button titles, 10 list rows, 24-char row titles, 20-char list button and CTA label.
-// A list section needs a title (docs for v26 list it as required, max 24 chars); the button text doubles as that title.
-export function buildPayload(out: Out, to: string): Record<string, unknown> {
+// The template a person gets: the Hindi one for Hindi chats once Meta has approved it, otherwise the English one.
+export function templateVariant(out: Extract<Out, { type: "template" }>, locale: string) {
+  const t = config.templates[out.name];
+  if (langOf(locale) === "hi" && t.hi.approved) return { name: t.hi.name, language: t.hi.language, params: out.paramsHi ?? out.params, approved: true };
+  return { name: out.name as string, language: t.language, params: out.params, approved: t.approved };
+}
+
+// Meta limits: 3 reply buttons, 20-char button titles, 10 list rows in all, 24-char row and section titles, 72-char row descriptions,
+// 20-char list button and CTA label, 1024-char bodies. A list section needs a title (docs for v26 list it as required);
+// without `sections` the button text doubles as the one section's title.
+export function buildPayload(out: Out, to: string, locale = "en"): Record<string, unknown> {
   const base = { messaging_product: "whatsapp", recipient_type: "individual", to };
+  if (out.type !== "template" && out.type !== "text" && out.body.length > 1024) throw new Error("body over 1024 chars");
   switch (out.type) {
     case "text":
       return { ...base, type: "text", text: { body: out.text } };
@@ -46,9 +61,14 @@ export function buildPayload(out: Out, to: string): Record<string, unknown> {
           action: { buttons: out.buttons.map((b) => ({ type: "reply", reply: { id: b.id, title: b.title } })) },
         },
       };
-    case "list":
-      if (out.rows.length < 1 || out.rows.length > 10) throw new Error("list: 1 to 10 rows");
-      if (out.rows.some((r) => r.title.length > 24)) throw new Error("row title over 24 chars");
+    case "list": {
+      const sections = out.sections ?? [{ title: out.button, rows: out.rows ?? [] }];
+      const rows = sections.flatMap((x) => x.rows);
+      if (rows.length < 1 || rows.length > 10) throw new Error("list: 1 to 10 rows");
+      if (sections.some((x) => x.rows.length === 0)) throw new Error("list: empty section");
+      if (sections.some((x) => x.title.length < 1 || x.title.length > 24)) throw new Error("section title: 1 to 24 chars");
+      if (rows.some((r) => r.title.length < 1 || r.title.length > 24)) throw new Error("row title over 24 chars");
+      if (rows.some((r) => (r.description?.length ?? 0) > 72)) throw new Error("row description over 72 chars");
       if (out.button.length < 1 || out.button.length > 20) throw new Error("list button text: 1 to 20 chars");
       return {
         ...base,
@@ -56,9 +76,16 @@ export function buildPayload(out: Out, to: string): Record<string, unknown> {
         interactive: {
           type: "list",
           body: { text: out.body },
-          action: { button: out.button, sections: [{ title: out.button, rows: out.rows.map((r) => ({ id: r.id, title: r.title })) }] },
+          action: {
+            button: out.button,
+            sections: sections.map((x) => ({
+              title: x.title,
+              rows: x.rows.map((r) => ({ id: r.id, title: r.title, ...(r.description ? { description: r.description } : {}) })),
+            })),
+          },
         },
       };
+    }
     case "cta":
       if (out.label.length > 20) throw new Error("CTA label over 20 chars");
       return {
@@ -70,16 +97,18 @@ export function buildPayload(out: Out, to: string): Record<string, unknown> {
           action: { name: "cta_url", parameters: { display_text: out.label, url: out.url } },
         },
       };
-    case "template":
+    case "template": {
+      const v = templateVariant(out, locale);
       return {
         ...base,
         type: "template",
         template: {
-          name: out.name,
-          language: { code: config.templates[out.name].language },
-          ...(out.params.length ? { components: [{ type: "body", parameters: out.params.map((text) => ({ type: "text", text })) }] } : {}),
+          name: v.name,
+          language: { code: v.language },
+          ...(v.params.length ? { components: [{ type: "body", parameters: v.params.map((text) => ({ type: "text", text })) }] } : {}),
         },
       };
+    }
   }
 }
 
@@ -89,13 +118,13 @@ const summary = (out: Out) => (out.type === "template" ? `template:${out.name}` 
 export async function sendMessage(env: Env, conversationId: number, out: Out, dedupeKey: string): Promise<SendResult> {
   const db = env.DB;
   const conv = await db
-    .prepare("SELECT wa_id, mode, last_user_at FROM conversations WHERE id = ?1")
+    .prepare("SELECT wa_id, mode, locale, last_user_at FROM conversations WHERE id = ?1")
     .bind(conversationId)
-    .first<{ wa_id: string; mode: string; last_user_at: string | null }>();
+    .first<{ wa_id: string; mode: string; locale: string; last_user_at: string | null }>();
   if (!conv || conv.mode === "BLOCKED") return "BLOCKED";
 
   if (out.type === "template") {
-    if (!config.templates[out.name]?.approved) {
+    if (!templateVariant(out, conv.locale).approved) {
       await raiseAttention(db, "TEMPLATE_UNAPPROVED", `${out.name}:conv:${conversationId}`);
       return "TEMPLATE_UNAPPROVED";
     }
@@ -107,7 +136,7 @@ export async function sendMessage(env: Env, conversationId: number, out: Out, de
     }
   }
 
-  const payload = buildPayload(out, conv.wa_id); // throws on bad shape, before anything is stored
+  const payload = buildPayload(out, conv.wa_id, conv.locale); // throws on bad shape, before anything is stored
 
   const ins = await db
     .prepare("INSERT OR IGNORE INTO messages (conversation_id, direction, dedupe_key, kind, body) VALUES (?1, 'OUT', ?2, ?3, ?4)")
