@@ -7,6 +7,8 @@ import { config } from "./config";
 import type { Env } from "./env";
 import { heartbeatStale, sendAlerts } from "./mail";
 import { ensureState, noSellActiveFor, personState, quietActive } from "./noise";
+import { markManualRefund, refundUnused, unusedOf } from "./packages";
+import { rupees } from "./copy";
 import { approveRefund, declineRefund, requestRefund, retryFailedRefund } from "./pay/refund";
 import { razorpay } from "./pay/razorpay";
 import { bookingsBetween, dayRange, firstName, scoreboard, scoreLines, type DayItem } from "./report";
@@ -27,6 +29,9 @@ const MSG: Record<string, string> = {
   blockedok: "Person blocked.", unblocked: "Person unblocked.", switched: "Switch updated.", envoff: "The env flag in wrangler.toml is off; a setting cannot turn it on.",
   done: "Saved.", notyet: "That session has not started yet.",
   cleared: "Strikes cleared and the quiet period ended.", nosellcleared: "Selling is allowed again for this person.",
+  packrefunded: "Refund started for the unused sessions. The balance is now 0.",
+  packmanual: "The balance is now 0. This payment is too old for Razorpay: pay it by bank or UPI, then tap \"Mark refunded by hand\".",
+  packstale: "The balance changed, or there is nothing to refund. Nothing was done.", manualdone: "Marked as refunded by hand.",
 };
 
 admin.use("*", async (c, next) => {
@@ -69,6 +74,11 @@ const WORDS: Record<string, string> = {
   AMMA_NO_TAP: `Amma has not tapped an outcome ${config.limits.ammaTapReminderHours} hours after a call.`,
   AMMA_AWAY_CALL: "Amma is away. This call is booked: offer a new time or refund.",
   AMMA_AWAY_SESSION: "Amma is away. This session is booked: offer a new time or refund.",
+  MANUAL_REFUND: `A package refund is for a payment older than ${config.sessionRules.razorpayRefundDays} days, which Razorpay cannot refund. The balance is already 0. Pay the customer by bank or UPI, then tap "Mark refunded by hand".`,
+  CANCEL_REFUND_FAILED: "A single session was cancelled in time, but the refund could not be started. Refund it from the payment.",
+  CANCEL_NO_PAYMENT: "A single session was cancelled in time, but no paid payment was found to refund.",
+  PAID_NO_PACKAGE: "A package payment arrived for a package we cannot find.",
+  PAID_PACKAGE_NOT_BOOKABLE: "A package payment arrived for a package that is already closed. Check it, then refund or resolve.",
 };
 const REPLY_KINDS = ["CRISIS", "EMERGENCY", "FREE_TEXT", "HUMAN_REQUEST", "MEDIA_FROM_CUSTOMER", "OUTSIDE_WINDOW", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION", "LATE_PAYMENT_NO_SLOT"];
 const REFUND_KINDS = ["LATE_PAYMENT_NO_SLOT", "PAYMENT_MISMATCH", "DUPLICATE_PAYMENT", "REFUND_FAILED", "REFUND_STUCK", "OUTCOME_FAILED", "NOT_FIT_REFUND_REFUSED", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION"];
@@ -77,14 +87,15 @@ type Item = { id: number; kind: string; target: string | null; createdAt: string
 type Conv = { id: number; waId: string; name: string | null; mode: string; lastUserAt: string | null };
 
 async function convOf(env: Env, target: string | null): Promise<Conv | null> {
-  const m = /(conv|intro|session|payment):(\d+)/.exec(target ?? "");
+  const m = /(conv|intro|session|payment|package):(\d+)/.exec(target ?? "");
   if (!m) return null;
   const id = Number(m[2]);
   const q: Record<string, string> = {
     conv: "c.id = ?1",
     intro: "c.id = (SELECT conversation_id FROM intros WHERE id = ?1)",
     session: "c.id = (SELECT conversation_id FROM sessions WHERE id = ?1)",
-    payment: `c.id = (SELECT CASE p.purpose WHEN 'INTRO' THEN (SELECT conversation_id FROM intros WHERE id = p.target_id) ELSE (SELECT conversation_id FROM sessions WHERE id = p.target_id) END FROM payments p WHERE p.id = ?1)`,
+    package: "c.id = (SELECT conversation_id FROM packages WHERE id = ?1)",
+    payment: `c.id = (SELECT CASE p.purpose WHEN 'INTRO' THEN (SELECT conversation_id FROM intros WHERE id = p.target_id) WHEN 'PACKAGE' THEN (SELECT conversation_id FROM packages WHERE id = p.target_id) ELSE (SELECT conversation_id FROM sessions WHERE id = p.target_id) END FROM payments p WHERE p.id = ?1)`,
   };
   return env.DB
     .prepare(`SELECT c.id, c.wa_id AS waId, c.display_name AS name, c.mode, c.last_user_at AS lastUserAt FROM conversations c WHERE ${q[m[1]]}`)
@@ -140,6 +151,15 @@ async function itemHtml(c: Ctx, it: Item) {
   } else if (REFUND_KINDS.includes(it.kind) && pay && (pay.refundState === "FAILED" || (!pay.refundState && ["PAID", "UNKNOWN"].includes(pay.state)))) {
     parts.push(await form(c, "refund", `refund:${it.id}`, { item: it.id }, pay.refundState === "FAILED" ? "Retry refund" : "Refund"));
   }
+  if (it.kind === "MANUAL_REFUND") {
+    const pid = Number(/^package:(\d+)$/.exec(it.target ?? "")?.[1]);
+    const pk = Number.isInteger(pid) ? await unusedOf(env.DB, pid) : null;
+    const gave = pk ? await env.DB.prepare("SELECT -delta AS n FROM credits WHERE package_id = ?1 AND reason = 'REFUND' ORDER BY id DESC LIMIT 1").bind(pid).first<{ n: number }>() : null;
+    if (pk && gave) {
+      parts.push(html`<div class="msg">Pay ${gave.n} unused × ${rupees(pk.price / pk.size)} = ${rupees(gave.n * (pk.price / pk.size))}</div>`);
+      parts.push(await form(c, "manual-paid", `manual-paid:${it.id}`, { item: it.id }, "Mark refunded by hand", "go"));
+    }
+  }
   if (conv) parts.push(html`<a class="btn" href="/admin/conv/${conv.id}">Open person</a>`);
   parts.push(await form(c, "resolve", `resolve:${it.id}`, { item: it.id }, "Resolve", "", html`<input type="text" name="note" maxlength="200" placeholder="Note (optional)">`));
   if (conv) {
@@ -157,7 +177,7 @@ async function bookingRow(c: Ctx, d: DayItem, nowStr: string) {
   const status = d.state.replaceAll("_", " ").toLowerCase();
   const past = d.startUtc <= nowStr;
   const btns =
-    d.kind === "SESSION" && d.state === "CONFIRMED" && past
+    d.kind === "SESSION" && ["CONFIRMED", "CREDIT_BOOKED"].includes(d.state) && past
       ? html`${await form(c, "session", `session:${d.id}:COMPLETED`, { id: d.id, v: "COMPLETED" }, "Completed", "go")}${await form(c, "session", `session:${d.id}:NO_SHOW`, { id: d.id, v: "NO_SHOW" }, "No-show")}`
       : "";
   return html`<div class="row"><div class="top">${formatIstParts(d.startUtc).time} · ${firstName(d.name)}</div><div class="sub">${d.kind === "CALL" ? "Call" : "Session"} · ${d.service} · ${status}</div>${btns}</div>`;
@@ -310,6 +330,18 @@ admin.get("/conv/:id", async (c) => {
   const m = c.req.query("m");
   const clearStrikes = await form(c, "clear-strikes", `clear-strikes:${id}`, { conv: id }, "Clear strikes / end quiet", "go");
   const clearNoSell = await form(c, "clear-nosell", `clear-nosell:${id}`, { conv: id }, "Clear no-sell", "go");
+  const packs = await c.env.DB.prepare("SELECT id FROM packages WHERE conversation_id = ?1 AND state IN ('PAID', 'CLOSED') ORDER BY id").bind(id).all<{ id: number }>();
+  const packBlock = packs.results.length
+    ? await Promise.all(
+        packs.results.map(async (r) => {
+          const pk = (await unusedOf(c.env.DB, r.id))!;
+          const rate = pk.price / pk.size;
+          return html`<div class="row"><div class="top">${pk.size} sessions · ${rupees(pk.price)}</div>
+<div class="sub">${pk.state === "CLOSED" ? "Closed. " : ""}Unused: ${pk.unused} × ${rupees(rate)} = ${rupees(pk.unused * rate)}</div>
+${pk.state === "PAID" && pk.unused > 0 ? html`<a class="btn red" href="/admin/pack-refund/${pk.id}">Refund unused sessions</a>` : ""}</div>`;
+        }),
+      )
+    : html`<p class="msg">No packages.</p>`;
   return c.html(html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>Disha Dira admin</title><style>${(CSS + "h3{font-size:22px;margin:16px 0 4px}.red{color:#b00000;border-color:#b00000}") as unknown as never}</style></head><body>
 <h1>${firstName(conv.name)} · …${conv.waId.slice(-4)}</h1>${m && MSG[m] ? html`<p class="msg"><b>${MSG[m]}</b></p>` : ""}
@@ -319,8 +351,45 @@ admin.get("/conv/:id", async (c) => {
 <div>No selling until: ${noSell ? when(st.noSellUntil) : "selling is allowed"}</div>
 <div>Opted out of messages: ${st.optedOutAt ? `yes, since ${when(st.optedOutAt)}` : "no"}</div></div>
 ${clearStrikes}${clearNoSell}
+<h2>Packages</h2>${packBlock}
 <a class="btn" href="/admin">Back</a></body></html>`);
 });
+
+// ---- packages: "Refund unused sessions" shows unused × rate and asks again before anything happens ----
+admin.get("/pack-refund/:pid", async (c) => {
+  const pid = Number(c.req.param("pid"));
+  const pk = Number.isInteger(pid) ? await unusedOf(c.env.DB, pid) : null;
+  if (!pk || pk.state !== "PAID" || pk.unused <= 0) return c.redirect("/admin?m=packstale", 303);
+  const rate = pk.price / pk.size;
+  const confirmForm = await form(c, "pack-refund", `pack-refund:${pid}:${pk.unused}`, { pkg: pid, unused: pk.unused }, `Yes, refund ${rupees(pk.unused * rate)}`, "red");
+  return c.html(html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Disha Dira admin</title><style>${(CSS + ".red{color:#b00000;border-color:#b00000}") as unknown as never}</style></head><body>
+<h1>Refund unused sessions</h1>
+<div class="row"><div class="top">${pk.unused} unused × ${rupees(rate)} = ${rupees(pk.unused * rate)}</div>
+<div class="sub">${pk.size}-session package, ${rupees(pk.price)}. The balance goes to 0 and the money goes back to the original payment method${pk.paidAt && Date.now() - Date.parse(pk.paidAt) >= config.sessionRules.razorpayRefundDays * 86_400_000 ? ". This payment is older than " + config.sessionRules.razorpayRefundDays + " days, so you pay it by hand" : ""}.</div></div>
+${confirmForm}<a class="btn" href="/admin/conv/${pk.conv}">Back</a></body></html>`);
+});
+
+admin.post("/pack-refund", async (c) => {
+  const f = await c.req.parseBody();
+  const pid = Number(f.pkg);
+  const unused = Number(f.unused);
+  if (!Number.isInteger(pid) || !Number.isInteger(unused) || f.csrf !== (await csrf(c.get("jwt"), `pack-refund:${pid}:${unused}`))) return bad(c);
+  const res = await refundUnused(c.env, razorpay(c.env), pid, unused, c.get("email"));
+  if (res.kind === "NOTHING" || res.kind === "STALE") return back(c, "packstale");
+  await audit(c, "ADMIN_PACKAGE_REFUND", `package:${pid}`, `${res.unused} unused, ${rupees(res.paise)}, ${res.kind === "MANUAL" ? "by hand" : "Razorpay"}`);
+  return back(c, res.kind === "MANUAL" ? "packmanual" : "packrefunded");
+});
+
+admin.post("/manual-paid", (c) =>
+  itemAction(c, "manual-paid", async (item) => {
+    const pid = Number(/^package:(\d+)$/.exec(item.target ?? "")?.[1]);
+    if (item.kind !== "MANUAL_REFUND" || !Number.isInteger(pid) || !(await markManualRefund(c.env, pid, c.get("email")))) return "gone";
+    await resolveItem(c, item.id);
+    await audit(c, "ADMIN_MANUAL_REFUND_PAID", `package:${pid}`, "");
+    return "manualdone";
+  }),
+);
 
 async function stateAction(c: Ctx, scope: string, action: string, sql: string, code: string) {
   const f = await c.req.parseBody();
@@ -363,7 +432,7 @@ admin.post("/session", async (c) => {
   const v = f.v;
   if (!Number.isInteger(id) || (v !== "COMPLETED" && v !== "NO_SHOW") || f.csrf !== (await csrf(c.get("jwt"), `session:${id}:${v}`))) return bad(c);
   const res = await c.env.DB
-    .prepare("UPDATE sessions SET state = ?2, updated_at = ?3 WHERE id = ?1 AND state = 'CONFIRMED' AND slot_id IN (SELECT id FROM slots WHERE start_utc <= ?3)")
+    .prepare("UPDATE sessions SET state = ?2, updated_at = ?3 WHERE id = ?1 AND state IN ('CONFIRMED', 'CREDIT_BOOKED') AND slot_id IN (SELECT id FROM slots WHERE start_utc <= ?3)")
     .bind(id, v, nowIso())
     .run();
   if (!res.meta.changes) return back(c, "notyet");

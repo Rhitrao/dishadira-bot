@@ -4,6 +4,8 @@ import { config } from "./config";
 import { copyFor, LANGUAGE_BUTTONS, type Copy } from "./copy";
 import type { Env } from "./env";
 import { bookingChoice } from "./booking";
+import { bookingsChoice } from "./mybookings";
+import { creditBalance, packChoice, sessionOfferOut } from "./packages";
 import { classifyWithoutAI, gate, isMenuWord, plainWord } from "./gate";
 import { applyLabel, ensureState, noSellActive } from "./noise";
 import { rescheduleChoice } from "./outcomes";
@@ -200,7 +202,8 @@ async function hasBookingContext(db: Env["DB"], convId: number, nowMs = Date.now
          EXISTS (SELECT 1 FROM slots WHERE owner_id = ?1 AND ((state = 'HELD' AND hold_until > ?2) OR (state = 'BOOKED' AND end_utc > ?3)))
          OR EXISTS (SELECT 1 FROM payments p WHERE p.state IN ('CREATING', 'PENDING') AND p.created_at > ?4 AND (
               (p.purpose = 'INTRO' AND p.target_id IN (SELECT id FROM intros WHERE conversation_id = ?1))
-              OR (p.purpose = 'SESSION' AND p.target_id IN (SELECT id FROM sessions WHERE conversation_id = ?1)))))`,
+              OR (p.purpose = 'SESSION' AND p.target_id IN (SELECT id FROM sessions WHERE conversation_id = ?1))
+              OR (p.purpose = 'PACKAGE' AND p.target_id IN (SELECT id FROM packages WHERE conversation_id = ?1)))))`,
     )
     .bind(convId, iso(nowMs), iso(nowMs - 30 * 86_400_000), iso(nowMs - 86_400_000))
     .first();
@@ -208,15 +211,17 @@ async function hasBookingContext(db: Env["DB"], convId: number, nowMs = Date.now
 }
 
 
-// The menu. While nothing may be sold (after a crisis message) it has no Book button.
-const menuOut = (cp: Copy, noSell: boolean, body = cp.menuBody): Out => ({
+// The menu: [Book ₹99 call] [Sessions & packages] [Help]. While nothing may be sold (after a crisis message) it has neither selling button, and
+// shows Help and Talk to a person instead. `withPerson` (the fallback when the AI cannot answer or a budget is used up) swaps in Talk to a person
+// for Sessions & packages, because a person is the one thing that always works (Talk to a person is also in the Help list).
+const menuOut = (cp: Copy, noSell: boolean, body = cp.menuBody, withPerson = false): Out => ({
   type: "buttons",
   body,
-  buttons: [
-    ...(noSell ? [] : [{ id: "menu_book", title: cp.btnBook }]),
-    { id: "menu_how", title: cp.btnHow },
-    { id: "menu_person", title: cp.btnPerson },
-  ],
+  buttons: noSell
+    ? [{ id: "menu_how", title: cp.btnHelp }, { id: "menu_person", title: cp.btnPerson }]
+    : withPerson
+      ? [{ id: "menu_book", title: cp.btnBook }, { id: "menu_how", title: cp.btnHelp }, { id: "menu_person", title: cp.btnPerson }]
+      : [{ id: "menu_book", title: cp.btnBook }, { id: "menu_pack", title: cp.btnPackages }, { id: "menu_how", title: cp.btnHelp }],
 });
 
 type Conv = {
@@ -279,10 +284,12 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
   };
   const reply = async (out: Out, step: string): Promise<SendResult | "BURST"> => ((await burst(step, out.type)) ? "BURST" : sendMessage(env, conv.id, out, `${m.id}:${step}`));
   const menu = async (c2: Copy, step: string) => reply(menuOut(c2, await noSellActive(db, conv.id)), step);
-  // Someone with an open session offer who writes (or taps its template button) is shown the session days.
+  // Someone with an open session offer who writes (or taps its template button) is shown the options again: single session, 10 or 20.
   const openOffer = async (): Promise<boolean> => {
     const sid = await openOfferId(db, conv.id);
-    return sid !== null && (await sessionChoice(env, `sess_offer_${sid}`, conv.id, m.id));
+    if (sid === null) return false;
+    await reply(sessionOfferOut(cp, sid), "offer");
+    return true;
   };
 
   switch (decision) {
@@ -396,7 +403,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     if (decision === "BUDGET_FALLBACK") {
       await botAudit(db, "BUDGET_FALLBACK", `conv:${conv!.id}`);
       const noSell = await noSellActive(db, conv!.id);
-      await reply(menuOut(cp, noSell, noSell ? cp.aiFallbackNoSell : cp.aiFallback), "fallback");
+      await reply(menuOut(cp, noSell, noSell ? cp.aiFallbackNoSell : cp.aiFallback, true), "fallback");
       return;
     }
     // Anything else is free text: stays BOT, raises attention, one acknowledgement per 24h.
@@ -425,17 +432,25 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       await menu(cp2, "menu");
       return;
     }
-    if (choice === "menu_book") await db.prepare("UPDATE person_state SET book_tap_at = ?2 WHERE conversation_id = ?1").bind(conv!.id, nowIso()).run();
+    if (choice === "menu_book" || /^(pk|go|gate)_/.test(choice ?? "")) await db.prepare("UPDATE person_state SET book_tap_at = ?2 WHERE conversation_id = ?1").bind(conv!.id, nowIso()).run(); // a buying tap (warm leads in the digest)
     if (await bookingChoice(env, choice, conv!.id, m.id)) return;
     if (await sessionChoice(env, choice, conv!.id, m.id)) return;
+    if (await packChoice(env, choice, conv!.id, m.id)) return;
+    if (await bookingsChoice(env, choice, conv!.id, m.id)) return;
     if (await rescheduleChoice(env, choice, conv!.id, m.id)) return;
     if (choice === "menu_how") {
+      // Help: the 6 answers, then My bookings, Talk to a person and Change language (9 rows).
       await reply(
         {
           type: "list",
-          body: cp.faqBody,
+          body: cp.helpListBody,
           button: cp.faqButton,
-          rows: [...config.faqIds.map((id) => ({ id: `faq_${id}`, title: cp.faqTitles[id] })), { id: "menu_lang", title: cp.changeLanguageRow }],
+          rows: [
+            ...config.faqIds.map((id) => ({ id: `faq_${id}`, title: cp.faqTitles[id] })),
+            { id: "menu_bookings", title: cp.rowMyBookings },
+            { id: "menu_person", title: cp.btnPerson },
+            { id: "menu_lang", title: cp.changeLanguageRow },
+          ],
         },
         "faq",
       );
@@ -468,8 +483,10 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     }
     if (choice === "book_keep") return; // "Keep it" under the already-booked message: nothing to do
     if (choice === null) {
-      // A template quick-reply tap: the session days if an offer is open, otherwise it is treated like free text.
+      // A template quick-reply tap: the options if an offer is open; "Book a session" (package_confirmed) for someone with sessions left;
+      // otherwise it is treated like free text.
       if (await openOffer()) return;
+      if (m.type === "button" && (await creditBalance(db, conv!.id)) > 0 && (await packChoice(env, "bk_new", conv!.id, m.id))) return;
       await classified("TO_CLASSIFIER");
     }
     // Any other id (an old or unknown button): nothing.

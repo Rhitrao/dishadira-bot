@@ -21,7 +21,7 @@ export async function scoreboard(env: Env, nowMs = Date.now()): Promise<Scoreboa
     newChats: await n("SELECT COUNT(*) AS n FROM conversations WHERE created_at >= ?1"),
     introPaid: await n(`SELECT COUNT(*) AS n FROM payments WHERE purpose = 'INTRO' AND state IN ${PAID_LIKE} AND created_at >= ?1`),
     callsDone: await n("SELECT COUNT(*) AS n FROM intros WHERE state IN ('CALLED_SESSION','CALLED_NOT_FIT','RUDE') AND updated_at >= ?1"),
-    sessionsSuggested: await n("SELECT COUNT(*) AS n FROM sessions WHERE created_at >= ?1"),
+    sessionsSuggested: await n("SELECT COUNT(*) AS n FROM sessions WHERE origin = 'AMMA' AND created_at >= ?1"),
     sessionPaid: await n(`SELECT COUNT(*) AS n FROM payments WHERE purpose = 'SESSION' AND state IN ${PAID_LIKE} AND created_at >= ?1`),
     refunds: refunds.n,
     refundPaise: refunds.paise,
@@ -30,10 +30,10 @@ export async function scoreboard(env: Env, nowMs = Date.now()): Promise<Scoreboa
 
 export const scoreLines = (s: Scoreboard) => [
   `New chats: ${s.newChats}`,
-  `${rupees(config.prices.introPaise)} paid: ${s.introPaid}`,
+  `${rupees(config.prices.intro)} paid: ${s.introPaid}`,
   `Calls done: ${s.callsDone}`,
   `Sessions suggested: ${s.sessionsSuggested}`,
-  `${rupees(config.prices.sessionPaise)} paid: ${s.sessionPaid}`,
+  `${rupees(config.prices.single)} paid: ${s.sessionPaid}`,
   `Refunds: ${s.refunds} (${rupees(s.refundPaise)})`,
 ];
 
@@ -53,7 +53,7 @@ export async function bookingsBetween(env: Env, fromUtc: string, toUtc: string):
     .prepare(
       `SELECT s.start_utc AS startUtc, c.display_name AS name, se.service, se.id, se.state FROM sessions se JOIN slots s ON s.id = se.slot_id
        JOIN conversations c ON c.id = se.conversation_id
-       WHERE s.kind = 'SESSION' AND se.state IN ('CONFIRMED','COMPLETED','NO_SHOW','CANCELLED') AND s.start_utc >= ?1 AND s.start_utc < ?2`,
+       WHERE s.kind = 'SESSION' AND se.state IN ('CONFIRMED','CREDIT_BOOKED','COMPLETED','NO_SHOW','CANCELLED','NOT_FIT') AND s.start_utc >= ?1 AND s.start_utc < ?2`,
     )
     .bind(fromUtc, toUtc)
     .all<Omit<DayItem, "kind">>();
@@ -91,15 +91,36 @@ export async function warmLeads(env: Env, nowMs = Date.now()): Promise<{ id: num
        WHERE c.mode != 'BLOCKED' AND ps.opted_out_at IS NULL AND (ps.no_sell_until IS NULL OR ps.no_sell_until <= ?1)
          AND (ps.book_tap_at >= ?2
            OR EXISTS (SELECT 1 FROM intros i JOIN slots s ON s.id = i.slot_id WHERE i.conversation_id = c.id AND i.created_at >= ?2 AND (i.state = 'EXPIRED' OR (i.state = 'HELD' AND s.hold_until < ?1)))
-           OR EXISTS (SELECT 1 FROM sessions se JOIN slots s ON s.id = se.slot_id WHERE se.conversation_id = c.id AND se.created_at >= ?2 AND (se.state = 'EXPIRED' OR (se.state = 'HELD' AND s.hold_until < ?1))))
+           OR EXISTS (SELECT 1 FROM sessions se JOIN slots s ON s.id = se.slot_id WHERE se.conversation_id = c.id AND se.created_at >= ?2 AND (se.state = 'EXPIRED' OR (se.state = 'HELD' AND s.hold_until < ?1)))
+           OR EXISTS (SELECT 1 FROM packages k WHERE k.conversation_id = c.id AND k.created_at >= ?2 AND (k.state = 'EXPIRED' OR (k.state = 'PENDING' AND k.created_at < ?3))))
          AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.state IN ${paid} AND (
            (p.purpose = 'INTRO' AND p.target_id IN (SELECT id FROM intros WHERE conversation_id = c.id))
-           OR (p.purpose = 'SESSION' AND p.target_id IN (SELECT id FROM sessions WHERE conversation_id = c.id))))
+           OR (p.purpose = 'SESSION' AND p.target_id IN (SELECT id FROM sessions WHERE conversation_id = c.id))
+           OR (p.purpose = 'PACKAGE' AND p.target_id IN (SELECT id FROM packages WHERE conversation_id = c.id))))
        ORDER BY c.id LIMIT 20`,
     )
-    .bind(iso(nowMs), iso(nowMs - 86_400_000))
+    .bind(iso(nowMs), iso(nowMs - 86_400_000), iso(nowMs - config.sessionRules.packageLinkMinutes * 60_000))
     .all<{ id: number; name: string | null }>();
   return results;
+}
+
+// Packages and credits. Counts only: packages sold in the last 24 hours by size, credits used today (India day), every credit still unused,
+// and refunds for old payments that Rohit has to pay by hand.
+export async function packageLines(env: Env, nowMs = Date.now()): Promise<string[]> {
+  const sold = await env.DB
+    .prepare("SELECT size, COUNT(*) AS n FROM credits c JOIN packages k ON k.id = c.package_id WHERE c.reason = 'PURCHASE' AND c.at >= ?1 GROUP BY size ORDER BY size")
+    .bind(iso(nowMs - 86_400_000))
+    .all<{ size: number; n: number }>();
+  const dayStart = iso(Date.parse(`${istDay(nowMs)}T00:00:00+05:30`));
+  const used = await env.DB.prepare("SELECT COUNT(*) AS n FROM credits WHERE reason = 'BOOK' AND at >= ?1").bind(dayStart).first<{ n: number }>();
+  const left = await env.DB.prepare("SELECT COALESCE(SUM(delta), 0) AS n FROM credits").first<{ n: number }>();
+  const manual = await env.DB.prepare("SELECT COUNT(*) AS n FROM attention WHERE kind = 'MANUAL_REFUND' AND resolved_at IS NULL").first<{ n: number }>();
+  return [
+    `- Packages sold: ${sold.results.length ? sold.results.map((r) => `${r.size}-pack ${r.n}`).join(", ") : "none"}`,
+    `- Credits used today: ${used?.n ?? 0}`,
+    `- Credits outstanding: ${left?.n ?? 0}`,
+    `- Manual refunds pending: ${manual?.n ?? 0}`,
+  ];
 }
 
 export async function digestText(env: Env, nowMs = Date.now()): Promise<string> {
@@ -120,6 +141,9 @@ export async function digestText(env: Env, nowMs = Date.now()): Promise<string> 
     "",
     "Safety and noise (last 24 hours)",
     ...(await noiseLines(env, nowMs)),
+    "",
+    "Sessions and packages",
+    ...(await packageLines(env, nowMs)),
     "",
     "Warm leads (last 24 hours, not paid yet)",
     ...(leads.length ? leads.map((l) => `- ${firstName(l.name)} · ${env.PUBLIC_URL ?? ""}/admin/conv/${l.id}`) : ["- none"]),

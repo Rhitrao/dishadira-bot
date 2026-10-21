@@ -11,8 +11,8 @@ const minutes = (hhmm: string) => {
 describe("config", () => {
   it("has positive numbers", () => {
     const nums = [
-      config.prices.introPaise,
-      config.prices.sessionPaise,
+      config.prices.intro,
+      config.prices.single,
       config.slots.callMinutes,
       config.slots.sessionMinutes,
       config.slots.maxSessionsPerDay,

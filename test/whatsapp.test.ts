@@ -134,7 +134,7 @@ describe("POST /wa/webhook", () => {
 
     await post(button("wamid.E1", "lang_en"));
     const menu = sent()[0].interactive.action.buttons.map((b: { reply: { title: string } }) => b.reply.title);
-    expect(menu).toEqual(["Book ₹99 call", "How it works", "Talk to a person"]);
+    expect(menu).toEqual(["Book ₹99 call", "Sessions & packages", "Help"]);
     fetchMock.mockClear();
 
     await post(button("wamid.E2", "menu_book"));
@@ -318,7 +318,7 @@ describe("sendMessage", () => {
 
 describe("session offer follow-up", () => {
   const tap = (id: string) => inbound(id, { type: "button", button: { payload: "Choose a time", text: "Choose a time" } });
-  const lists = () => sent().filter((b) => b.interactive?.type === "button" && b.interactive.action.buttons[0].reply.id.startsWith("sday_")); // the day buttons
+  const lists = () => sent().filter((b) => b.interactive?.type === "list" && b.interactive.action.sections[0].rows[0].id.startsWith("sess_offer_")); // the options: single, 10 or 20
 
   // A greeted person with an intro CALLED_SESSION and a session in the given state.
   async function offered(state = "OFFERED") {
@@ -332,15 +332,15 @@ describe("session offer follow-up", () => {
     return conv;
   }
 
-  it("a text reply after an offer gets the day buttons, no attention item", async () => {
+  it("a text reply after an offer shows the options again, no attention item", async () => {
     await offered();
     await post(text("wamid.F1", "ok please"));
     expect(lists()).toHaveLength(1);
-    expect(lists()[0].interactive.action.buttons[0].reply.id).toMatch(/^sday_\d+_\d{4}-\d{2}-\d{2}$/);
+    expect(lists()[0].interactive.action.sections[0].rows.map((r: { id: string }) => r.id)).toEqual([expect.stringMatching(/^sess_offer_\d+$/), "go_p10", "go_p20"]);
     expect(await count("SELECT COUNT(*) n FROM attention")).toBe(0);
   });
 
-  it("a template quick-reply tap gets the slot list", async () => {
+  it("a template quick-reply tap gets the options", async () => {
     await offered();
     expect((await post(tap("wamid.F2"))).status).toBe(200);
     expect(lists()).toHaveLength(1);

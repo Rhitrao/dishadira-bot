@@ -1,12 +1,12 @@
 # WhatsApp templates to submit to Meta
 
-Five message templates. Meta must approve them before the bot can message a customer more than 24 hours after their last message (day-before reminders, a booking confirmation after a late payment, and so on). Until a template is approved the bot does **not** send it; it raises an item in Rohit's queue instead.
+Seven message templates. Meta must approve them before the bot can message a customer more than 24 hours after their last message (day-before reminders, a booking confirmation after a late payment, and so on). Until a template is approved the bot does **not** send it; it raises an item in Rohit's queue instead.
 
 How to submit (WhatsApp Manager → Message templates → Create template), for every template below:
 
 - **Category:** Utility. Never Marketing.
 - **Name:** exactly as written (lower case, underscores). **Language:** English.
-- **Header and footer:** none. **Buttons:** none, except `session_offer`, which has one Quick reply button (see below).
+- **Header and footer:** none. **Buttons:** none, except `session_offer` and `package_confirmed`, which have one Quick reply button each (see below).
 - **Variables:** written `{{1}}`, `{{2}}`, `{{3}}`. Paste the sample values shown (Meta requires them; they are examples, not real data).
 - Do not add offers, discounts, emojis or promotional words. Each text is a confirmation, reminder or account update about something the customer already did.
 
@@ -41,16 +41,16 @@ Sent after Amma taps "Session", when the 24-hour window has closed. No variables
 **Body**
 
 ```
-Thank you for speaking with Shantha Rao. She would be glad to offer you a full session. Tap below to choose a time.
+Thank you for speaking with Shantha Rao. She would be glad to offer you a full session. Tap below to see your options.
 ```
 
-**Button:** one **Quick reply**, text exactly `Choose a time`. The bot treats a tap on it, or any reply, from someone with an open offer as "show me the times". Header and footer stay empty.
+**Button:** one **Quick reply**, text exactly `See options`. The bot treats a tap on it, or any reply, from someone with an open offer as "show me the options" and sends the list (a single session, or a package of 10 or 20). Header and footer stay empty.
 
-No variables, so no sample values. (The price is left out on purpose so a price change never needs a new template; the chat tells the customer the price when they choose a time.)
+No variables, so no sample values. (Prices are left out on purpose so a price change never needs a new template; the list in the chat shows them.)
 
 ## 3. session_confirmed
 
-Sent when the ₹700 session payment is received and the 24-hour window has closed.
+Sent when the ₹799 session payment is received and the 24-hour window has closed.
 
 **Body**
 
@@ -81,23 +81,55 @@ Reminder: your {{1}} with Shantha Rao is tomorrow, {{2}} at {{3}} (India time). 
 
 ## 5. payment_update
 
-Sent when Amma says a session is not the right fit and the ₹99 is refunded, and the 24-hour window has closed.
+Sent when a refund has been started and the 24-hour window has closed: the ₹99 after "not right fit", a whole purchase after "not right fit" on a first session, or the unused sessions of a package.
 
 **Body**
 
 ```
-Thank you for speaking with Shantha Rao. She feels a session isn't the right fit just now, so we've refunded your {{1}}.
+Your refund of {{1}} has been started. It goes back to your original payment method, and how long it takes depends on your bank.
 ```
 
 | Variable | Meaning | Sample value |
 |---|---|---|
 | {{1}} | The amount refunded | ₹99 |
 
+## 6. package_confirmed
+
+Sent when a package payment is received and the 24-hour window has closed. One Quick reply button.
+
+**Body**
+
+```
+Payment received. You have {{1}} sessions. Book your first one now?
+```
+
+**Button:** one **Quick reply**, text exactly `Book a session`. The bot treats a tap on it, from someone with sessions left in a package, as "start booking a session". Header and footer stay empty.
+
+| Variable | Meaning | Sample value |
+|---|---|---|
+| {{1}} | Number of sessions in the package | 10 |
+
+## 7. session_booked
+
+Sent when a session is booked from a package and the 24-hour window has closed.
+
+**Body**
+
+```
+Your session is booked for {{1}} at {{2}} (India time). Shantha Rao will call you then. Sessions left: {{3}}.
+```
+
+| Variable | Meaning | Sample value |
+|---|---|---|
+| {{1}} | Day of the session | Wed, 7 Oct |
+| {{2}} | Time of the session (India time) | 2:00 pm |
+| {{3}} | Sessions left in the package | 9 |
+
 ---
 
 ## Hindi versions
 
-Five more templates, one per template above, with the same variables in the same order. **Name:** the English name plus `_hi` (for example `reminder_hi`). **Language:** Hindi. Category, header, footer and buttons as for the English one. The values the bot sends are in Hindi too: the day as `मंगल, 6 अक्टूबर` and the time as `दोपहर 2:00` or `शाम 5:30`. These drafts are built from the sentences in `docs/KNOWLEDGE.md` §11; Amma should read them before they are submitted. Set the template's `hi.approved` flag in `src/config.ts` when Meta approves it.
+Seven more templates, one per template above, with the same variables in the same order. **Name:** the English name plus `_hi` (for example `reminder_hi`). **Language:** Hindi. Category, header, footer and buttons as for the English one. The values the bot sends are in Hindi too: the day as `मंगल, 6 अक्टूबर` and the time as `दोपहर 2:00` or `शाम 5:30`. These drafts are built from the sentences in `docs/KNOWLEDGE.md` §11; Amma should read them before they are submitted. Set the template's `hi.approved` flag in `src/config.ts` when Meta approves it.
 
 ### 1. call_booked_hi
 
@@ -110,10 +142,10 @@ Samples: {{1}} मंगल, 6 अक्टूबर · {{2}} दोपहर 2:
 ### 2. session_offer_hi
 
 ```
-शांता राव जी से बात करने के लिए धन्यवाद। वे आपको पूरा सेशन देना चाहेंगी। समय चुनने के लिए नीचे टैप करें।
+शांता राव जी से बात करने के लिए धन्यवाद। वे आपको पूरा सेशन देना चाहेंगी। अपने विकल्प देखने के लिए नीचे टैप करें।
 ```
 
-One Quick reply button, text `समय चुनें`. No variables.
+One Quick reply button, text `विकल्प देखें`. No variables.
 
 ### 3. session_confirmed_hi
 
@@ -134,7 +166,23 @@ Samples: {{1}} बुध, 7 अक्टूबर · {{2}} दोपहर 3:00
 ### 5. payment_update_hi
 
 ```
-शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी सेशन आपके लिए सही नहीं है, इसलिए आपके {{1}} वापस कर दिए गए हैं।
+आपके {{1}} के रिफ़ंड की प्रक्रिया शुरू हो गई है। यह राशि आपके भुगतान के तरीके में वापस जाएगी, और कितना समय लगेगा यह आपके बैंक पर निर्भर करता है।
 ```
 
 Sample: {{1}} ₹99
+
+### 6. package_confirmed_hi
+
+```
+भुगतान मिल गया। आपके पास {{1}} सेशन हैं। क्या अभी पहला सेशन बुक करें?
+```
+
+One Quick reply button, text `सेशन बुक करें`. Sample: {{1}} 10
+
+### 7. session_booked_hi
+
+```
+आपका सेशन {{1}} को {{2}} बजे (भारतीय समय) बुक हो गया है। शांता राव जी उसी समय कॉल करेंगी। बचे हुए सेशन: {{3}}।
+```
+
+Samples: {{1}} बुध, 7 अक्टूबर · {{2}} दोपहर 2:00 · {{3}} 9

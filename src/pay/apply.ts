@@ -4,6 +4,7 @@ import { config } from "../config";
 import { copyFor, langOf } from "../copy";
 import type { Env } from "../env";
 import { paymentCleared } from "../noise";
+import { creditPackage } from "../packages";
 import { raiseAttention, sendOrTemplate } from "../send";
 import { formatIstLang, iso } from "../slots";
 import type { PayStatus, PaymentProvider } from "./provider";
@@ -44,8 +45,13 @@ async function closeUnpaid(env: Env, pay: Payment): Promise<Applied> {
     .bind(pay.id, nowIso())
     .run();
   if (!moved.meta.changes) return "NOOP";
-  const table = pay.purpose === "SESSION" ? "sessions" : "intros";
+  const table = tableFor(pay.purpose);
   await closePayStep(db, table, pay.target_id);
+  if (table === "packages") {
+    // A package holds no slot: the unpaid package just expires.
+    await db.prepare("UPDATE packages SET state = 'EXPIRED', updated_at = ?2 WHERE id = ?1 AND state IN ('CREATING', 'PENDING')").bind(pay.target_id, nowIso()).run();
+    return "CLOSED";
+  }
   await db.prepare(`UPDATE ${table} SET state = 'EXPIRED', updated_at = ?2 WHERE id = ?1 AND state = 'HELD'`).bind(pay.target_id, nowIso()).run();
   await db
     .prepare(`UPDATE slots SET hold_until = ?2 WHERE state = 'HELD' AND id = (SELECT slot_id FROM ${table} WHERE id = ?1)`)
@@ -55,7 +61,10 @@ async function closeUnpaid(env: Env, pay: Payment): Promise<Applied> {
 }
 
 // The payment step of the booking is over (paid, expired or cancelled): a typed message no longer re-sends the pay button.
-async function closePayStep(db: Env["DB"], table: "intros" | "sessions", targetId: number): Promise<number | null> {
+type Table = "intros" | "sessions" | "packages";
+const tableFor = (purpose: string): Table => (purpose === "SESSION" ? "sessions" : purpose === "PACKAGE" ? "packages" : "intros");
+
+async function closePayStep(db: Env["DB"], table: Table, targetId: number): Promise<number | null> {
   const row = await db.prepare(`SELECT conversation_id AS conv FROM ${table} WHERE id = ?1`).bind(targetId).first<{ conv: number }>();
   if (!row) return null;
   await db
@@ -75,12 +84,22 @@ async function mismatch(env: Env, pay: Payment, kind: string, paidPaise?: number
   return "MISMATCH";
 }
 
-const priceFor = (purpose: string) => (purpose === "INTRO" ? config.prices.introPaise : purpose === "SESSION" ? config.prices.sessionPaise : null);
+// What a payment must be for, in paise: the 99 call and the single session from config; a package from the package row (its price when it was created).
+async function priceFor(db: Env["DB"], pay: Payment): Promise<number | null> {
+  if (pay.purpose === "INTRO") return config.prices.intro;
+  if (pay.purpose === "SESSION") return config.prices.single;
+  if (pay.purpose === "PACKAGE") {
+    const pk = await db.prepare("SELECT size, price_paise AS price FROM packages WHERE id = ?1").bind(pay.target_id).first<{ size: number; price: number }>();
+    const known = [config.prices.pack10, config.prices.pack20].find((p) => p.sessions === pk?.size && p.paise === pk?.price);
+    return known ? known.paise : null;
+  }
+  return null;
+}
 
 async function applyPaid(env: Env, provider: PaymentProvider, pay: Payment, ev: PayStatus): Promise<Applied> {
   const db = env.DB;
   const mode = env.PAYMENT_MODE === "live" ? "live" : "test";
-  const price = priceFor(pay.purpose);
+  const price = await priceFor(db, pay);
   if (price === null) return mismatch(env, pay, "UNSUPPORTED_PAYMENT", ev.paidPaise);
   if (
     ev.paidPaise !== pay.amount_paise ||
@@ -102,7 +121,7 @@ async function applyPaid(env: Env, provider: PaymentProvider, pay: Payment, ev: 
     .run();
 
   // Paying ends the pay step and clears the person's strikes and quiet period.
-  const payer = await closePayStep(db, pay.purpose === "SESSION" ? "sessions" : "intros", pay.target_id);
+  const payer = await closePayStep(db, tableFor(pay.purpose), pay.target_id);
   if (payer !== null) await paymentCleared(db, payer);
 
   // The first paid payment for a target (lowest id) is the real one; any other is a duplicate to refund.
@@ -115,7 +134,32 @@ async function applyPaid(env: Env, provider: PaymentProvider, pay: Payment, ev: 
     await requestRefund(env, provider, pay.id, "DUPLICATE", "system");
     return "DUPLICATE_REFUNDED";
   }
-  return pay.purpose === "SESSION" ? bookSession(env, pay) : bookIntro(env, pay);
+  return pay.purpose === "SESSION" ? bookSession(env, pay) : pay.purpose === "PACKAGE" ? bookPackage(env, pay) : bookIntro(env, pay);
+}
+
+// A package payment: the credits are added once (src/packages.ts), then one confirmation with [Book a session].
+async function bookPackage(env: Env, pay: Payment): Promise<Applied> {
+  const db = env.DB;
+  const pk = await db.prepare("SELECT conversation_id AS conv, size, state FROM packages WHERE id = ?1").bind(pay.target_id).first<{ conv: number; size: number; state: string }>();
+  if (!pk) {
+    await raiseAttention(db, "PAID_NO_PACKAGE", `payment:${pay.id}`);
+    return "NOOP";
+  }
+  if (pk.state === "CLOSED") {
+    await raiseAttention(db, "PAID_PACKAGE_NOT_BOOKABLE", `package:${pay.target_id}`);
+    return "NOOP";
+  }
+  await creditPackage(env, pay.id, pay.target_id);
+  const conv = await db.prepare("SELECT locale FROM conversations WHERE id = ?1").bind(pk.conv).first<{ locale: string }>();
+  const cp = copyFor(langOf(conv?.locale));
+  await sendOrTemplate(
+    env,
+    pk.conv,
+    { type: "buttons", body: cp.packConfirmed(pk.size), buttons: [{ id: "bk_new", title: cp.btnBookSession }] },
+    { type: "template", name: "package_confirmed", params: [String(pk.size)], paramsHi: [String(pk.size)] },
+    `paid:${pay.id}`, // dedupe key: one confirmation per payment
+  );
+  return "BOOKED";
 }
 
 // HELD -> BOOKED. If the hold has lapsed this still works, but only if the row is still ours and nothing active overlaps it.

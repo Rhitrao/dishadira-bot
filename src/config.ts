@@ -4,9 +4,21 @@ export const config = {
   currency: "INR",
   timezone: "Asia/Kolkata",
   services: ["PROTECTION", "HEALING"],
+  // All amounts are paise. Per-session package rates (₹500, ₹450) are always price ÷ sessions, never typed in.
   prices: {
-    introPaise: 9900,
-    sessionPaise: 70000,
+    intro: 9900,
+    single: 79900,
+    pack10: { sessions: 10, paise: 500000 },
+    pack20: { sessions: 20, paise: 900000 },
+  },
+  // Rules for booked sessions and packages (docs/AGENT.md section 3.1b). Hours are counted back from the start of the session.
+  sessionRules: {
+    changeBeforeHours: 3, // move or cancel at least this long before; a package session then goes back to the package
+    singleRefundBeforeHours: 24, // a single session cancelled this early is refunded in full
+    singleMoves: 1, // a single session can be moved this many times
+    maxUpcoming: 2, // upcoming sessions per buyer
+    packageLinkMinutes: 60, // a package payment link stays open this long (no slot is held)
+    razorpayRefundDays: 180, // a payment older than this is refunded by hand (Razorpay cannot)
   },
   hours: {
     // 0 = Sunday ... 6 = Saturday
@@ -118,6 +130,8 @@ export const config = {
     session_confirmed: { approved: false, language: "en", hi: { name: "session_confirmed_hi", approved: false, language: "hi" } },
     reminder: { approved: false, language: "en", hi: { name: "reminder_hi", approved: false, language: "hi" } },
     payment_update: { approved: false, language: "en", hi: { name: "payment_update_hi", approved: false, language: "hi" } },
+    package_confirmed: { approved: false, language: "en", hi: { name: "package_confirmed_hi", approved: false, language: "hi" } },
+    session_booked: { approved: false, language: "en", hi: { name: "session_booked_hi", approved: false, language: "hi" } },
   },
   languages: ["en", "hi"],
   faqIds: ["what_is_this", "how_it_works", "price", "timings", "refund", "privacy"],

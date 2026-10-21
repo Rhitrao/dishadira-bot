@@ -436,7 +436,7 @@ describe("safety: crisis and emergency", () => {
     await setState(from, "no_sell_until = NULL");
     await tap(from, "menu_how");
     await tapRow(from, "faq_price");
-    expect(last().interactive.action.buttons.map((b: Wa) => b.reply.id)).toEqual(["menu_book", "menu_how", "menu_person"]);
+    expect(last().interactive.action.buttons.map((b: Wa) => b.reply.id)).toEqual(["menu_book", "menu_pack", "menu_how"]);
   });
 });
 

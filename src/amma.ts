@@ -67,7 +67,15 @@ type Row = {
   startUtc: string; name: string; waId: string; service: string; kind: "CALL" | "SESSION";
   introId: number | null; oid: number | null; value: string | null; undoUntil: string | null; appliedAt: string | null;
   locale: string; callLang: string | null; forWhom: ForWhom | null;
+  sessionId: number | null; origin: string | null; packSize: number | null; packNo: number | null; firstBuy: number;
 };
+
+// A buyer's very first session: they never paid for a 99 call, and this is their earliest session. Amma may answer "Not right fit" on it.
+const FIRST_BUY = `(CASE WHEN se.origin IN ('SELF','CREDIT')
+    AND NOT EXISTS (SELECT 1 FROM intros i2 WHERE i2.conversation_id = se.conversation_id AND i2.state IN ('PAID','RESCHEDULED','CALLED_SESSION','CALLED_NOT_FIT','MISSED','RUDE'))
+    AND se.id = (SELECT se2.id FROM sessions se2 JOIN slots s2 ON s2.id = se2.slot_id
+                 WHERE se2.conversation_id = se.conversation_id AND se2.state IN ('CONFIRMED','CREDIT_BOOKED','COMPLETED','NO_SHOW','NOT_FIT') ORDER BY s2.start_utc LIMIT 1)
+  THEN 1 ELSE 0 END)`;
 
 async function rowsBetween(env: Env, fromUtc: string, toUtc: string): Promise<Row[]> {
   const calls = await env.DB
@@ -81,20 +89,25 @@ async function rowsBetween(env: Env, fromUtc: string, toUtc: string): Promise<Ro
          AND s.start_utc >= ?1 AND s.start_utc < ?2`,
     )
     .bind(fromUtc, toUtc)
-    .all<Omit<Row, "kind">>();
+    .all<Omit<Row, "kind" | "sessionId" | "origin" | "packSize" | "packNo" | "firstBuy">>();
   const sessions = await env.DB
     .prepare(
-      `SELECT s.start_utc AS startUtc, c.display_name AS name, c.wa_id AS waId, se.service,
-              c.locale, i.call_lang AS callLang, i.for_whom AS forWhom
+      `SELECT s.start_utc AS startUtc, c.display_name AS name, c.wa_id AS waId, se.service, se.id AS sessionId, se.origin,
+              c.locale, COALESCE(se.call_lang, i.call_lang) AS callLang, COALESCE(se.for_whom, i.for_whom) AS forWhom,
+              (SELECT k.size FROM packages k WHERE k.id = se.package_id) AS packSize,
+              (SELECT COUNT(*) FROM credits cr WHERE cr.package_id = se.package_id AND cr.reason = 'BOOK' AND cr.session_id <= se.id) AS packNo,
+              ${FIRST_BUY} AS firstBuy,
+              o.id AS oid, o.value, o.undo_until AS undoUntil, o.applied_at AS appliedAt
        FROM sessions se JOIN slots s ON s.id = se.slot_id JOIN conversations c ON c.id = se.conversation_id
        LEFT JOIN intros i ON i.id = se.intro_id
-       WHERE se.state = 'CONFIRMED' AND s.kind = 'SESSION' AND s.start_utc >= ?1 AND s.start_utc < ?2`,
+       LEFT JOIN outcomes o ON o.session_id = se.id
+       WHERE se.state IN ('CONFIRMED','CREDIT_BOOKED','NOT_FIT') AND s.kind = 'SESSION' AND s.start_utc >= ?1 AND s.start_utc < ?2`,
     )
     .bind(fromUtc, toUtc)
-    .all<Omit<Row, "kind">>();
+    .all<Omit<Row, "kind" | "introId">>();
   const all: Row[] = [
-    ...calls.results.map((r) => ({ ...r, kind: "CALL" as const })),
-    ...sessions.results.map((r) => ({ ...r, kind: "SESSION" as const, introId: null, oid: null, value: null, undoUntil: null, appliedAt: null })),
+    ...calls.results.map((r) => ({ ...r, kind: "CALL" as const, sessionId: null, origin: null, packSize: null, packNo: null, firstBuy: 0 })),
+    ...sessions.results.map((r) => ({ ...r, kind: "SESSION" as const, introId: null })),
   ];
   return all.sort((a, b) => a.startUtc.localeCompare(b.startUtc));
 }
@@ -113,10 +126,12 @@ async function rowHtml(r: Row, jwt: string, nowIsoStr: string) {
   // "Priya · Hindi · family": the language to speak and who it is for (a session takes both from the call before it).
   const lang = c.callLang[langOf(r.callLang ?? r.locale)];
   const who = r.forWhom ? ` · ${c.forWhom[r.forWhom]}` : "";
+  const kind = r.kind === "CALL" ? c.kindCall : r.origin === "CREDIT" && r.packSize ? c.kindSessionPackage(r.packNo ?? 0, r.packSize) : c.kindSessionSingle; // "package 3/10" or "single"
   const head = html`<div class="top">${time} · ${firstName(r.name)} · ${lang}${who}</div>
-<div class="sub">${serviceLabel(r.service)} · ${r.kind === "CALL" ? c.kindCall : c.kindSession}</div>
+<div class="sub">${serviceLabel(r.service)} · ${kind}</div>
 <a class="btn call" href="${telHref(r.waId)}">${c.btnCall}</a>`;
-  if (r.kind !== "CALL" || r.introId === null) return html`<div class="row">${head}</div>`;
+  if (r.kind === "SESSION" && !r.firstBuy && r.value !== "NOT_FIT") return html`<div class="row">${head}</div>`;
+  if (r.kind !== "CALL" && r.sessionId === null) return html`<div class="row">${head}</div>`;
   if (r.oid !== null && r.value && isOutcome(r.value)) {
     const label = c[OUTCOMES[r.value]];
     if (r.appliedAt) return html`<div class="row">${head}<div class="msg">${c.done(label)}</div></div>`; // applied: no buttons, no undo
@@ -126,7 +141,9 @@ ${canUndo ? undoForm(r.oid, await csrf(jwt, `undo:${r.oid}`), c.undo) : ""}</div
   }
   if (r.startUtc > nowIsoStr) return html`<div class="row">${head}</div>`; // outcome buttons only once the call has started
   const link = (v: Outcome, cls: string) =>
-    html`<a class="btn ${cls}" href="/amma/confirm?intro=${r.introId}&v=${v}">${c[OUTCOMES[v]]}</a>`;
+    html`<a class="btn ${cls}" href="/amma/confirm?${r.kind === "SESSION" ? `session=${r.sessionId}` : `intro=${r.introId}`}&v=${v}">${c[OUTCOMES[v]]}</a>`;
+  // A session the buyer reached without a 99 call has just one answer: Not right fit (the whole purchase is refunded).
+  if (r.kind === "SESSION") return html`<div class="row">${head}<div class="msg">${c.howDidItGo}</div>${link("NOT_FIT", "")}</div>`;
   return html`<div class="row">${head}<div class="msg">${c.howDidItGo}</div>${link("SESSION", "")}${link("NOT_FIT", "")}${link("MISSED", "")}
 <div class="rude">${link("RUDE", "")}</div></div>`;
 }
@@ -181,9 +198,35 @@ async function introFor(env: Env, id: number) {
     .first<{ id: number; state: string; slotId: number; startUtc: string; name: string | null }>();
 }
 
+// A session that may get "Not right fit": live, and the buyer's very first (no 99 call before it).
+async function sessionFor(env: Env, id: number) {
+  return env.DB
+    .prepare(
+      `SELECT se.id, se.state, se.slot_id AS slotId, s.start_utc AS startUtc, c.display_name AS name, ${FIRST_BUY} AS firstBuy
+       FROM sessions se JOIN slots s ON s.id = se.slot_id JOIN conversations c ON c.id = se.conversation_id WHERE se.id = ?1 AND s.kind = 'SESSION'`,
+    )
+    .bind(id)
+    .first<{ id: number; state: string; slotId: number; startUtc: string; name: string | null; firstBuy: number }>();
+}
+const sessionOk = (s: Awaited<ReturnType<typeof sessionFor>>) => s !== null && ["CONFIRMED", "CREDIT_BOOKED"].includes(s.state) && s.firstBuy === 1;
+
 amma.get("/confirm", async (c) => {
-  const id = Number(c.req.query("intro"));
   const v = c.req.query("v");
+  if (c.req.query("session") !== undefined) {
+    const sid = Number(c.req.query("session"));
+    const ses = Number.isInteger(sid) ? await sessionFor(c.env, sid) : null;
+    if (!ses || !sessionOk(ses) || v !== "NOT_FIT") return message(c, t().notFound, 404);
+    if (ses.startUtc > iso(Date.now())) return message(c, t().notYet, 409);
+    const cp = t();
+    const token = await csrf(c.get("jwt"), `session-outcome:${sid}:${v}`);
+    return c.html(
+      page(html`<p class="msg">${cp.confirm(cp[OUTCOMES[v]], firstName(ses.name), formatIstParts(ses.startUtc).time)}</p>
+<form method="post" action="/amma/outcome"><input type="hidden" name="session" value="${sid}"><input type="hidden" name="v" value="${v}">
+<input type="hidden" name="csrf" value="${token}"><button class="go" type="submit">${cp.yes}</button></form>
+<a class="btn" href="/amma">${cp.back}</a>`),
+    );
+  }
+  const id = Number(c.req.query("intro"));
   const intro = Number.isInteger(id) ? await introFor(c.env, id) : null;
   if (!intro || !["PAID", "RESCHEDULED"].includes(intro.state) || !isOutcome(v)) return message(c, t().notFound, 404);
   if (intro.startUtc > iso(Date.now())) return message(c, t().notYet, 409);
@@ -199,6 +242,30 @@ amma.get("/confirm", async (c) => {
 
 amma.post("/outcome", async (c) => {
   const f = await c.req.parseBody();
+  if (f.session !== undefined) {
+    const sid = Number(f.session);
+    if (!Number.isInteger(sid) || f.v !== "NOT_FIT" || f.csrf !== (await csrf(c.get("jwt"), `session-outcome:${sid}:NOT_FIT`))) return c.text("Forbidden", 403);
+    const cp = t();
+    const ses = await sessionFor(c.env, sid);
+    if (!ses || !sessionOk(ses)) return message(c, cp.notFound, 404);
+    const now = Date.now();
+    if (ses.startUtc > iso(now)) return message(c, cp.notYet, 409);
+    // Same as a call: one atomic write, refused if this session already has an answer; the cron applies it after the undo window.
+    const res = await c.env.DB
+      .prepare(
+        `INSERT INTO outcomes (session_id, value, tapped_at, undo_until, slot_id)
+         SELECT ?1, 'NOT_FIT', ?2, ?3, ?4 WHERE NOT EXISTS (SELECT 1 FROM outcomes WHERE session_id = ?1)`,
+      )
+      .bind(sid, iso(now), iso(now + config.undoMinutes * 60_000), ses.slotId)
+      .run();
+    if (!res.meta.changes) return message(c, cp.alreadyAnswered, 409);
+    const oid = res.meta.last_row_id;
+    await audit(c, "AMMA_OUTCOME", `session:${sid}`, "NOT_FIT");
+    return c.html(
+      page(html`<p class="msg">${cp.saved(config.undoMinutes)}</p>${undoForm(oid, await csrf(c.get("jwt"), `undo:${oid}`), cp.undo)}
+<a class="btn go" href="/amma">${cp.back}</a>`),
+    );
+  }
   const id = Number(f.intro);
   const v = f.v;
   if (!Number.isInteger(id) || !isOutcome(v) || f.csrf !== (await csrf(c.get("jwt"), `outcome:${id}:${v}`))) {
@@ -231,12 +298,12 @@ amma.post("/undo", async (c) => {
   const oid = Number(f.outcome);
   if (!Number.isInteger(oid) || f.csrf !== (await csrf(c.get("jwt"), `undo:${oid}`))) return c.text("Forbidden", 403);
   const cp = t();
-  const was = await c.env.DB.prepare("SELECT intro_id AS introId, value FROM outcomes WHERE id = ?1").bind(oid).first<{ introId: number; value: string }>();
+  const was = await c.env.DB.prepare("SELECT intro_id AS introId, session_id AS sessionId, value FROM outcomes WHERE id = ?1").bind(oid).first<{ introId: number | null; sessionId: number | null; value: string }>();
   const res = await c.env.DB
     .prepare("DELETE FROM outcomes WHERE id = ?1 AND undo_until > ?2 AND applied_at IS NULL")
     .bind(oid, iso(Date.now()))
     .run();
   if (!res.meta.changes) return message(c, cp.undoTooLate, 409);
-  await audit(c, "AMMA_UNDO", `intro:${was?.introId}`, was?.value ?? "");
+  await audit(c, "AMMA_UNDO", was?.introId != null ? `intro:${was.introId}` : `session:${was?.sessionId}`, was?.value ?? "");
   return message(c, cp.undone, 200);
 });

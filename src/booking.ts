@@ -14,8 +14,8 @@ import { raiseAttention, sendMessage, type ListSection, type Out } from "./send"
 import { clearStep, sendStep, type StepName } from "./steps";
 import { availableSlots, dayLabelFor, formatIstLang, holdSlot, iso, istDay, istMinutes, nextWorkingDays, spreadTimes, type Slot, type SlotKind } from "./slots";
 
-const SERVICES = config.services as readonly string[];
-const WHO: readonly ForWhom[] = ["SELF", "FAMILY", "PET"];
+export const SERVICES = config.services as readonly string[];
+export const WHO: readonly ForWhom[] = ["SELF", "FAMILY", "PET"];
 const nowIso = () => iso(Date.now());
 const UTC = "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z";
 const YMD = "\\d{4}-\\d{2}-\\d{2}";
@@ -69,30 +69,31 @@ export async function sendTimes(env: Env, conv: Conv, kind: SlotKind, ymd: strin
   return true;
 }
 
-const ageButtons = (cp: Copy): Out => ({
+// The same three steps serve the ₹99 call (ids age_yes, svc_, who_) and the session flows in src/packages.ts, which pass their own id prefix.
+export const ageButtons = (cp: Copy, suffix = ""): Out => ({
   type: "buttons",
   body: cp.ageCheck,
   buttons: [
-    { id: "age_yes", title: cp.btnYes },
-    { id: "age_no", title: cp.btnNo },
+    { id: `age_yes${suffix}`, title: cp.btnYes },
+    { id: `age_no${suffix}`, title: cp.btnNo },
   ],
 });
-const serviceButtons = (cp: Copy): Out => ({
+export const serviceButtons = (cp: Copy, prefix = "svc"): Out => ({
   type: "buttons",
   body: cp.chooseService,
   buttons: [
-    { id: "svc_HEALING", title: cp.btnHealing },
-    { id: "svc_PROTECTION", title: cp.btnCleansing },
+    { id: `${prefix}_HEALING`, title: cp.btnHealing },
+    { id: `${prefix}_PROTECTION`, title: cp.btnCleansing },
   ],
 });
 
-const whoButtons = (cp: Copy, service: string): Out => ({
+export const whoButtons = (cp: Copy, service: string, prefix = "who"): Out => ({
   type: "buttons",
   body: cp.whoFor,
   buttons: [
-    { id: `who_${service}_SELF`, title: cp.btnMe },
-    { id: `who_${service}_FAMILY`, title: cp.btnFamily },
-    { id: `who_${service}_PET`, title: cp.btnPet },
+    { id: `${prefix}_${service}_SELF`, title: cp.btnMe },
+    { id: `${prefix}_${service}_FAMILY`, title: cp.btnFamily },
+    { id: `${prefix}_${service}_PET`, title: cp.btnPet },
   ],
 });
 
@@ -262,7 +263,7 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
   const linkId = `di-intro-${introId}`; // unique, tied to the intro; <= 40 chars (Razorpay reference_id limit)
   const pay = await db
     .prepare("INSERT INTO payments (provider, purpose, target_id, provider_link_id, amount_paise) VALUES ('razorpay', 'INTRO', ?1, ?2, ?3)")
-    .bind(introId, linkId, config.prices.introPaise)
+    .bind(introId, linkId, config.prices.intro)
     .run();
   const payId = pay.meta.last_row_id;
 
@@ -270,7 +271,7 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
     // Expiry = the hold, which is no earlier than the provider minimum (checked in config.test.ts).
     const link = await provider.createLink({
       linkId,
-      amountPaise: config.prices.introPaise,
+      amountPaise: config.prices.intro,
       purpose: "Disha Dira call booking",
       customerName: conv.display_name ?? "Customer",
       customerPhone: conv.wa_id.replace(/\D/g, "").slice(-10),

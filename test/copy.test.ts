@@ -77,15 +77,15 @@ describe("copy: both languages", () => {
   it("prices, minutes and the hold time come from config", () => {
     for (const lang of LANGS) {
       const c = allCopy[lang];
-      expect(c.btnBook).toContain(`₹${config.prices.introPaise / 100}`);
-      expect(c.payLabel).toContain(`₹${config.prices.introPaise / 100}`);
-      expect(c.sessionPayLabel).toContain(`₹${config.prices.sessionPaise / 100}`);
+      expect(c.btnBook).toContain(`₹${config.prices.intro / 100}`);
+      expect(c.payLabel).toContain(`₹${config.prices.intro / 100}`);
+      expect(c.sessionPayLabel).toContain(`₹${config.prices.single / 100}`);
       expect(c.payBody("d", "t")).toContain(`${config.holdMinutes}`);
-      expect(c.payBody("d", "t")).toContain(`₹${config.prices.introPaise / 100}`);
-      expect(c.sessionPayBody("d", "t")).toContain(`₹${config.prices.sessionPaise / 100}`);
+      expect(c.payBody("d", "t")).toContain(`₹${config.prices.intro / 100}`);
+      expect(c.sessionPayBody("d", "t")).toContain(`₹${config.prices.single / 100}`);
       expect(c.rowCall).toContain(`${config.slots.callMinutes}`);
       expect(c.rowSession).toContain(`${config.slots.sessionMinutes}`);
-      expect(c.faqAnswers.price).toContain(`₹${config.prices.sessionPaise / 100}`);
+      expect(c.faqAnswers.price).toContain(`₹${config.prices.single / 100}`);
     }
   });
 
@@ -103,14 +103,14 @@ describe("copy: WhatsApp limits on every fixed string", () => {
   it("buttons ≤ 20, list rows and sections ≤ 24, row descriptions ≤ 72, bodies ≤ 1024", () => {
     for (const lang of LANGS) {
       const c = allCopy[lang];
-      for (const b of [c.btnBook, c.btnHow, c.btnPerson, c.btnYes, c.btnNo, c.btnHealing, c.btnCleansing, c.btnMe, c.btnFamily, c.btnPet, c.payLabel, c.sessionPayLabel, c.btnChooseTime, c.listButtonTimes, c.faqButton]) {
+      for (const b of [c.btnBook, c.btnPackages, c.btnHelp, c.btnPerson, c.btnYes, c.btnNo, c.btnHealing, c.btnCleansing, c.btnMe, c.btnFamily, c.btnPet, c.payLabel, c.sessionPayLabel, c.btnChooseTime, c.listButtonTimes, c.faqButton, c.packagesButton, c.btnContinue, c.packPayLabel("₹9,000"), c.btnBookSession, c.btnMove, c.btnCancel, c.btnKeep]) {
         expect(b.length, `${lang} button "${b}"`).toBeLessThanOrEqual(20);
         expect(b.length).toBeGreaterThan(0);
       }
-      for (const r of [c.changeLanguageRow, c.sectionAfternoon, c.sectionEvening, c.anotherDay, ...Object.values(c.faqTitles)]) {
+      for (const r of [c.changeLanguageRow, c.rowMyBookings, c.sectionAfternoon, c.sectionEvening, c.anotherDay, c.rowIntroTitle, c.rowSingleTitle, c.rowPack10Title, c.rowPack20Title, ...Object.values(c.faqTitles)]) {
         expect(r.length, `${lang} row/section "${r}"`).toBeLessThanOrEqual(24);
       }
-      for (const d of [c.rowCall, c.rowSession]) expect(d.length, `${lang} description`).toBeLessThanOrEqual(72);
+      for (const d of [c.rowCall, c.rowSession, c.rowIntroDesc, c.rowSingleDesc, c.rowPack10Desc, c.rowPack20Desc]) expect(d.length, `${lang} description`).toBeLessThanOrEqual(72);
       for (const [path, text] of strings(c, lang).filter(([p]) => !p.startsWith("amma."))) expect(text.length, `${lang} ${path}`).toBeLessThanOrEqual(1024);
     }
   });

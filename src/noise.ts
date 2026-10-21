@@ -68,10 +68,11 @@ export async function isPayingCustomer(db: D1Database, convId: number, nowMs = D
   const row = await db
     .prepare(
       `SELECT 1 WHERE EXISTS (SELECT 1 FROM intros WHERE conversation_id = ?1 AND state IN ('PAID', 'CONFIRMED', 'RESCHEDULED') AND COALESCE(updated_at, created_at) >= ?2)
-         OR EXISTS (SELECT 1 FROM sessions WHERE conversation_id = ?1 AND state IN ('PAID', 'CONFIRMED', 'RESCHEDULED') AND COALESCE(updated_at, created_at) >= ?2)
+         OR EXISTS (SELECT 1 FROM sessions WHERE conversation_id = ?1 AND state IN ('PAID', 'CONFIRMED', 'CREDIT_BOOKED', 'RESCHEDULED') AND COALESCE(updated_at, created_at) >= ?2)
          OR EXISTS (SELECT 1 FROM payments p WHERE p.state = 'PAID' AND COALESCE(p.updated_at, p.created_at) >= ?2 AND (
               (p.purpose = 'INTRO' AND p.target_id IN (SELECT id FROM intros WHERE conversation_id = ?1))
-              OR (p.purpose = 'SESSION' AND p.target_id IN (SELECT id FROM sessions WHERE conversation_id = ?1))))`,
+              OR (p.purpose = 'SESSION' AND p.target_id IN (SELECT id FROM sessions WHERE conversation_id = ?1))
+              OR (p.purpose = 'PACKAGE' AND p.target_id IN (SELECT id FROM packages WHERE conversation_id = ?1))))`,
     )
     .bind(convId, since)
     .first();

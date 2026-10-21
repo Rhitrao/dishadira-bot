@@ -10,9 +10,16 @@ export type ForWhom = "SELF" | "FAMILY" | "PET";
 // Any locale we do not know (an old row, a typo) reads as English.
 export const langOf = (locale: string | null | undefined): Lang => (locale === "hi" ? "hi" : "en");
 
-const rupees = (paise: number) => `₹${paise / 100}`;
-const intro = rupees(config.prices.introPaise);
-const sessionPrice = rupees(config.prices.sessionPaise);
+// ₹799, ₹5,000 (Indian digit grouping): every amount a customer reads is built from config.
+export const rupees = (paise: number) => `₹${(paise / 100).toLocaleString("en-IN")}`;
+const intro = rupees(config.prices.intro);
+const sessionPrice = rupees(config.prices.single);
+const p10 = config.prices.pack10;
+const p20 = config.prices.pack20;
+export const packPrice = (n: number) => rupees(n === p10.sessions ? p10.paise : p20.paise);
+// Per-session rate of a package: price ÷ sessions (₹500, ₹450).
+export const perSession = (pack: { sessions: number; paise: number }) => rupees(pack.paise / pack.sessions);
+const rules = config.sessionRules;
 
 // ---- dates and times, as customers see them (India time) ----
 export const dateWords = {
@@ -103,7 +110,8 @@ export type AmmaCopy = {
   protection: string;
   healing: string;
   kindCall: string;
-  kindSession: string;
+  kindSessionSingle: string;
+  kindSessionPackage: (n: number, size: number) => string; // "package 3/10"
   btnCall: string;
   btnSession: string;
   btnNotFit: string;
@@ -131,7 +139,8 @@ export type Copy = {
   chooseLanguage: string; // same in both languages
   menuBody: string;
   btnBook: string; // max 20 chars
-  btnHow: string; // max 20 chars
+  btnPackages: string; // max 20 chars
+  btnHelp: string; // max 20 chars
   btnPerson: string; // max 20 chars
   changeLanguageRow: string; // max 24 chars (a list row)
   handoffAck: string;
@@ -198,10 +207,49 @@ export type Copy = {
   repromptHelp: string;
   alreadyBookedStart: (day: string, time: string) => string;
   btnKeep: string; // max 20 chars
-  faqBody: string;
+  helpListBody: string;
   faqButton: string; // max 20 chars
+  rowMyBookings: string; // max 24 chars (a list row)
   faqTitles: Record<FaqId, string>; // max 24 chars each
   faqAnswers: Record<FaqId, string>;
+  // sessions and packages (ticket 13)
+  packagesBody: string;
+  packagesButton: string; // max 20 chars
+  rowIntroTitle: string; // max 24 chars (list rows below)
+  rowIntroDesc: string; // max 72 chars
+  rowSingleTitle: string;
+  rowSingleDesc: string;
+  rowPack10Title: string;
+  rowPack10Desc: string;
+  rowPack20Title: string;
+  rowPack20Desc: string;
+  softGate: string;
+  btnContinue: string; // max 20 chars
+  packPayBody: (n: number, price: string) => string;
+  packPayLabel: (price: string) => string; // max 20 chars
+  packPending: string;
+  packConfirmed: (n: number) => string;
+  btnBookSession: string; // max 20 chars
+  creditBooked: (day: string, time: string, left: number) => string;
+  maxUpcoming: string;
+  noCredits: string;
+  creditsLeft: (left: number) => string;
+  myBookingsBody: (list: string, left: number) => string;
+  myBookingsNoPack: (list: string) => string;
+  myBookingsNone: string;
+  bookingItem: (word: string, day: string, time: string) => string;
+  sessionActions: (day: string, time: string) => string;
+  btnMove: string; // max 20 chars
+  btnCancel: string; // max 20 chars
+  bookingNotFound: string;
+  moveTooLate: string;
+  moveOnlyOnce: string;
+  moved: (day: string, time: string) => string;
+  cancelledCredit: (left: number) => string;
+  cancelledSingleRefund: string;
+  cancelledSingleNoRefund: string;
+  notFitRefundSession: (amount: string) => string;
+  packRefunded: (amount: string) => string;
   amma: AmmaCopy;
 };
 
@@ -229,7 +277,8 @@ const ammaEn: AmmaCopy = {
   protection: serviceName("PROTECTION", "en"),
   healing: serviceName("HEALING", "en"),
   kindCall: `Call ${intro}`,
-  kindSession: `Session ${sessionPrice}`,
+  kindSessionSingle: `Session ${sessionPrice} · single`,
+  kindSessionPackage: (n, size) => `Session · package ${n}/${size}`,
   btnCall: "Call",
   btnSession: "Session",
   btnNotFit: "Not right fit",
@@ -257,9 +306,11 @@ const en: Copy = {
   chooseLanguage: CHOOSE_LANGUAGE,
   menuBody: "What would you like to do? You can also type your question.",
   btnBook: `Book ${intro} call`,
-  btnHow: "How it works",
+  btnPackages: "Sessions & packages",
+  btnHelp: "Help",
   btnPerson: "Talk to a person",
   changeLanguageRow: "Change language",
+  rowMyBookings: "My bookings",
   handoffAck: "Thank you. A person from our team will reply here, usually within 24 hours.",
   askPrompt: "Please type your question below.",
   ack: "Thanks, a person will reply within 24 hours.",
@@ -296,7 +347,7 @@ const en: Copy = {
     `Received your ${intro}. Shantha Rao will call you on ${day} at ${time} from ${number}. Call in ${callLang === "hi" ? "Hindi" : "English"}. ` +
     "That number is for her calls only, so please message us here.",
   btnChooseTime: "Choose a time",
-  sessionOfferBody: `Thank you for speaking with Shantha Rao. She would be glad to offer you a full session (${sessionPrice}). Tap below to choose a time.`,
+  sessionOfferBody: `Thank you for speaking with Shantha Rao. She would be glad to offer you a full session. Choose an option below: a single session, or a package of ${p10.sessions} or ${p20.sessions}.`,
   noSessionSlots: "There are no free session times right now. We will message you when new times are open.",
   sessionNotAvailable: "Sorry, we cannot book a session from this message. A person will look into it.",
   sessionPayBody: (day, time) =>
@@ -335,7 +386,7 @@ const en: Copy = {
   repromptHelp: "If you would rather talk to a person from our team, tap below.",
   alreadyBookedStart: (day, time) => `You already have a call on ${day} at ${time}. Shantha Rao will call you then.`,
   btnKeep: "Keep it",
-  faqBody: "Choose a topic.",
+  helpListBody: "How can we help?",
   faqButton: "Choose",
   faqTitles: {
     what_is_this: "What is this?",
@@ -352,15 +403,60 @@ const en: Copy = {
     how_it_works:
       `1. Pick a call time. 2. Pay ${intro}. ` +
       `3. Shantha Rao calls you for ${config.slots.callMinutes} minutes. ` +
-      "4. If you both agree, you can book a full session.",
-    price: `The first call is ${intro}. A full session is ${sessionPrice}.`,
+      "4. If you both agree, you can book a full session or a package.",
+    price:
+      `The first call is ${intro}. A single session is ${sessionPrice}. ` +
+      `Packages: ${p10.sessions} sessions for ${packPrice(p10.sessions)} (${perSession(p10)} each) or ${p20.sessions} for ${packPrice(p20.sessions)} (${perSession(p20)} each), with no expiry.`,
     timings: hoursText("en"),
     refund:
       `If Shantha Rao feels the call is not the right fit, your ${intro} is refunded. ` +
+      `A single session can be moved once, up to ${rules.changeBeforeHours} hours before, and cancelled for a full refund ${rules.singleRefundBeforeHours} hours or more before. ` +
+      `A package session that you move or cancel ${rules.changeBeforeHours} hours or more before goes back to your package. ` +
       "If we have to cancel, you are refunded too.",
     privacy:
       "We keep only your name, WhatsApp number, bookings and payments. Please do not share health details here.",
   },
+  // sessions and packages (ticket 13)
+  packagesBody: "Sessions are 60 minutes by phone. Choose an option. Most people start with the ₹99 call, so Shantha Rao can suggest what suits them.",
+  packagesButton: "See options",
+  rowIntroTitle: `${intro} first call`,
+  rowIntroDesc: `${config.slots.callMinutes} min with Shantha Rao`,
+  rowSingleTitle: "Single session",
+  rowSingleDesc: sessionPrice,
+  rowPack10Title: `${p10.sessions} sessions`,
+  rowPack10Desc: `${packPrice(p10.sessions)} · ${perSession(p10)} each · no expiry`,
+  rowPack20Title: `${p20.sessions} sessions`,
+  rowPack20Desc: `${packPrice(p20.sessions)} · ${perSession(p20)} each · no expiry`,
+  softGate:
+    `Most people start with a ${intro} call, so Shantha Rao can understand what you need first. Would you like to do that, or continue?`,
+  btnContinue: "Continue",
+  packPayBody: (n, price) =>
+    `${n} sessions for ${price}. Tap below to pay. After that, you book each session whenever you like, with no payment per session. Please don't pay twice.`,
+  packPayLabel: (price) => `Pay ${price}`,
+  packPending: "A payment link for a package is already open. Please use the payment button above, or try again in a few minutes.",
+  packConfirmed: (n) => `Payment received. You have ${n} sessions. Book your first one now?`,
+  btnBookSession: "Book a session",
+  creditBooked: (day, time, left) => `Your session is booked for ${day} at ${time} (India time). Shantha Rao will call you then. Sessions left: ${left}.`,
+  maxUpcoming: `You already have ${rules.maxUpcoming} upcoming sessions. You can book the next one after one of them.`,
+  noCredits: "You have no sessions left in your package. You can buy a single session or a new package from \"Sessions & packages\".",
+  creditsLeft: (left) => `Sessions left in your package: ${left}.`,
+  myBookingsBody: (list, left) => `Your bookings: ${list}. Sessions left in your package: ${left}.`,
+  myBookingsNoPack: (list) => `Your bookings: ${list}.`,
+  myBookingsNone: "You have no upcoming bookings.",
+  bookingItem: (word, day, time) => `${word} on ${day} at ${time}`,
+  sessionActions: (day, time) => `Your session on ${day} at ${time}. What would you like to do?`,
+  btnMove: "Move",
+  btnCancel: "Cancel",
+  bookingNotFound: "Sorry, we couldn't find that booking. It may have changed. Please open My bookings again.",
+  moveTooLate: `Sorry, sessions can only be moved or cancelled up to ${rules.changeBeforeHours} hours before.`,
+  moveOnlyOnce: "This session has already been moved once, so it can't be moved again. If you need help, please talk to a person from our team.",
+  moved: (day, time) => `Done. Your session is now on ${day} at ${time} (India time).`,
+  cancelledCredit: (left) => `Cancelled. The session is back in your package. Sessions left: ${left}.`,
+  cancelledSingleRefund: `Cancelled. As it was ${rules.singleRefundBeforeHours} hours or more before, the full amount will be refunded to your original payment method.`,
+  cancelledSingleNoRefund: `Between ${rules.changeBeforeHours} and ${rules.singleRefundBeforeHours} hours before, a single session can't be refunded, but you can move it once. Move it instead?`,
+  notFitRefundSession: (amount) =>
+    `Thank you for speaking with Shantha Rao. She feels this isn't the right fit just now, so we've refunded your payment of ${amount}.`,
+  packRefunded: (amount) => `We've refunded ${amount} for the sessions you didn't use. It goes back to your original payment method.`,
   amma: ammaEn,
 };
 
@@ -369,9 +465,11 @@ const hi: Copy = {
   chooseLanguage: CHOOSE_LANGUAGE,
   menuBody: "आप क्या करना चाहेंगे? आप अपना सवाल लिखकर भी पूछ सकते हैं।",
   btnBook: `${intro} कॉल बुक करें`,
-  btnHow: "यह कैसे काम करता है",
+  btnPackages: "सेशन और पैकेज",
+  btnHelp: "मदद",
   btnPerson: "किसी से बात करें",
   changeLanguageRow: "भाषा बदलें",
+  rowMyBookings: "मेरी बुकिंग",
   handoffAck: "धन्यवाद। हमारी टीम का कोई व्यक्ति आमतौर पर 24 घंटे के अंदर यहीं जवाब देगा।",
   askPrompt: "कृपया अपना सवाल नीचे लिखें।",
   ack: "धन्यवाद। हमारी टीम का कोई व्यक्ति 24 घंटे के अंदर यहीं जवाब देगा।",
@@ -408,7 +506,7 @@ const hi: Copy = {
     `हमें आपके ${intro} मिल गए हैं। शांता राव जी ${day} को ${time} बजे ${number} से आपको कॉल करेंगी। कॉल ${callLang === "hi" ? "हिंदी" : "अंग्रेज़ी"} में होगी। ` +
     "वह नंबर सिर्फ़ उनकी कॉल के लिए है, इसलिए मैसेज यहीं भेजें।",
   btnChooseTime: "समय चुनें",
-  sessionOfferBody: `शांता राव जी से बात करने के लिए धन्यवाद। वे आपको पूरा सेशन (${sessionPrice}) देना चाहेंगी। समय चुनने के लिए नीचे टैप करें।`,
+  sessionOfferBody: `शांता राव जी से बात करने के लिए धन्यवाद। वे आपको पूरा सेशन देना चाहेंगी। नीचे एक विकल्प चुनें: एक सेशन, या ${p10.sessions} या ${p20.sessions} सेशन का पैकेज।`,
   noSessionSlots: "अभी सेशन का कोई खाली समय नहीं है। नए समय खुलते ही हम आपको मैसेज करेंगे।",
   sessionNotAvailable: "माफ़ कीजिए, इस मैसेज से सेशन बुक नहीं हो सकता। हमारी टीम इसे देखेगी।",
   sessionPayBody: (day, time) =>
@@ -447,7 +545,7 @@ const hi: Copy = {
   repromptHelp: "अगर आप हमारी टीम के किसी व्यक्ति से बात करना चाहें, तो नीचे टैप करें।",
   alreadyBookedStart: (day, time) => `आपकी कॉल पहले से ${day} को ${time} बजे बुक है। शांता राव जी उसी समय कॉल करेंगी।`,
   btnKeep: "ठीक है",
-  faqBody: "एक विषय चुनें।",
+  helpListBody: "हम कैसे मदद कर सकते हैं?",
   faqButton: "चुनें",
   faqTitles: {
     what_is_this: "यह क्या है?",
@@ -463,16 +561,61 @@ const hi: Copy = {
       "शुरुआत में आप उनसे बात करने के लिए एक छोटी कॉल बुक कर सकते हैं।",
     how_it_works:
       `1. कॉल का समय चुनें। 2. ${intro} का भुगतान करें। 3. शांता राव जी आपको ${config.slots.callMinutes} मिनट के लिए कॉल करेंगी। ` +
-      "4. अगर आप दोनों को ठीक लगे, तो आप पूरा सेशन बुक कर सकते हैं।",
-    price: `पहली कॉल ${intro} की है। पूरा सेशन ${sessionPrice} का है।`,
+      "4. अगर आप दोनों को ठीक लगे, तो आप पूरा सेशन या पैकेज बुक कर सकते हैं।",
+    price:
+      `पहली कॉल ${intro} की है। एक सेशन ${sessionPrice} का है। ` +
+      `पैकेज: ${p10.sessions} सेशन ${packPrice(p10.sessions)} में (${perSession(p10)} प्रति सेशन) या ${p20.sessions} सेशन ${packPrice(p20.sessions)} में (${perSession(p20)} प्रति सेशन), कोई समय-सीमा नहीं।`,
     timings: hoursText("hi"),
     refund:
       `अगर पहली कॉल के बाद शांता राव जी को लगे कि यह आपके लिए सही नहीं है, तो आपके ${intro} वापस कर दिए जाते हैं। ` +
+      `एक सेशन का समय ${rules.changeBeforeHours} घंटे पहले तक एक बार बदला जा सकता है, और ${rules.singleRefundBeforeHours} घंटे या उससे पहले रद्द करने पर पूरे पैसे वापस मिलते हैं। ` +
+      `पैकेज का सेशन ${rules.changeBeforeHours} घंटे या उससे पहले बदलने या रद्द करने पर आपके पैकेज में वापस जुड़ जाता है। ` +
       "अगर हमें कॉल रद्द करनी पड़े, तब भी पैसे वापस मिलते हैं।",
     privacy:
       "हम सिर्फ़ आपका नाम, WhatsApp नंबर, बुकिंग और भुगतान की जानकारी रखते हैं। चैट के मैसेज आख़िरी मैसेज के 30 दिन बाद मिटा दिए जाते हैं। " +
       "कृपया यहाँ सेहत से जुड़ी जानकारी या रिपोर्ट न भेजें।",
   },
+  // सेशन और पैकेज (ticket 13)
+  packagesBody: "हर सेशन 60 मिनट का होता है, फ़ोन पर। एक विकल्प चुनें। ज़्यादातर लोग ₹99 की कॉल से शुरू करते हैं, ताकि शांता राव जी बता सकें कि उनके लिए क्या ठीक रहेगा।",
+  packagesButton: "विकल्प देखें",
+  rowIntroTitle: `${intro} पहली कॉल`,
+  rowIntroDesc: `शांता राव जी से ${config.slots.callMinutes} मिनट`,
+  rowSingleTitle: "एक सेशन",
+  rowSingleDesc: sessionPrice,
+  rowPack10Title: `${p10.sessions} सेशन`,
+  rowPack10Desc: `${packPrice(p10.sessions)} · ${perSession(p10)} प्रति सेशन · कोई समय-सीमा नहीं`,
+  rowPack20Title: `${p20.sessions} सेशन`,
+  rowPack20Desc: `${packPrice(p20.sessions)} · ${perSession(p20)} प्रति सेशन · कोई समय-सीमा नहीं`,
+  softGate:
+    `ज़्यादातर लोग पहले ${intro} की कॉल करते हैं, ताकि शांता राव जी आपकी ज़रूरत समझ सकें। क्या आप ऐसा करना चाहेंगे, या आगे बढ़ें?`,
+  btnContinue: "आगे बढ़ें",
+  packPayBody: (n, price) =>
+    `${n} सेशन ${price} में। भुगतान के लिए नीचे टैप करें। उसके बाद आप जब चाहें हर सेशन बुक कर सकते हैं, हर बार भुगतान नहीं करना होगा। कृपया दो बार भुगतान न करें।`,
+  packPayLabel: (price) => `${price} भुगतान करें`,
+  packPending: "पैकेज का भुगतान लिंक पहले से खुला है। कृपया ऊपर दिए भुगतान बटन का इस्तेमाल करें, या कुछ मिनट बाद फिर कोशिश करें।",
+  packConfirmed: (n) => `भुगतान मिल गया। आपके पास ${n} सेशन हैं। क्या अभी पहला सेशन बुक करें?`,
+  btnBookSession: "सेशन बुक करें",
+  creditBooked: (day, time, left) => `आपका सेशन ${day} को ${time} बजे (भारतीय समय) बुक हो गया है। शांता राव जी उसी समय कॉल करेंगी। बचे हुए सेशन: ${left}।`,
+  maxUpcoming: `आपके ${rules.maxUpcoming} सेशन पहले से बुक हैं। उनमें से एक होने के बाद आप अगला बुक कर सकते हैं।`,
+  noCredits: "आपके पैकेज में कोई सेशन नहीं बचा है। आप \"सेशन और पैकेज\" से एक सेशन या नया पैकेज ले सकते हैं।",
+  creditsLeft: (left) => `पैकेज में बचे सेशन: ${left}।`,
+  myBookingsBody: (list, left) => `आपकी बुकिंग: ${list}। पैकेज में बचे सेशन: ${left}।`,
+  myBookingsNoPack: (list) => `आपकी बुकिंग: ${list}।`,
+  myBookingsNone: "आपकी कोई आने वाली बुकिंग नहीं है।",
+  bookingItem: (word, day, time) => `${word}, ${day} को ${time} बजे`,
+  sessionActions: (day, time) => `${day} को ${time} बजे आपका सेशन। आप क्या करना चाहेंगे?`,
+  btnMove: "समय बदलें",
+  btnCancel: "रद्द करें",
+  bookingNotFound: "माफ़ कीजिए, वह बुकिंग नहीं मिली। शायद वह बदल गई है। कृपया \"मेरी बुकिंग\" फिर से खोलें।",
+  moveTooLate: `माफ़ कीजिए, सेशन का समय सिर्फ़ ${rules.changeBeforeHours} घंटे पहले तक बदला या रद्द किया जा सकता है।`,
+  moveOnlyOnce: "इस सेशन का समय एक बार बदला जा चुका है, इसलिए इसे दोबारा नहीं बदला जा सकता। मदद चाहिए तो कृपया हमारी टीम के किसी व्यक्ति से बात करें।",
+  moved: (day, time) => `हो गया। आपका सेशन अब ${day} को ${time} बजे (भारतीय समय) है।`,
+  cancelledCredit: (left) => `रद्द हो गया। सेशन आपके पैकेज में वापस जुड़ गया है। बचे हुए सेशन: ${left}।`,
+  cancelledSingleRefund: `रद्द हो गया। क्योंकि यह ${rules.singleRefundBeforeHours} घंटे या उससे पहले था, पूरी राशि आपके भुगतान के तरीके में वापस कर दी जाएगी।`,
+  cancelledSingleNoRefund: `${rules.changeBeforeHours} से ${rules.singleRefundBeforeHours} घंटे पहले, एक सेशन का पैसा वापस नहीं होता, लेकिन आप एक बार समय बदल सकते हैं। क्या समय बदलें?`,
+  notFitRefundSession: (amount) =>
+    `शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी यह आपके लिए सही नहीं है, इसलिए आपके ${amount} वापस कर दिए गए हैं।`,
+  packRefunded: (amount) => `आपके बिना इस्तेमाल हुए सेशन के ${amount} वापस कर दिए गए हैं। यह राशि आपके भुगतान के तरीके में लौटेगी।`,
   amma: ammaEn, // Amma's page copy stays English
 };
 

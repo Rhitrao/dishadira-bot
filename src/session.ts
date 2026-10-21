@@ -1,4 +1,4 @@
-// The ₹700 session: "Choose a time" -> next free SESSION slots -> guarded hold -> sessions row HELD + payment -> link that expires with the hold.
+// A paid session (₹799): "Choose a time" -> next free SESSION slots -> guarded hold -> sessions row HELD + payment -> link that expires with the hold.
 // Payment success is applied by src/pay/apply.ts (bookSession). A session can only be offered after CALLED_SESSION (see outcomes.ts).
 import { config } from "./config";
 import { copyFor, langOf } from "./copy";
@@ -13,7 +13,7 @@ import { formatIstLang, holdSlot, iso, istDay } from "./slots";
 
 const nowIso = () => iso(Date.now());
 type Conv = NonNullable<Awaited<ReturnType<typeof loadConv>>>;
-type Session = { id: number; state: string; conversation_id: number; service: string; intro_state: string | null; override_by: string | null };
+export type Session = { id: number; state: string; conversation_id: number; service: string; intro_state: string | null; override_by: string | null; origin: string };
 
 // The session picker is the same day-then-time steps as the call (no age, service or who-for steps):
 // sess_offer_<sessionId> -> day buttons sday_<sessionId>_<ymd> -> time list sess_<sessionId>_<startUtc>, whose last row smore_<sessionId> shows the days again.
@@ -43,12 +43,12 @@ export async function sessionChoice(env: Env, choice: string | null, convId: num
   // Only after CALLED_SESSION (or an audited operator override), and only the person it was offered to.
   const ses = await db
     .prepare(
-      `SELECT se.id, se.state, se.conversation_id, se.service, i.state AS intro_state, se.override_by
+      `SELECT se.id, se.state, se.conversation_id, se.service, i.state AS intro_state, se.override_by, se.origin
        FROM sessions se LEFT JOIN intros i ON i.id = se.intro_id WHERE se.id = ?1`,
     )
     .bind(sid)
     .first<Session>();
-  const allowed = ses && ses.conversation_id === conv.id && (ses.intro_state === "CALLED_SESSION" || ses.override_by) && ["OFFERED", "HELD", "EXPIRED"].includes(ses.state);
+  const allowed = ses && ses.conversation_id === conv.id && (ses.intro_state === "CALLED_SESSION" || ses.override_by || ses.origin === "SELF") && ["OFFERED", "HELD", "EXPIRED"].includes(ses.state);
   if (!allowed) {
     await send({ type: "text", text: cp.sessionNotAvailable }, "na");
     await raiseAttention(db, "SESSION_NOT_OFFERABLE", `session:${sid}`);
@@ -94,7 +94,7 @@ async function showSessionTimes(env: Env, conv: Conv, sid: number, ymd: string, 
   await sendSessionDays(env, conv, sid, `${msgId}:again`);
 }
 
-async function startSession(env: Env, provider: PaymentProvider, conv: Conv, ses: Session, startUtc: string, msgId: string): Promise<void> {
+export async function startSession(env: Env, provider: PaymentProvider, conv: Conv, ses: Session, startUtc: string, msgId: string): Promise<void> {
   const db = env.DB;
   const cp = copyFor(conv.locale);
   const send = (out: Out, step: string) => sendMessage(env, conv.id, out, `${msgId}:${step}`);
@@ -127,13 +127,13 @@ async function startSession(env: Env, provider: PaymentProvider, conv: Conv, ses
   const linkId = `di-session-${ses.id}-${nowMs}`; // unique per attempt, <= 40 chars (Razorpay reference_id limit)
   const pay = await db
     .prepare("INSERT INTO payments (provider, purpose, target_id, provider_link_id, amount_paise) VALUES ('razorpay', 'SESSION', ?1, ?2, ?3)")
-    .bind(ses.id, linkId, config.prices.sessionPaise)
+    .bind(ses.id, linkId, config.prices.single)
     .run();
   const payId = pay.meta.last_row_id;
   try {
     const link = await provider.createLink({
       linkId,
-      amountPaise: config.prices.sessionPaise,
+      amountPaise: config.prices.single,
       purpose: "Disha Dira session booking",
       customerName: conv.display_name ?? "Customer",
       customerPhone: conv.wa_id.replace(/\D/g, "").slice(-10),

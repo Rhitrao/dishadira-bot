@@ -27,7 +27,7 @@ export async function sendReminders(env: Env, nowMs = Date.now()): Promise<numbe
       .bind(from, to)
       .all<Row>();
   const calls = (await q("intros", "('PAID','RESCHEDULED')", "CALL")).results;
-  const sessions = (await q("sessions", "('CONFIRMED')", "SESSION")).results;
+  const sessions = (await q("sessions", "('CONFIRMED','CREDIT_BOOKED')", "SESSION")).results;
   let sent = 0;
   for (const [kind, rows] of [["call", calls], ["session", sessions]] as const) {
     for (const r of rows) {
