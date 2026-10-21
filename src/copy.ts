@@ -202,6 +202,12 @@ export type Copy = {
   flirtLine: string;
   aiFallback: string; // the menu's body when the AI cannot answer (ticket 14), and when a daily AI budget is used up
   aiFallbackNoSell: string; // the same, while selling is paused (after a crisis message): no call is offered
+  btnSeeTimes: string; // max 20 chars: under an assistant answer that leads to booking
+  // Sent instead of an assistant answer that failed the output check (docs/KNOWLEDGE.md section 11, "Fallbacks"), one per group of labels.
+  fallbackQuestion: string; // relevant_question, objection, booking_intent
+  fallbackConcern: string; // personal_concern
+  fallbackBooking: string; // existing_booking
+  fallbackOffTopic: string; // off_topic, astrology_or_prediction, prohibited_request, loop, smalltalk
   reprompt: (hint: string) => string;
   hintDays: string;
   repromptHelp: string;
@@ -373,14 +379,19 @@ const en: Copy = {
   mediaNotice: "Only typed messages can be read here. Please type your question, or tap a button below.",
   mediaNoticeCustomer: "Only typed messages can be read here. If this was about your payment or booking, our team will check and reply here.",
   crisis:
-    "We're really sorry you're feeling this way. You don't have to face it alone. Please talk to someone right now: Tele-MANAS is a free government helpline, open 24×7. " +
-    "Call *14416* or *1-800-891-4416*. If you are in danger right now, call *112*. A person from our team has been told and will message you here as soon as they can.",
+    "We're really sorry you're going through this. You don't have to face it alone. Please talk to someone right now: Tele-MANAS is a free government helpline, open 24×7. " +
+    "Call *14416* or *1-800-891-4416*. If you or anyone else is in danger right now, call *112*. A person from our team has been told and will message you here as soon as they can.",
   emergency: "This sounds like an emergency. Please call *112*, or *108* for an ambulance, right now, or go to the nearest hospital.",
   quietClose: "It seems we can't help with this. If you'd like to book a call with Shantha Rao later, just type *book*.",
   optOutConfirm: "Done. We won't send you any more messages. If you write to us again, we'll reply.",
   flirtLine: "This chat is only for bookings.",
   aiFallback: "Sorry, we can't answer that right now. You can book a call below or talk to a person.",
   aiFallbackNoSell: "Sorry, we can't answer that right now. You can talk to a person from our team below.",
+  btnSeeTimes: "See call times",
+  fallbackQuestion: `Thanks for asking. Shantha Rao can explain this properly on a short ${intro} call, or you can ask a person from our team.`,
+  fallbackConcern: `We're sorry you're going through this. If you'd like, Shantha Rao can listen on a short call. Please also keep following your doctor's advice.`,
+  fallbackBooking: "Our team will check this and reply to you here.",
+  fallbackOffTopic: "We can only help with Disha Dira calls and bookings.",
   reprompt: (hint) => `${hint ? `${hint} ` : ""}Please choose from the options below.`,
   hintDays: hintDaysText("en"),
   repromptHelp: "If you would rather talk to a person from our team, tap below.",
@@ -532,14 +543,19 @@ const hi: Copy = {
   mediaNotice: "यहाँ सिर्फ़ लिखे हुए मैसेज पढ़े जा सकते हैं। कृपया अपना सवाल लिखें या नीचे कोई बटन दबाएँ।",
   mediaNoticeCustomer: "यहाँ सिर्फ़ लिखे हुए मैसेज पढ़े जा सकते हैं। अगर यह आपके भुगतान या बुकिंग के बारे में था, तो हमारी टीम देखकर यहीं जवाब देगी।",
   crisis:
-    "हमें बहुत दुख है कि आप ऐसा महसूस कर रहे हैं। आप अकेले नहीं हैं। कृपया अभी किसी से बात करें। टेली-मानस (Tele-MANAS) सरकार की मुफ़्त हेल्पलाइन है, जो हर दिन 24 घंटे खुली रहती है: " +
-    "*14416* या *1-800-891-4416* पर कॉल करें। अगर आप अभी खतरे में हैं, तो *112* पर कॉल करें। हमने अपनी टीम को बता दिया है, वे जल्द से जल्द आपको यहीं मैसेज करेंगे।",
+    "हमें बहुत दुख है कि आप इस मुश्किल से गुज़र रहे हैं। आप अकेले नहीं हैं। कृपया अभी किसी से बात करें। टेली-मानस (Tele-MANAS) सरकार की मुफ़्त हेल्पलाइन है, जो हर दिन 24 घंटे खुली रहती है: " +
+    "*14416* या *1-800-891-4416* पर कॉल करें। अगर आप या कोई और अभी खतरे में है, तो *112* पर कॉल करें। हमने अपनी टीम को बता दिया है, वे जल्द से जल्द आपको यहीं मैसेज करेंगे।",
   emergency: "यह इमरजेंसी लग रही है। कृपया तुरंत *112* पर, या एम्बुलेंस के लिए *108* पर कॉल करें, या सबसे नज़दीकी अस्पताल जाएँ।",
   quietClose: "लगता है हम इसमें मदद नहीं कर पाएँगे। अगर आप बाद में शांता राव जी के साथ कॉल बुक करना चाहें, तो बस *बुक* लिखें।",
   optOutConfirm: "ठीक है। अब हम आपको कोई मैसेज नहीं भेजेंगे। अगर आप फिर से लिखेंगे, तो हम जवाब देंगे।",
   flirtLine: "यह चैट सिर्फ़ बुकिंग के लिए है।",
   aiFallback: "माफ़ कीजिए, अभी इसका जवाब नहीं दिया जा सका। आप नीचे से कॉल बुक कर सकते हैं या किसी व्यक्ति से बात कर सकते हैं।",
   aiFallbackNoSell: "माफ़ कीजिए, अभी इसका जवाब नहीं दिया जा सका। आप नीचे से हमारी टीम के किसी व्यक्ति से बात कर सकते हैं।",
+  btnSeeTimes: "कॉल का समय देखें",
+  fallbackQuestion: `पूछने के लिए धन्यवाद। शांता राव जी ${intro} की छोटी कॉल पर इसे अच्छे से समझा सकती हैं, या आप हमारी टीम के किसी व्यक्ति से बात कर सकते हैं।`,
+  fallbackConcern: "हमें दुख है कि आप इससे गुज़र रहे हैं। अगर आप चाहें, तो शांता राव जी एक छोटी कॉल पर आपकी बात सुन सकती हैं। कृपया अपने डॉक्टर की सलाह भी मानते रहें।",
+  fallbackBooking: "हमारी टीम इसे देखकर यहीं आपको जवाब देगी।",
+  fallbackOffTopic: "हम सिर्फ़ दिशा दिरा की कॉल और बुकिंग में मदद कर सकते हैं।",
   reprompt: (hint) => `${hint ? `${hint} ` : ""}कृपया नीचे दिए विकल्पों में से चुनें।`,
   hintDays: hintDaysText("hi"),
   repromptHelp: "अगर आप हमारी टीम के किसी व्यक्ति से बात करना चाहें, तो नीचे टैप करें।",
@@ -572,7 +588,7 @@ const hi: Copy = {
       `पैकेज का सेशन ${rules.changeBeforeHours} घंटे या उससे पहले बदलने या रद्द करने पर आपके पैकेज में वापस जुड़ जाता है। ` +
       "अगर हमें कॉल रद्द करनी पड़े, तब भी पैसे वापस मिलते हैं।",
     privacy:
-      "हम सिर्फ़ आपका नाम, WhatsApp नंबर, बुकिंग और भुगतान की जानकारी रखते हैं। चैट के मैसेज आख़िरी मैसेज के 30 दिन बाद मिटा दिए जाते हैं। " +
+      "हम सिर्फ़ आपका नाम, WhatsApp नंबर, बुकिंग और भुगतान की जानकारी रखते हैं। चैट के मैसेज आख़िरी मैसेज के 7 दिन बाद मिटा दिए जाते हैं। " +
       "कृपया यहाँ सेहत से जुड़ी जानकारी या रिपोर्ट न भेजें।",
   },
   // सेशन और पैकेज (ticket 13)

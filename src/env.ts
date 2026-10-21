@@ -14,6 +14,7 @@ export const SECRET_NAMES = [
   "DIGEST_TO",
   "AMMA_EMAIL",
   "ROHIT_EMAIL",
+  "ANTHROPIC_API_KEY",
 ] as const;
 
 export type SecretName = (typeof SECRET_NAMES)[number];
@@ -23,6 +24,8 @@ export type Env = {
   OWNER_APPROVED: string;
   NEW_BOOKINGS: string;
   SENDS: string;
+  // "true" lets the assistant (src/ai.ts) answer typed questions; "false" everywhere until Rohit switches it on. /admin can pause it, never enable it.
+  AI_REPLIES: string;
   PAYMENT_MODE: string;
   // Minutes after a person's last message that their chat text is wiped: live "10080" (7 days), test "10".
   CHAT_RETENTION_MINUTES: string;

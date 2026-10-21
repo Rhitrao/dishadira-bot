@@ -23,14 +23,15 @@ export type SendResult =
 const nowIso = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
 // Open attention items are not repeated for the same kind + target.
-export async function raiseAttention(db: D1Database, kind: string, target: string): Promise<void> {
-  await db
+export async function raiseAttention(db: D1Database, kind: string, target: string): Promise<boolean> {
+  const res = await db
     .prepare(
       `INSERT INTO attention (kind, target) SELECT ?1, ?2
        WHERE NOT EXISTS (SELECT 1 FROM attention WHERE kind = ?1 AND target = ?2 AND resolved_at IS NULL)`,
     )
     .bind(kind, target)
     .run();
+  return res.meta.changes > 0; // true: a new item was opened
 }
 
 // The template a person gets: the Hindi one for Hindi chats once Meta has approved it, otherwise the English one.

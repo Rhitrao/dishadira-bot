@@ -5,7 +5,7 @@ import app from "../src/index";
 import { bookingChoice } from "../src/booking";
 import { runDigest, digestText } from "../src/report";
 import { sendAlerts } from "../src/mail";
-import { bookingsOpen, sendsOn } from "../src/switches";
+import { aiOn, bookingsOpen, sendsOn } from "../src/switches";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat } from "../src/watch";
 import { applyStatus } from "../src/pay/apply";
 import { razorpay } from "../src/pay/razorpay";
@@ -285,6 +285,29 @@ describe("switches", () => {
     expect(await bookingsOpen(env())).toBe(false);
     expect(await sendsOn(env())).toBe(true);
     expect((await auditRows()).at(-1)).toMatchObject({ actor: ROHIT, action: "ADMIN_SWITCH", target: "NEW_BOOKINGS", detail: "off" });
+  });
+  it("AI_REPLIES follows the SENDS rules: the env flag is the master, the switch can only pause it, and a paused SENDS means no AI either", async () => {
+    const on = env({ AI_REPLIES: "true" });
+    expect(await aiOn(on)).toBe(true);
+    expect(await (await get("/admin", on)).text()).toContain("AI answers: ON");
+    await press("switch", {}, on, 'value="AI_REPLIES"');
+    expect(await aiOn(on)).toBe(false);
+    expect(await (await get("/admin", on)).text()).toContain("AI answers: PAUSED");
+    expect((await auditRows()).at(-1)).toMatchObject({ actor: ROHIT, action: "ADMIN_SWITCH", target: "AI_REPLIES", detail: "off" });
+    await press("switch", {}, on, 'value="AI_REPLIES"');
+    expect(await aiOn(on)).toBe(true);
+    // The env flag off (the default): no button, and a forged "on" is refused.
+    const off = env({ AI_REPLIES: "false" });
+    expect(await aiOn(off)).toBe(false);
+    const page = await (await get("/admin", off)).text();
+    expect(page).toContain("AI answers: PAUSED");
+    expect(page).not.toMatch(/Resume ai answers|Pause ai answers/);
+    const forced = await post("/admin/switch", { name: "AI_REPLIES", v: "on", csrf: await csrfFor("switch:AI_REPLIES:on") }, { e: off });
+    expect(forced.headers.get("Location")).toBe("/admin?m=envoff");
+    expect(await aiOn(off)).toBe(false);
+    // Sends paused: nothing could go out, so the assistant is not asked either.
+    await db.prepare("INSERT INTO settings (key,value) VALUES ('SENDS','false')").run();
+    expect(await aiOn(on)).toBe(false);
   });
   it("SENDS paused stops outbound messages (the row is kept as SKIPPED)", async () => {
     const conv = await person();

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import wrangler from "../wrangler.toml?raw";
 import deploy from "../.github/workflows/deploy.yml?raw";
+import evalWorkflow from "../.github/workflows/eval.yml?raw";
 
 // Release checks on the deploy files: test and live never share data, and every safety flag starts off.
 const section = (name: string) => {
@@ -30,6 +31,10 @@ describe("wrangler environments", () => {
       expect(flags.map((k) => value(s, k)), name).toEqual(["false", "false", "false"]);
     }
     for (const k of flags) expect(["true", "false"], `env.test.vars ${k}`).toContain(value(section("env.test.vars"), k));
+  });
+  it("AI_REPLIES is \"false\" at the top level and in live; test may be either", () => {
+    for (const name of ["vars", "env.live.vars"]) expect(value(section(name), "AI_REPLIES"), name).toBe("false");
+    expect(["true", "false"]).toContain(value(section("env.test.vars"), "AI_REPLIES"));
   });
   it("chat text is wiped after 7 days on live and at the top level, after 10 minutes on test", () => {
     expect(value(section("vars"), "CHAT_RETENTION_MINUTES")).toBe("10080");
@@ -68,5 +73,16 @@ describe("deploy workflow", () => {
     expect(at("npm test")).toBeGreaterThan(at("npm run typecheck"));
     expect(at("d1 migrations apply DB --remote --env ${{ inputs.environment }}")).toBeGreaterThan(at("npm test"));
     expect(at("wrangler deploy --env ${{ inputs.environment }}")).toBeGreaterThan(at("migrations apply"));
+  });
+});
+
+describe("assistant eval workflow", () => {
+  it("is manual only, uses only the ANTHROPIC_API_KEY secret, and does not touch Cloudflare or WhatsApp", () => {
+    expect(evalWorkflow).toMatch(/^on:\s*\n\s+workflow_dispatch:\s*$/m);
+    expect(evalWorkflow).not.toMatch(/^\s+(push|pull_request|schedule):/m);
+    expect(evalWorkflow).toContain("secrets.ANTHROPIC_API_KEY");
+    expect([...evalWorkflow.matchAll(/secrets\.(\w+)/g)].map((m) => m[1])).toEqual(["ANTHROPIC_API_KEY"]);
+    expect(evalWorkflow).not.toMatch(/wrangler|WA_TOKEN|CLOUDFLARE/);
+    expect(evalWorkflow).toContain("vitest.eval.config.ts");
   });
 });

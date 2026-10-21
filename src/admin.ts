@@ -190,7 +190,7 @@ admin.get("/", async (c) => {
   const sw = await switchStates(c.env);
   const swRows = await Promise.all(
     sw.map(async (s) => {
-      const label = s.name === "NEW_BOOKINGS" ? "New bookings" : s.name === "SENDS" ? "Outbound messages" : "Amma away";
+      const label = s.name === "NEW_BOOKINGS" ? "New bookings" : s.name === "SENDS" ? "Outbound messages" : s.name === "AI_REPLIES" ? "AI answers" : "Amma away";
       const state = s.name === "AMMA_AWAY" ? (s.on ? "AWAY" : "here") : s.on ? "ON" : "PAUSED";
       const note = s.name !== "AMMA_AWAY" && !s.envOn ? " (off in wrangler.toml, the master switch)" : s.name === "NEW_BOOKINGS" && s.paused && sw[1].on ? " (paused by Amma away)" : "";
       let btn: unknown = "";
@@ -255,7 +255,7 @@ admin.post("/resolve", (c) =>
       // The person asked for a human (or wrote a crisis message) and one has now answered: the chat goes back to the bot (a blocked chat stays blocked).
       // A crisis message also stopped selling for 7 days; that stays until it runs out or Rohit clears it on the person's page.
       const conv = await convOf(c.env, item.target);
-      const back = conv ? await c.env.DB.prepare("UPDATE conversations SET mode = 'BOT' WHERE id = ?1 AND mode = 'HUMAN'").bind(conv.id).run() : null;
+      const back = conv ? await c.env.DB.prepare("UPDATE conversations SET mode = 'BOT', human_since = NULL WHERE id = ?1 AND mode = 'HUMAN'").bind(conv.id).run() : null;
       if (back?.meta.changes) await audit(c, "ADMIN_HUMAN_DONE", `conv:${conv!.id}`, "mode HUMAN -> BOT");
     }
     return "resolved";

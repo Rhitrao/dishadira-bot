@@ -47,6 +47,7 @@ Cloudflare → Workers & Pages → `dishadira-bot-test` → **Settings → Varia
 | `AMMA_EMAIL` | The Google address Amma signs in with | Ask Amma which Google account she uses |
 | `ROHIT_EMAIL` | The Google address you sign in with | Yours. Only this address can open `/admin`. |
 | `DIGEST_TO` | Where the 9 pm summary and alert emails go | Your own address; it must be the verified address from step 6 |
+| `ANTHROPIC_API_KEY` | Lets the assistant answer typed questions (only used when `AI_REPLIES` is `"true"`, see step 14d) | Anthropic Console → **API keys → Create key**. Give the key its own workspace or project and set a **monthly spend limit** (for example US$10). Use a different key for test and live. The same kind of key also goes into GitHub for the manual eval (STATUS.md). |
 
 Never paste these values into GitHub, chat or screenshots. Razorpay shows the key secret only once; if you lose it, generate a new key.
 
@@ -153,9 +154,19 @@ Always one at a time, with a Deploy in between and a look at `/admin` after each
   - "Not right fit" at the very first session (when the ₹99 call was skipped): the whole payment is refunded, once per person.
   - Remove any line that says "no packages", and any "in person" wording if the work is by phone only.
 
+### 14d. The assistant and the privacy page (Rohit does this, before `AI_REPLIES` is ever switched on)
+The assistant (ticket 14) sends what customers type to Anthropic, in the United States, to write the reply. Until the privacy page says so, keep `AI_REPLIES = "false"`.
+- [ ] Update the website's **privacy page**, under "What we collect" and "Who we share it with", with this wording (from `docs/KNOWLEDGE.md` section 10; it says **7 days** because that is what the bot does since ticket 12, not the 30 days the knowledge bank still shows):
+  > An automated assistant answers questions on WhatsApp. To do this, the text of your messages is processed by our AI service provider (Anthropic, in the United States), only to reply to you. We remove phone numbers and links before sending. Chat messages are deleted 7 days after your last message.
+- [ ] Decide whether to add "It is not used to train AI models" **only after** you have checked Anthropic's current commercial terms. Do not publish it unchecked.
+- [ ] Make sure the bot's first message (already built in) and the privacy page agree: the greeting says the assistant is automated and that messages are processed by the assistant and the AI provider.
+- [ ] Add the `ANTHROPIC_API_KEY` secret to the **test** Worker only (step 4), then follow "How to turn the assistant on for test" in `STATUS.md`. Read every reply in the shadow week before thinking about live.
+- [ ] On live, `AI_REPLIES` stays `"false"` until the eval (`Actions → Assistant eval`) passes, the shadow week is done and Amma has read `docs/KNOWLEDGE.md` and the Hindi messages.
+
 ### 15. How to pause everything
 Fastest first. None of these needs coding.
 - **One tap, instant:** `/admin` → switch **New bookings** to paused (nobody can start a new booking) and **Sends** to paused (the bot stops sending messages; incoming messages are still recorded). Resume with the same switch.
+- **The assistant misbehaves:** `/admin` → switch **AI answers** to paused. Typed questions then get the plain acknowledgement and an item for you, and nothing is sent to Anthropic. (Or set `AI_REPLIES = "false"` in `wrangler.toml` and Deploy.)
 - **Amma is unavailable:** `/admin` → **Amma away**. New bookings pause and every booked call and session of today and tomorrow becomes an item for you (offer a new time or refund).
 - **Stop for good until you say so:** in `wrangler.toml` set `NEW_BOOKINGS = "false"` and `SENDS = "false"` under `[env.live.vars]`, then **Deploy → live**. The switches in `/admin` can only turn things off, never on, so the file is always the final say.
 - **Emergency, no deploy:** in the Razorpay dashboard deactivate the live API key (Account & Settings → API Keys), and in the Meta app remove the webhook subscription. The bot then cannot take money or hear customers.

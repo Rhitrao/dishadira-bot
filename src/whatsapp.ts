@@ -1,12 +1,16 @@
 import type { Context } from "hono";
 import { z } from "zod";
 import { config } from "./config";
+import { answerWithAI } from "./answer";
+import { firstQuestion, recentMessages } from "./ai";
 import { copyFor, LANGUAGE_BUTTONS, type Copy } from "./copy";
 import type { Env } from "./env";
 import { bookingChoice } from "./booking";
 import { bookingsChoice } from "./mybookings";
 import { creditBalance, packChoice, sessionOfferOut } from "./packages";
 import { classifyWithoutAI, gate, isMenuWord, plainWord } from "./gate";
+import { requestHuman } from "./handoff";
+import { menuOut } from "./menu";
 import { applyLabel, ensureState, noSellActive } from "./noise";
 import { rescheduleChoice } from "./outcomes";
 import { botAudit, runCrisis, runEmergency } from "./safety";
@@ -211,19 +215,6 @@ async function hasBookingContext(db: Env["DB"], convId: number, nowMs = Date.now
 }
 
 
-// The menu: [Book ₹99 call] [Sessions & packages] [Help]. While nothing may be sold (after a crisis message) it has neither selling button, and
-// shows Help and Talk to a person instead. `withPerson` (the fallback when the AI cannot answer or a budget is used up) swaps in Talk to a person
-// for Sessions & packages, because a person is the one thing that always works (Talk to a person is also in the Help list).
-const menuOut = (cp: Copy, noSell: boolean, body = cp.menuBody, withPerson = false): Out => ({
-  type: "buttons",
-  body,
-  buttons: noSell
-    ? [{ id: "menu_how", title: cp.btnHelp }, { id: "menu_person", title: cp.btnPerson }]
-    : withPerson
-      ? [{ id: "menu_book", title: cp.btnBook }, { id: "menu_how", title: cp.btnHelp }, { id: "menu_person", title: cp.btnPerson }]
-      : [{ id: "menu_book", title: cp.btnBook }, { id: "menu_pack", title: cp.btnPackages }, { id: "menu_how", title: cp.btnHelp }],
-});
-
 type Conv = {
   id: number; wa_id: string; mode: string; locale: string; consent_at: string | null; greeted_at: string | null; last_ack_at: string | null; firstQuestion: string | null;
 };
@@ -329,9 +320,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     }
 
     case "HANDOFF":
-      await clearStep(db, conv.id);
-      await db.prepare("UPDATE conversations SET mode = 'HUMAN' WHERE id = ?1 AND mode = 'BOT'").bind(conv.id).run();
-      await raiseAttention(db, "HUMAN_REQUEST", `conv:${conv.id}`); // at most one open item per person
+      await requestHuman(env, conv.id); // HUMAN mode, one open item, one email to Rohit (at most one per person per 6 hours)
       await reply({ type: "text", text: cp.handoffAck }, "handoff");
       return;
 
@@ -382,9 +371,19 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       return;
   }
 
-  // ---- typed text that reached the classifier (the rule-based one until the AI exists) ----
+  // ---- typed text that reached the classifier: the assistant when AI_REPLIES is on, otherwise the rule-based one ----
   async function classified(decision: "BUDGET_FALLBACK" | "TO_CLASSIFIER"): Promise<void> {
-    const label = classifyWithoutAI(text ?? "");
+    // The assistant (when AI_REPLIES is on) labels and answers the question. Otherwise, or when it cannot answer in the middle of a booking, the old path below.
+    let viaAI = false;
+    if (decision === "TO_CLASSIFIER" && text !== null) {
+      const answered = await answerWithAI({
+        env, conv: conv!, text, msgId: m.id, messages: await recentMessages(db, conv!.id, mine?.id ?? 0),
+        send: (out, step) => reply(out, step), newerExists: () => burst("ai", "text"),
+      });
+      if (answered !== "off" && answered !== "reprompt") return;
+      viaAI = answered === "reprompt";
+    }
+    const label = viaAI ? "TO_CLASSIFIER" : classifyWithoutAI(text ?? "");
     if (label !== "TO_CLASSIFIER") {
       const res = await applyLabel(env, conv!, label, text ?? "", { msgId: m.id, say: (out, step) => reply(out, step) });
       if (res.stop) return; // a strike, a block or a quiet week: nothing more is said
@@ -424,10 +423,22 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       await db.prepare("UPDATE conversations SET locale = ?2, consent_at = COALESCE(consent_at, ?3), first_question_msg = NULL WHERE id = ?1").bind(conv!.id, locale, nowIso()).run();
       const cp2 = copyFor(locale);
       if (conv!.firstQuestion) {
-        // Until the AI exists (ticket 14) a first-message question gets what any typed question gets: one acknowledgement and an item for Rohit.
-        await raiseAttention(db, "FREE_TEXT", `conv:${conv!.id}`);
-        const res = await sendMessage(env, conv!.id, { type: "text", text: cp2.ack }, `${conv!.firstQuestion}:ack`);
-        if (wentOut(res)) await db.prepare("UPDATE conversations SET last_ack_at = ?2 WHERE id = ?1").bind(conv!.id, nowIso()).run();
+        // The question the person asked before choosing a language: the assistant answers it (its text may already be wiped, and then it cannot).
+        // Without the assistant it gets what any typed question gets: one acknowledgement and an item for Rohit.
+        const asked = await firstQuestion(db, conv!.firstQuestion);
+        const key = conv!.firstQuestion;
+        const answered = asked
+          ? await answerWithAI({
+              env, conv: { ...conv!, locale, consent_at: nowIso(), mode: conv!.mode }, text: asked.text, msgId: key, messages: asked.messages,
+              send: (out, step) => sendMessage(env, conv!.id, out, `${key}:${step}`),
+            })
+          : "off";
+        if (answered === "finished") return; // the answer carried its own buttons, or nothing more is to be said
+        if (answered === "off" || answered === "reprompt") {
+          await raiseAttention(db, "FREE_TEXT", `conv:${conv!.id}`);
+          const res = await sendMessage(env, conv!.id, { type: "text", text: cp2.ack }, `${key}:ack`);
+          if (wentOut(res)) await db.prepare("UPDATE conversations SET last_ack_at = ?2 WHERE id = ?1").bind(conv!.id, nowIso()).run();
+        }
       }
       await menu(cp2, "menu");
       return;
