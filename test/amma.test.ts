@@ -389,7 +389,7 @@ describe("sessions bought from the menu", () => {
   it("a buyer's very first session (no 99 call before it) can be answered 'Not right fit' once it has started; nothing else is offered", async () => {
     const { sid } = await bought("2026-10-05", 0, "First Buyer", { origin: "SELF" }); // 14:00 IST, started
     const page = await (await get("/amma")).text();
-    expect(page).toContain(`/amma/confirm?session=${sid}&amp;v=NOT_FIT`);
+    expect(page).toContain(`/amma/confirm?session=${sid}&v=NOT_FIT`);
     expect(page).not.toContain("v=SESSION");
     expect(page).not.toContain("v=RUDE");
     const res = await confirmSession(sid);

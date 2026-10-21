@@ -653,7 +653,7 @@ describe("packages in /admin (ticket 13)", () => {
     const ses = await db.prepare("INSERT INTO sessions (conversation_id, slot_id, service, state, origin) VALUES (?1,?2,'HEALING','CREDIT_BOOKED','CREDIT')").bind(conv, slot.meta.last_row_id).run();
     const page = await (await get("/admin")).text();
     expect(page).toContain("credit booked");
-    const res = await press("session", { v: "NO_SHOW" });
+    const res = await press("session", {}, env(), "NO_SHOW");
     expect(res.headers.get("Location")).toBe("/admin?m=done");
     expect(await db.prepare("SELECT state FROM sessions WHERE id = ?1").bind(ses.meta.last_row_id).first()).toEqual({ state: "NO_SHOW" });
     expect(await count("SELECT COUNT(*) AS n FROM credits WHERE reason = 'CANCEL_RETURN'")).toBe(0); // a no-show uses the credit

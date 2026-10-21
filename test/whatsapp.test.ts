@@ -144,7 +144,7 @@ describe("POST /wa/webhook", () => {
 
     await post(button("wamid.E3", "menu_how"));
     const rows = sent()[0].interactive.action.sections[0].rows;
-    expect(rows.map((r: { id: string }) => r.id)).toEqual([...config.faqIds.map((id) => `faq_${id}`), "menu_lang"]);
+    expect(rows.map((r: { id: string }) => r.id)).toEqual([...config.faqIds.map((id) => `faq_${id}`), "menu_bookings", "menu_person", "menu_lang"]);
     expect(rows.length).toBeLessThanOrEqual(10);
     fetchMock.mockClear();
 
