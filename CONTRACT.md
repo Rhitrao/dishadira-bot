@@ -1,12 +1,15 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-10-21 (v4: English + Hindi; gatekeeper and AI answers for typed questions, see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-10-21 (v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma) and never sees chats. Rohit = owner, sole operator.
 Goal: turn Click-to-WhatsApp ad enquiries into paid sessions; Amma only ever speaks to people who have paid.
 Scope: one practice, one practitioner, two services (PROTECTION, HEALING), INR, Asia/Kolkata, English + Hindi.
 Journey: pick a call slot -> pay ₹99 -> Amma calls (15 min) -> Session | Not right fit | Missed | Rude ->
-  Session: ₹700 session slot + payment -> confirmed -> day-before reminder.
-Defaults (owner may change in config, never in code): intro 9900 paise, session 70000 paise, both services;
+  Session: single ₹799, or a package (10 for ₹5,000 / 20 for ₹9,000) -> confirmed -> day-before reminder.
+Also from the menu at any time (with a soft nudge to the ₹99 call first): single session, or a package. Package sessions
+  are booked later from credits, with no payment per session; max 2 upcoming per buyer; packages never expire.
+Defaults (owner may change in config, never in code): intro 9900 paise, single session 79900 paise, packages 10 x 500000 paise
+  and 20 x 900000 paise, both services;
   hours Mon-Fri 14:00-19:00 IST; call slots 15 min; session slots 60 min, max 5/day; holds 20 min.
 Prices, hours, copy, FAQ answers and limits live in one config module; Disha Dira specifics never hard-coded elsewhere.
 
@@ -28,14 +31,19 @@ Conversation: BOT | HUMAN | BLOCKED. Typed text goes through the gatekeeper (doc
   (buttons still work in HUMAN; free text waits for Rohit; resolving the attention item returns the chat to BOT).
 Intro (₹99): HELD -> PAID -> CALLED_SESSION | CALLED_NOT_FIT | MISSED | RUDE; HELD -> EXPIRED;
   MISSED -> RESCHEDULED (once) -> ...; PAID -> CANCELLED_BY_US.
-Session (₹700): OFFERED -> HELD -> CONFIRMED -> COMPLETED | NO_SHOW; HELD -> EXPIRED; CONFIRMED -> CANCELLED.
-A session may only be offered after CALLED_SESSION, or by an audited operator override.
+Session: OFFERED -> HELD -> CONFIRMED -> COMPLETED | NO_SHOW; HELD -> EXPIRED; CONFIRMED -> CANCELLED (single, paid per session)
+  or CREDIT_BOOKED -> COMPLETED | NO_SHOW | CANCELLED (package; cancel >= 3 h before returns the credit).
+Package: CREATING -> PENDING -> PAID (credits added) -> CLOSED (all used, or refunded: unused x package rate, Rohit approves;
+  payments older than 6 months are refunded by hand and marked in /admin).
+After CALLED_SESSION the bot offers single / 10 / 20. A buyer who skipped the ₹99 call and is marked Not right fit at their
+  first session gets the whole purchase refunded, once per person. Credits change only through the credits ledger, atomically.
 Payment: CREATING -> PENDING -> PAID | FAILED | UNKNOWN; PAID -> REFUND_PENDING -> REFUNDED | REFUND_FAILED.
 PAID and REFUNDED never move backwards. A verified later success supersedes FAILED/UNKNOWN.
 
 Data (D1)
 Tables: conversations, events, messages, slots, intros, sessions, payments, refunds, blocks, outcomes, attention, audit_log, settings,
-  person_state (strikes, quiet_until, AI reply counters, no_sell_until, opt-out).
+  person_state (strikes, quiet_until, AI reply counters, no_sell_until, opt-out), packages (buyer, size, price, payment),
+  credits (ledger: +N on purchase, -1 per booking, +1 on timely cancel, refunds).
 conversations: unique wa_id, display name, locale, mode, last_user_at, source_ad_id, consent_at.
 events: unique(provider, event_key); minimal payload; status; error. Receipt is not processing.
 slots: kind (CALL|SESSION), UNIQUE(kind, start_utc), owner id, hold_until. Availability by conditional SQL only.
@@ -92,7 +100,8 @@ Never ask for health details; do not download inbound media. First message state
   automated assistant, and that messages are processed by the AI provider (docs/KNOWLEDGE.md §10).
 Safety messages (crisis, medical emergency) are sent to everyone, including blocked, quiet and HUMAN chats, and even when
   the SENDS switch is paused (never when the SENDS env flag is "false").
-Store only name, WhatsApp number, bookings, payments. Delete conversation text 30 days after last activity and
+Store only name, WhatsApp number, bookings, payments. Wipe message text CHAT_RETENTION_MINUTES after the person's last message (live 10080 = 7 days,
+  test 10) and
 personal fields 90 days after last booking; keep dedupe keys, payment, refund and audit rows.
 Secrets, real phone numbers and customer data stay out of git, PRs, logs, fixtures and coding prompts.
   Live chat text may go to the AI provider only through src/ai.ts, redacted as above. Fixtures are synthetic.

@@ -43,8 +43,9 @@ Run in order, one session each. Design: docs/AGENT.md. Facts and copy: docs/KNOW
 | # | Ticket | Cap |
 |---|---|---|
 | 11 | English + Hindi, and a clear booking flow | $15 |
-| 12 | The gatekeeper (safety, noise, quiet periods) without AI | $15 |
-| 13 | The AI assistant | $20 |
+| 12 | Gatekeeper, re-prompts, chat wipe (no AI) | $18 |
+| 13 | Sessions and packages | $22 |
+| 14 | The AI assistant | $20 |
 
 
 ## Ticket 11: English + Hindi, and a clear booking flow (cap $15)
@@ -59,7 +60,7 @@ Deliver:
    - Amma's page copy stays English.
    - Add a test that fails if any copy value contains `KN_TODO`, or if a key exists in one language but not the other.
 2. **Customer-facing service name:** "Energy cleansing" / "एनर्जी क्लींजिंग" for PROTECTION (internal code unchanged). Put the label in config, so Rohit can change it back in one line.
-3. **Greeting:** one bilingual message with the §10 text, then [English] [हिंदी]. If the very first message was a real question (not a menu word), store its message id and answer it after the language tap. For now that means the current ack; ticket 13 sends it to the AI.
+3. **Greeting:** one bilingual message with the §10 text, then [English] [हिंदी]. If the very first message was a real question (not a menu word), store its message id and answer it after the language tap. For now that means the current ack; ticket 14 sends it to the AI.
 4. **Menu:**
    - Buttons [Book ₹99 call] [How it works] [Talk to a person], body from §11.
    - The "How it works" list keeps the FAQ rows and adds a final row in the chat's language only ("Change language" or "भाषा बदलें"), which resends the language buttons.
@@ -108,11 +109,11 @@ Report: files changed, CI link, and a sample of every new message in both langua
 
 ---
 
-## Ticket 12: the gatekeeper (safety, noise, quiet periods) without AI (cap $15)
+## Ticket 12: the gatekeeper (safety, noise, quiet periods), re-prompts and chat wipe, without AI (cap $18)
 
-Read CLAUDE.md, CONTRACT.md (v4), STATUS.md, docs/AGENT.md §3.2, §3.3, §4 and §5, and docs/KNOWLEDGE.md §8–9 and §11. Build only this ticket. Branch `t12-gatekeeper`, one PR. No subagents. Stop after 3 failed fix attempts.
+Read CLAUDE.md, CONTRACT.md (v4), STATUS.md, docs/AGENT.md §3.1a, §3.1c, §3.1d, §3.2, §3.3, §4 and §5, and docs/KNOWLEDGE.md §8–9 and §11. Build only this ticket. Branch `t12-gatekeeper`, one PR. No subagents. Stop after 3 failed fix attempts.
 
-Background: ticket 13 adds the AI. This ticket builds everything around it, so the AI only ever sees messages that passed these checks. Until ticket 13, a text that reaches the end of the gate gets today's ack plus an attention item.
+Background: ticket 14 adds the AI. This ticket builds everything around it, so the AI only ever sees messages that passed these checks. Until ticket 14, a text that reaches the end of the gate gets today's ack plus an attention item.
 
 Deliver:
 1. **`src/gate.ts`:**
@@ -150,7 +151,7 @@ Deliver:
    - **`smalltalk`:** the first 2 per IST day are free.
    - **Strikes clear** on payment, or 7 days after `last_strike_at`.
    - **During quiet,** `BOOKING_WORD` and booking button taps open the booking flow but don't end the quiet period. Payment ends it.
-6. **Rule-based classifier for now:** `classifyWithoutAI()` returns `spam_or_promo` (a link plus "earn", "click" or "offer"), `flirt_or_sexual` or `abuse` from config word lists, and otherwise `TO_CLASSIFIER` → today's ack. Ticket 13 swaps in the AI.
+6. **Rule-based classifier for now:** `classifyWithoutAI()` returns `spam_or_promo` (a link plus "earn", "click" or "offer"), `flirt_or_sexual` or `abuse` from config word lists, and otherwise `TO_CLASSIFIER` → today's ack. Ticket 14 swaps in the AI.
 7. **Short acknowledgements** ("ok", "okay", "thanks", "thank you", "ty", "ji", "👍", "🙏", "धन्यवाद", "शुक्रिया", "ठीक है"): no reply, no strike.
 8. **Opt-out:** "stop", "unsubscribe", "बंद करो", "band karo" set `opted_out_at` and send `optOutConfirm` once. No template is sent to an opted-out person. Any later inbound message clears the opt-out.
 9. **Burst skip:** before sending a reply to a typed message, if a newer inbound message exists from the same conversation, don't send. Record SKIPPED, reason `NEWER_MESSAGE`. Safety replies are exempt.
@@ -172,14 +173,91 @@ Deliver:
     - Budgets.
     - No message text in logs or emails (extend the logging test).
 
+14. **Already booked, checked at the tap:** "Book ₹99 call" from someone with an upcoming call sends `alreadyBookedStart` with [Keep it] [Talk to a person], and nothing else (AGENT §3.1a). Remove the late "already booked" check at the end of the flow, or keep it only as a safety net.
+15. **Re-prompts (AGENT §3.1c):**
+    - Store the open booking step on the conversation: `pending_step` plus the context needed to resend it.
+    - A typed message while a step is open (and not safety, handoff, opt-out or a menu word) resends that step with `reprompt(hint)`, using `hintDays` for the day and time steps.
+    - No strike. After 3 in a row, add "Talk to a person".
+    - `TO_CLASSIFIER` keeps today's ack only when no step is open.
+16. **Chat wipe (AGENT §3.1d):**
+    - Add `CHAT_RETENTION_MINUTES` to env: top level and live `"10080"`, test `"10"`. The release test checks live is 10080.
+    - The 2-minute cron blanks message bodies (inbound and outbound) for conversations whose last inbound message is older than that.
+    - Move anything the code reads from old message rows (the greeted flag, the ack-once-per-24h check, the media-notice day, first-message question ids) onto `conversations` or `person_state` first, so the wipe never changes behaviour.
+    - Keep dedupe keys and every money, booking, credit, audit and block row.
+    - /admin shows "(message text removed)".
+    - Remove names 90 days after the last booking, if that isn't already done.
+17. **Tests for 14–16:**
+    - Already booked at the tap.
+    - Re-prompt at each step in both languages, including "Saturday please" at the day step.
+    - The wipe: bodies blanked after the window on test settings, a returning customer isn't re-greeted, payments are untouched, and the language is kept.
+
 Do not: call any AI API, add AI secrets, change booking or payment logic, change flags, or deploy.
-Report: files changed, CI link, the exact crisis and emergency messages as sent in both languages, and every config list you added.
+Report: files changed, CI link, the exact crisis, emergency and re-prompt messages as sent in both languages, every config list you added, and the list of fields moved off `messages`.
 
 ---
 
-## Ticket 13: the AI assistant (cap $20)
+## Ticket 13: sessions and packages (cap $22)
 
-Read CLAUDE.md, CONTRACT.md (v4), STATUS.md, docs/AGENT.md §6–7 and all of docs/KNOWLEDGE.md. Build only this ticket. Branch `t13-ai-assistant`, one PR. No subagents. Stop after 3 failed fix attempts.
+Read CLAUDE.md, CONTRACT.md (v5), STATUS.md, docs/AGENT.md §3.1b, and docs/KNOWLEDGE.md §2 ("Sessions and packages", "Refunds and changes") and the §11 package keys. Build only this ticket. Branch `t13-packages`, one PR. No subagents. Stop after 3 failed fix attempts.
+
+Deliver:
+1. **Prices in config:**
+   - `intro` 9900, `single` 79900, `pack10` {sessions: 10, paise: 500000}, `pack20` {sessions: 20, paise: 900000} (paise).
+   - Replace every use of `sessionPaise` (₹700).
+   - The copy builds the prices and the per-session rates (₹500, ₹450) from config. A test checks the rates match price ÷ sessions.
+2. **Menu:**
+   - Buttons [Book ₹99 call] [Sessions & packages] [Help].
+   - Help is a list: the 6 FAQ rows, then My bookings, Talk to a person, Change language. That's 9 rows.
+   - Typed "human" and the other handoff words still work everywhere.
+3. **Sessions & packages list and soft gate** (AGENT §3.1b steps 1–2).
+4. **Single session purchase:**
+   - Age check (once) → service → who for → day → time → guarded hold → ₹799 Razorpay link → confirmed.
+   - This is the existing session machinery, so the same hold, overlap, webhook and refund rules apply.
+5. **Packages:**
+   - A migration for `packages` (conversation, size, price_paise, payment id, state, created_at) and `credits` (a ledger: package id, delta, reason PURCHASE | BOOK | CANCEL_RETURN | REFUND | ADJUST, session id, at, by).
+   - **Balance** = sum of deltas, never stored separately.
+   - **Buying:** a Razorpay link for the package price, with no slot held. Webhook PAID → +N credits (idempotent on the payment) → `packConfirmed` [Book a session].
+6. **Booking with credits:**
+   - Service → who for → day → time.
+   - In **one** guarded write: check the balance is > 0 and the buyer has < 2 upcoming sessions, hold the slot, mark the session CREDIT_BOOKED, and add a −1 ledger row.
+   - A double tap or a replay can never use two credits or book two slots.
+   - Send `creditBooked`.
+7. **My bookings:** list upcoming calls and sessions, with [Move] [Cancel] each, and the credits left.
+   - Follow the AGENT §3.1b step 6 rules exactly, as checked by tests at 3 h and 24 h boundaries in IST.
+   - **Move** reuses the day → time steps.
+   - **Single-session cancel ≥ 24 h** refunds through the existing refund path (unique per payment).
+8. **Amma's "Session" outcome:** the bot offers single, 10 or 20 (`sessionOfferBody`, a list).
+   - On Amma's page, a booking shows "package 3/10" or "single".
+   - "Not right fit" on a buyer's very first session (no prior intro) refunds the whole purchase, once per person, with the same undo window as today.
+9. **Stopping a package:**
+   - In /admin, on the conversation page: "Refund unused sessions" shows unused × rate, with a confirm step (audited).
+   - It creates the refund through Razorpay if the payment is under 180 days old. Otherwise it raises `MANUAL_REFUND` and records a ledger row when Rohit marks it paid by hand.
+   - Either way, the balance goes to 0.
+10. **Reminders and templates:**
+    - Credit-booked sessions get the existing day-before reminder.
+    - Add template names `package_confirmed` and `session_booked` (UTILITY) to the registry, with `approved: false`. Outside the 24-hour window, raise attention instead of sending, as the contract says.
+    - Draft their text in `docs/TEMPLATES.md` in both languages.
+11. **Digest:** packages sold (count by size), credits used today, the outstanding credits total, and manual refunds pending.
+12. **Tests:**
+    - Purchase idempotency.
+    - Credit booking under concurrency (two taps), the max-2 rule and a zero balance.
+    - Cancel and move at the boundaries.
+    - Not right fit at the first session.
+    - The refund maths (unused × rate) for both packs.
+    - The 180-day manual path.
+    - Every new list and button within the WhatsApp limits in both languages.
+13. **Docs:**
+    - Update `docs/COPY.md`, and add to GO-LIVE.md that the website's fees, terms and refund page must show the same prices and rules before live (Rohit does this).
+    - STATUS.md notes.
+
+Do not: change the ₹99 flow's money logic, add AI, change flags, or deploy.
+Report: files changed, CI link, the ledger design, and sample messages for buying a package, booking from credits, and moving and cancelling, in both languages.
+
+---
+
+## Ticket 14: the AI assistant (cap $20)
+
+Read CLAUDE.md, CONTRACT.md (v5), STATUS.md, docs/AGENT.md §6–7 and all of docs/KNOWLEDGE.md. Build only this ticket. Branch `t14-ai-assistant`, one PR. No subagents. Stop after 3 failed fix attempts.
 
 Deliver:
 1. **Flag:**
@@ -195,6 +273,7 @@ Deliver:
      - the chat language
      - `no_sell` true or false
      - booking facts: next call or session day, time, status and call language
+     - package credits left, and whether the person has had a ₹99 call
    - **Messages:** the last 10 messages of the conversation, oldest first.
      - Redact customer text before sending: digit runs of 6 or more, emails and URLs become `[removed]`, and any `<…>` tag is stripped.
      - Never send the phone number, WhatsApp name or payment ids.
@@ -204,14 +283,14 @@ Deliver:
    - **Reject** the reply and send the §11 fallback for its label group if any of these hold:
      - A banned word or phrase (config, seeded from KNOWLEDGE.md §8), matched as a **whole word or phrase**. "secure", "benefits" and "spiritual" must pass.
      - A URL, an email or a phone-like number.
-     - A number not in the allowlist: config prices, durations, hours and hold minutes; 18, 24, 30, 120 and 1980; numbers in the trusted booking facts.
+     - A number not in the allowlist: config prices and per-session rates (also with commas, e.g. 5,000), package sizes, durations, hours, hold minutes, 2 and 3; 18, 24, 30, 120 and 1980; numbers in the trusted booking facts.
      - Characters outside Latin, Devanagari, digits, common punctuation, ₹ and 🙏 🌿.
      - Over 600 characters.
      - Mentions of "system prompt", "instructions" or "Anthropic".
    - Log only the rejection reason code.
 4. **Wiring:**
    - `TO_CLASSIFIER`, and the stored first-message question after the language tap, → if AI is on, call the AI; otherwise keep today's ack.
-   - `applyLabel()` (ticket 12) runs on the AI's label first. If it leads to a block, quiet or no reply, stop.
+   - `applyLabel()` (ticket 12) runs on the AI's label first. If a booking step is open (`pending_step`), send the checked reply as the body of that step's message, so it's one message, instead of the plain re-prompt. If it leads to a block, quiet or no reply, stop.
    - A `crisis` label → the fixed crisis path, at most once per person per IST day (`ai_crisis_day`). A `medical_emergency` label → the fixed emergency path. The AI's text is dropped in both cases.
    - Otherwise check the reply and send **one** message per AGENT.md §6 "How `next` is sent":
      - `show_booking` → interactive message, the reply as body, button [See call times]; just the reply if no-sell is active.
@@ -219,7 +298,7 @@ Deliver:
      - `handoff` → the reply, then HUMAN plus attention (one open item at most).
      - `ask_more` / `none` → the reply only.
    - Count AI replies against the budgets.
-5. **Eval set (`test/agent-evals/cases.json`):** all 64 scenarios from KNOWLEDGE.md §7, each with input text, a language, optional trusted facts, the labels allowed, the `next` values allowed, and `mustNotContain`.
+5. **Eval set (`test/agent-evals/cases.json`):** all 72 scenarios from KNOWLEDGE.md §7, each with input text, a language, optional trusted facts, the labels allowed, the `next` values allowed, and `mustNotContain`.
    - **CI test with a fake AI:** canned outputs per case. It proves the wiring: gate, strikes, blocks, buttons, fallbacks, the output check, and the fake-facts case.
    - **Output-check unit tests:** whole-word matching, the number allowlist, Devanagari digits, the script check.
    - **Manual live eval workflow (`.github/workflows/eval.yml`):**

@@ -5,6 +5,8 @@ Updated: 2026-10-21 (Ticket 11: English + Hindi, clear booking flow; tickets 12-
 Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
 
 ## v2 open items for Rohit / Amma
+- Website: update fees (₹799, packages), terms (remove "in person" if phone only), refund page (package rules) and the FAQ line "no packages" before Razorpay live review.
+- Decide: phone only, or in person too? (website terms say in person; the bot says phone only)
 - Lines marked [CONFIRM] in docs/KNOWLEDGE.md (call content, video or not, years of practice, international cards, space cleansing, no-training wording).
 - Meta Billing Hub: payment method + INR billing for the business number (service messages are charged since 1 Oct 2026).
 - Anthropic API key with a monthly spend limit, test Worker first.
