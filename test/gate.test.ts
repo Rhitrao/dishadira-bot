@@ -147,6 +147,14 @@ describe("normalising and matching", () => {
     for (const t of ["I am very stressed about work", "kitne ka hai", "Can I book for my son?", "मेरी माँ बीमार है", "I am dying to know the price", "keystroke", ""]) expect(detectSafety(t), t).toBeNull();
     expect(detectSafety("I took an overdose and want to die")).toBe("CRISIS"); // when both match, the crisis message (which has 112 too) goes
   });
+  it("real concerns are never read as abuse or flirting by the word lists", () => {
+    for (const t of [
+      "I feel so stupid and useless", "I feel dumb at work", "can you heal my kutta, he is old", "mera kutta bimar hai", "मेरा कुत्ता बीमार है",
+      "my husband and I have sex problems", "our sex life is gone after the baby", "I would love you to explain this", "main bewakoof hoon kya",
+    ]) expect(classifyWithoutAI(t), t).toBe("TO_CLASSIFIER");
+    for (const t of ["you idiot", "you are an idiot", "stupid bot", "shut up"]) expect(classifyWithoutAI(t), t).toBe("abuse");
+    for (const t of ["send nudes", "send pic", "I love you"]) expect(classifyWithoutAI(t), t).toBe("flirt_or_sexual");
+  });
 });
 
 describe("gate(): the order of AGENT.md section 3.2", () => {

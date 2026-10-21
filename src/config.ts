@@ -72,10 +72,16 @@ export const config = {
     // Used by the rule-based classifier until the AI is on (ticket 14). A message with a link and one of spamWords is spam.
     spamWords: ["earn", "click", "offer", "कमाएं", "कमाएँ", "क्लिक", "ऑफर"],
     // Flirting: a strike and one line. Insults: a strike and no reply.
-    flirtWords: ["i love you", "love you", "date me", "marry me", "kiss me", "sexy", "send pic", "send photo", "send me your photo", "your photo", "your pic", "pic bhejo", "photo bhejo", "फोटो भेजो", "आई लव यू"],
-    abuseWords: ["idiot", "stupid", "moron", "dumb", "shut up", "bewakoof", "bevakoof", "kutta", "kutte", "ullu", "बेवकूफ", "कुत्ता", "उल्लू"],
+    flirtWords: ["i love you", "love u", "date me", "marry me", "kiss me", "sexy", "send pic", "send photo", "send me your photo", "your photo", "your pic", "pic bhejo", "photo bhejo", "फोटो भेजो", "आई लव यू"],
+    // Phrases aimed at the bot or a person, not single words: "I feel stupid" or "my kutta (dog)" must never be a strike.
+    abuseWords: [
+      "you idiot", "you are an idiot", "you are idiot", "idiot bot", "you stupid", "you are stupid", "stupid bot", "you moron", "you dumb", "dumb bot",
+      "shut up", "tum bewakoof", "tu bewakoof", "bewakoof bot", "ullu ke pathe", "kutte ki aulad", "kutta kahin ka", "kamine",
+      "तुम बेवकूफ", "तू बेवकूफ", "उल्लू के पट्ठे", "कुत्ते की औलाद", "कमीने",
+    ],
     // A flirt/sexual message that matches sexualBlockWords, or an abusive one that matches abuseBlockWords, blocks at once. Otherwise only a second offence blocks.
-    sexualBlockWords: ["sex", "nude", "nudes", "naked", "boobs", "porn", "xxx", "horny", "nangi", "सेक्स", "नंगी", "चुदाई"],
+    // No "sex" here: people describe real marriage or intimacy concerns (KNOWLEDGE §5 and §7 case 62), and those must never be blocked.
+    sexualBlockWords: ["nude", "nudes", "naked", "boobs", "porn", "xxx", "horny", "nangi", "send nudes", "नंगी", "चुदाई"],
     abuseBlockWords: [
       "fuck", "fucking", "bastard", "bitch", "asshole", "motherfucker", "madarchod", "behenchod", "bhosdike", "chutiya", "chutiye", "gandu", "harami", "haramkhor", "randi",
       "मादरचोद", "बहनचोद", "भोसड़ीके", "चूतिया", "गांडू", "हरामी", "रंडी",
