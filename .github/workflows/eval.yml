@@ -23,3 +23,6 @@ jobs:
       - run: npm ci
       - name: Run the cases against the real model
         run: npx vitest run --config vitest.eval.config.ts
+      - name: Totals and failed cases as annotations (readable through the API)
+        if: always()
+        run: cat eval-annotations.txt 2>/dev/null || true
