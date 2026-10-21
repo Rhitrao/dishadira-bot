@@ -8,10 +8,12 @@ const bad = (text: string, reason: string, facts: number[] = []) => expect(check
 
 describe("the output check: banned words match whole words and phrases", () => {
   it("rejects the words of KNOWLEDGE.md section 8, in any case", () => {
-    for (const w of ["cure", "Cured", "GUARANTEE", "black magic", "evil eye", "vashikaran", "miracle", "will definitely", "for sure", "permanently", "cancer", "diabetes", "blood pressure", "BP", "fits"]) {
+    for (const w of ["cure", "Cured", "GUARANTEE", "black magic", "evil eye", "vashikaran", "miracle", "will definitely", "for sure", "permanently", "cancer", "diabetes", "blood pressure", "BP", "seizure", "negative energy", "blockage"]) {
       bad(`Shantha Rao says this is a ${w} for you.`, "BANNED_WORD");
     }
     bad("This is 100% safe.", "BANNED_WORD");
+    ok("Pick whichever time fits your day."); // "fits" is no longer banned (KNOWLEDGE.md v3 bans "seizure" instead)
+    bad("नकारात्मक ऊर्जा हटाई जाती है।", "BANNED_WORD");
   });
   it("rejects Devanagari words, with or without nukta and chandrabindu", () => {
     for (const w of ["काला जादू", "गारंटी", "चमत्कार", "कैंसर", "डायबिटीज़", "डायबिटीज", "ठीक हो जाएगा", "ठीक हो जाएँगे", "ठीक हो जाएंगे"]) bad(`आपके लिए ${w} है।`, "BANNED_WORD");
@@ -48,6 +50,8 @@ describe("the output check: numbers must be on the allowlist", () => {
     ok("Calls are Monday to Friday, 2 pm to 7 pm. You can book up to 2 upcoming sessions and change them 3 hours before.");
     ok("It is open 24×7 and you must be 18 or older. Practised in over 120 countries since the 1980s (1980).");
     ok("We keep chat messages for 7 days; payments older than 6 months are refunded by the team. In danger, call 112 or 108.");
+    ok("The women's helpline 181 and the child helpline 1098 are free; Tele-MANAS is 14416."); // safety numbers (KNOWLEDGE.md §8)
+    bad("Call Tele-MANAS on 1-800-891-4416.", "PHONE"); // the long number only ever goes out in the fixed crisis message
   });
   it("lists exactly what config says: derived from prices, hours and rules", () => {
     const set = allowedNumbers();
