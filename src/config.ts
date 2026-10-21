@@ -67,11 +67,51 @@ export const config = {
     handoff: ["human", "person", "insaan", "insan", "इंसान"],
     handoffMaxWords: 8,
   },
-  // Budgets for AI replies, counted per India day. Reaching one sends the menu with "Talk to a person" instead (ticket 12 counts, ticket 14 spends).
+  // The assistant (src/ai.ts, src/aicheck.ts). Budgets are counted per India day; reaching one sends the menu with "Talk to a person" instead.
   ai: {
     aiRepliesPerPersonPerDay: 12,
     aiRepliesPerPayingCustomerPerDay: 40,
     aiRepliesPerDayTotal: 300,
+    // Claude Haiku 5.5. Model id and prices checked against Anthropic's model list on 2026-10-21 (prices: US$ per million tokens, prompts up to 100K tokens).
+    model: "claude-haiku-5-5",
+    apiUrl: "https://api.anthropic.com/v1/messages",
+    apiVersion: "2023-06-01",
+    maxTokens: 400,
+    timeoutMs: 8000,
+    historyMessages: 10, // the last N messages of the chat go to the model, oldest first
+    maxReplyChars: 600,
+    usdPerMillion: { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
+    // The output check (docs/KNOWLEDGE.md section 8). Matched as whole words or phrases after normalising (src/safety.ts), so "secure", "benefits" and "spiritual" pass.
+    bannedWords: [
+      // English and Roman
+      "black magic", "evil eye", "nazar", "kala jadu", "jadu", "tona", "totka", "curse", "cursed", "possessed", "ghost", "spirit", "bhoot", "vashikaran", "miracle", "miraculous", "magic",
+      "cure", "cured", "cures", "guarantee", "guaranteed", "100%", "sau pratishat", "will definitely", "for sure", "permanent", "permanently", "chamatkar", "pakka",
+      "theek ho jayega", "theek ho jaogi", "theek ho jaoge",
+      // Devanagari
+      "काला जादू", "जादू", "जादू-टोना", "टोना", "टोटका", "बुरी नज़र", "भूत", "वशीकरण", "चमत्कार", "गारंटी", "पक्का", "100 प्रतिशत", "ठीक हो जाएगा", "ठीक हो जाएगी", "ठीक हो जाएँगे", "ठीक कर देंगी",
+      // Illness names, even when the customer used them
+      "cancer", "tumour", "tumor", "diabetes", "thyroid", "depression", "pcod", "pcos", "infertility", "kidney", "heart disease", "asthma", "arthritis", "paralysis", "epilepsy", "fits", "hiv", "migraine", "bp", "blood pressure",
+      "कैंसर", "डायबिटीज़", "शुगर की बीमारी", "थायराइड", "डिप्रेशन", "बांझपन", "लकवा", "मिर्गी",
+    ],
+    // A reply that talks about the assistant's own set-up is replaced.
+    metaWords: ["system prompt", "instructions", "anthropic"],
+    // Numbers a reply may contain besides the prices, per-session rates, package sizes, durations, hours and hold minutes built from the rest of this file,
+    // and the numbers in the person's own booking facts: 2 (upcoming sessions) and 3 (hours' notice) are in sessionRules; the rest are here.
+    allowedNumbers: [
+      18, // the age check
+      24, // hours (the reply window, 24 hours' notice for a refund, 24x7)
+      30, // days
+      120, // "practised in over 120 countries"
+      1980, // "developed in the 1980s"
+      7, // chat messages are deleted 7 days after the last one; also the 7 pm closing time
+      6, // refunds for payments older than 6 months are arranged by the team
+      112, 108, // the emergency numbers KNOWLEDGE.md tells the assistant to mention
+    ],
+  },
+  // Talking to a person (docs/AGENT.md section 3.2 step 6).
+  handoff: {
+    mailEveryHours: 6, // Rohit is emailed about a person's request for a human at most this often
+    autoReturnHours: 24, // a HUMAN chat goes back to the bot this long after the handoff if Rohit has not replied from /admin
   },
   // Noise: strikes, quiet periods, blocks (docs/AGENT.md section 4).
   noise: {

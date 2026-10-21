@@ -81,6 +81,20 @@ export async function noiseLines(env: Env, nowMs = Date.now()): Promise<string[]
   ];
 }
 
+// The assistant over the last 24 hours: answers it wrote, answers the output check replaced (by reason code), calls that failed (by code). Counts only.
+export async function aiLines(env: Env, nowMs = Date.now()): Promise<string[]> {
+  const rows = await env.DB
+    .prepare("SELECT action, detail, COUNT(*) AS n FROM audit_log WHERE actor = 'bot' AND action IN ('AI_REPLY', 'AI_REJECTED', 'AI_FAILED') AND at >= ?1 GROUP BY action, detail ORDER BY action, detail")
+    .bind(iso(nowMs - 86_400_000))
+    .all<{ action: string; detail: string; n: number }>();
+  const total = (a: string) => rows.results.filter((r) => r.action === a).reduce((s, r) => s + r.n, 0);
+  const by = (a: string) => {
+    const hit = rows.results.filter((r) => r.action === a);
+    return hit.length ? hit.map((r) => `${r.detail} ${r.n}`).join(", ") : "none";
+  };
+  return [`- Answers written: ${total("AI_REPLY")}`, `- Replaced by the output check: ${total("AI_REJECTED")} (${by("AI_REJECTED")})`, `- Calls that failed: ${total("AI_FAILED")} (${by("AI_FAILED")})`];
+}
+
 // People who showed interest in the last 24 hours (an expired hold, or a tap on Book) and have never paid. First name and a link only, so Rohit
 // can follow up inside the 24-hour window. Nobody who is blocked, opted out, or in the week after a crisis message.
 export async function warmLeads(env: Env, nowMs = Date.now()): Promise<{ id: number; name: string | null }[]> {
@@ -141,6 +155,9 @@ export async function digestText(env: Env, nowMs = Date.now()): Promise<string> 
     "",
     "Safety and noise (last 24 hours)",
     ...(await noiseLines(env, nowMs)),
+    "",
+    "Assistant (last 24 hours)",
+    ...(await aiLines(env, nowMs)),
     "",
     "Sessions and packages",
     ...(await packageLines(env, nowMs)),

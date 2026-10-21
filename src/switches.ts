@@ -1,10 +1,10 @@
 // Switches in the settings table. The env flags in wrangler.toml are the master: a setting can only turn something OFF
-// that the env allows, never ON. Stored values: NEW_BOOKINGS="false" (paused), SENDS="false" (paused), AMMA_AWAY="true" (away).
+// that the env allows, never ON. Stored values: NEW_BOOKINGS="false" (paused), SENDS="false" (paused), AI_REPLIES="false" (paused), AMMA_AWAY="true" (away).
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Env } from "./env";
 import { iso } from "./slots";
 
-export const SWITCHES = ["NEW_BOOKINGS", "AMMA_AWAY", "SENDS"] as const;
+export const SWITCHES = ["NEW_BOOKINGS", "AMMA_AWAY", "SENDS", "AI_REPLIES"] as const;
 export type SwitchName = (typeof SWITCHES)[number];
 export const isSwitch = (v: unknown): v is SwitchName => typeof v === "string" && (SWITCHES as readonly string[]).includes(v);
 
@@ -24,16 +24,18 @@ export type SwitchState = { name: SwitchName; envOn: boolean; paused: boolean; o
 
 // "paused" means the setting asks for off. "on" is what actually happens: env allows AND the setting does not pause it.
 export async function switchStates(env: Env): Promise<SwitchState[]> {
-  const { results } = await env.DB.prepare("SELECT key, value FROM settings WHERE key IN ('NEW_BOOKINGS','AMMA_AWAY','SENDS')").all<{ key: string; value: string }>();
+  const { results } = await env.DB.prepare("SELECT key, value FROM settings WHERE key IN ('NEW_BOOKINGS','AMMA_AWAY','SENDS','AI_REPLIES')").all<{ key: string; value: string }>();
   const s = new Map(results.map((r) => [r.key, r.value]));
   const away = s.get("AMMA_AWAY") === "true";
   const bookingsPaused = s.get("NEW_BOOKINGS") === "false" || away; // away pauses new bookings too
   const sendsPaused = s.get("SENDS") === "false";
+  const aiPaused = s.get("AI_REPLIES") === "false";
   return [
     { name: "NEW_BOOKINGS", envOn: env.NEW_BOOKINGS === "true", paused: bookingsPaused, on: env.NEW_BOOKINGS === "true" && !bookingsPaused },
     // For AMMA_AWAY "on" means "Amma is away" (the setting is the whole story; the env has no say).
     { name: "AMMA_AWAY", envOn: true, paused: false, on: away },
     { name: "SENDS", envOn: env.SENDS === "true", paused: sendsPaused, on: env.SENDS === "true" && !sendsPaused },
+    { name: "AI_REPLIES", envOn: env.AI_REPLIES === "true", paused: aiPaused, on: env.AI_REPLIES === "true" && !aiPaused },
   ];
 }
 
@@ -42,6 +44,12 @@ export async function bookingsOpen(env: Env): Promise<boolean> {
 }
 export async function sendsOn(env: Env): Promise<boolean> {
   return (await switchStates(env)).find((s) => s.name === "SENDS")!.on;
+}
+
+// The assistant may answer typed questions: the env flag allows it, the /admin switch has not paused it, and messages can actually go out.
+export async function aiOn(env: Env): Promise<boolean> {
+  const sw = await switchStates(env);
+  return sw.find((s) => s.name === "AI_REPLIES")!.on && sw.find((s) => s.name === "SENDS")!.on;
 }
 
 // The env flag alone: the crisis and emergency messages ignore a paused SENDS switch, but not an env flag that is off.

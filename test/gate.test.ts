@@ -194,7 +194,8 @@ describe("gate(): the order of AGENT.md section 3.2", () => {
     for (const w of ["human", "Talk to a human", "I want to talk to a person", "insaan se baat karni hai", "इंसान से बात करनी है", "real person please"]) expect(await decide(from, txt(w)), w).toBe("HANDOFF");
     expect(await decide(from, txt("my sister is a very good person and I would like to book a call for her next week please"))).toBe("TO_CLASSIFIER"); // long: not a request
     await setMode(from, "HUMAN");
-    expect(await decide(from, txt("hello"))).toBe("HUMAN_WAIT");
+    expect(await decide(from, txt("are you there?"))).toBe("HUMAN_WAIT");
+    expect(await decide(from, txt("hello"))).toBe("MENU"); // a menu word gets the menu in HUMAN mode too (the mode does not change)
     expect(await decide(from, { type: "image", text: null, choice: null })).toBe("HUMAN_WAIT");
     expect(await decide(from, btn("menu_how"))).toBe("TAP");
     expect(await decide(from, { type: "button", text: null, choice: null })).toBe("TAP"); // a template quick reply
@@ -242,7 +243,7 @@ describe("gate(): the order of AGENT.md section 3.2", () => {
 
 describe("the AI budgets: counted per India day, checked in the gate", () => {
   it("12 a day for a person, 40 for a paying customer, 300 in all; yesterday's counts do not count", async () => {
-    expect(config.ai).toEqual({ aiRepliesPerPersonPerDay: 12, aiRepliesPerPayingCustomerPerDay: 40, aiRepliesPerDayTotal: 300 });
+    expect([config.ai.aiRepliesPerPersonPerDay, config.ai.aiRepliesPerPayingCustomerPerDay, config.ai.aiRepliesPerDayTotal]).toEqual([12, 40, 300]);
     const from = await greeted();
     const id = (await conv(from)).id as number;
     for (let i = 0; i < 11; i++) await recordAiReply(db, id, NOW);
@@ -360,8 +361,12 @@ describe("safety: crisis and emergency", () => {
     expect(last().text.body).toBe(allCopy.en.crisis);
     expect((await conv(from)).greeted_at).not.toBeNull();
     expect((await conv(from)).mode).toBe("HUMAN");
-    await typed(from, "hello");
+    await typed(from, "are you there?");
     expect(sent()).toHaveLength(1); // HUMAN mode: waits for Rohit
+    await typed(from, "hello");
+    expect(sent()).toHaveLength(2); // a menu word still gets the menu, and after a crisis message it has nothing to sell
+    expect(last().interactive.action.buttons.map((b: { reply: { id: string } }) => b.reply.id)).toEqual(["menu_how", "menu_person"]);
+    expect((await conv(from)).mode).toBe("HUMAN");
     expect(await count("SELECT COUNT(*) AS n FROM messages WHERE dedupe_key LIKE 'greet:%'")).toBe(0);
   });
 

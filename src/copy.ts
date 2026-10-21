@@ -202,6 +202,12 @@ export type Copy = {
   flirtLine: string;
   aiFallback: string; // the menu's body when the AI cannot answer (ticket 14), and when a daily AI budget is used up
   aiFallbackNoSell: string; // the same, while selling is paused (after a crisis message): no call is offered
+  btnSeeTimes: string; // max 20 chars: under an assistant answer that leads to booking
+  // Sent instead of an assistant answer that failed the output check (docs/KNOWLEDGE.md section 11, "Fallbacks"), one per group of labels.
+  fallbackQuestion: string; // relevant_question, objection, booking_intent
+  fallbackConcern: string; // personal_concern
+  fallbackBooking: string; // existing_booking
+  fallbackOffTopic: string; // off_topic, astrology_or_prediction, prohibited_request, loop, smalltalk
   reprompt: (hint: string) => string;
   hintDays: string;
   repromptHelp: string;
@@ -381,6 +387,11 @@ const en: Copy = {
   flirtLine: "This chat is only for bookings.",
   aiFallback: "Sorry, we can't answer that right now. You can book a call below or talk to a person.",
   aiFallbackNoSell: "Sorry, we can't answer that right now. You can talk to a person from our team below.",
+  btnSeeTimes: "See call times",
+  fallbackQuestion: `Thanks for asking. Shantha Rao can explain this properly on a short ${intro} call, or you can ask a person from our team.`,
+  fallbackConcern: `We're sorry you're going through this. If you'd like, Shantha Rao can listen on a short call. Please also keep following your doctor's advice.`,
+  fallbackBooking: "Our team will check this and reply to you here.",
+  fallbackOffTopic: "We can only help with Disha Dira calls and bookings.",
   reprompt: (hint) => `${hint ? `${hint} ` : ""}Please choose from the options below.`,
   hintDays: hintDaysText("en"),
   repromptHelp: "If you would rather talk to a person from our team, tap below.",
@@ -540,6 +551,11 @@ const hi: Copy = {
   flirtLine: "यह चैट सिर्फ़ बुकिंग के लिए है।",
   aiFallback: "माफ़ कीजिए, अभी इसका जवाब नहीं दिया जा सका। आप नीचे से कॉल बुक कर सकते हैं या किसी व्यक्ति से बात कर सकते हैं।",
   aiFallbackNoSell: "माफ़ कीजिए, अभी इसका जवाब नहीं दिया जा सका। आप नीचे से हमारी टीम के किसी व्यक्ति से बात कर सकते हैं।",
+  btnSeeTimes: "कॉल का समय देखें",
+  fallbackQuestion: `पूछने के लिए धन्यवाद। शांता राव जी ${intro} की छोटी कॉल पर इसे अच्छे से समझा सकती हैं, या आप हमारी टीम के किसी व्यक्ति से बात कर सकते हैं।`,
+  fallbackConcern: "हमें दुख है कि आप इससे गुज़र रहे हैं। अगर आप चाहें, तो शांता राव जी एक छोटी कॉल पर आपकी बात सुन सकती हैं। कृपया अपने डॉक्टर की सलाह भी मानते रहें।",
+  fallbackBooking: "हमारी टीम इसे देखकर यहीं आपको जवाब देगी।",
+  fallbackOffTopic: "हम सिर्फ़ दिशा दिरा की कॉल और बुकिंग में मदद कर सकते हैं।",
   reprompt: (hint) => `${hint ? `${hint} ` : ""}कृपया नीचे दिए विकल्पों में से चुनें।`,
   hintDays: hintDaysText("hi"),
   repromptHelp: "अगर आप हमारी टीम के किसी व्यक्ति से बात करना चाहें, तो नीचे टैप करें।",

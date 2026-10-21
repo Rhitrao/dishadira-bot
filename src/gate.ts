@@ -76,7 +76,8 @@ export async function gate(env: Env, conv: GateConv, message: GateMessage, nowMs
   if (text !== null && isOptOut(text)) return "OPT_OUT";
   // 5. A person: always honoured, even when quiet.
   if (message.choice === "menu_person" || (text !== null && isHandoffWords(text))) return "HANDOFF";
-  // 6. HUMAN mode: taps still work, everything typed waits for Rohit.
+  // 6. HUMAN mode: taps still work and a menu word ("hi", "menu") gets the menu without leaving HUMAN mode; everything else typed waits for Rohit.
+  if (conv.mode === "HUMAN" && text !== null && isMenuWord(text)) return "MENU";
   if (conv.mode !== "BOT" && !isTap) return "HUMAN_WAIT";
   if (isTap) return "TAP"; // booking buttons work in a quiet period too, without ending it
   if (message.type === "reaction") return "IGNORE";

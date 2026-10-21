@@ -1,0 +1,25 @@
+name: Assistant eval
+# Manual only. Rohit starts it from the Actions tab. It sends synthetic test messages (test/agent-evals/cases.json) to the real Anthropic API
+# using the GitHub secret ANTHROPIC_API_KEY, checks the answers, and writes a table to the job summary. It never sends anything to WhatsApp
+# and never touches Cloudflare.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run the cases against the real model
+        run: npx vitest run --config vitest.eval.config.ts

@@ -57,7 +57,7 @@ export async function upcomingSessionCount(db: D1Database, convId: number, nowMs
 }
 
 // Someone who has paid for a 99 call (booked it, had it, or missed it) is not shown the soft gate.
-async function hadFirstCall(db: D1Database, convId: number): Promise<boolean> {
+export async function hadFirstCall(db: D1Database, convId: number): Promise<boolean> {
   return (await db.prepare("SELECT 1 FROM intros WHERE conversation_id = ?1 AND state IN ('PAID', 'RESCHEDULED', 'CALLED_SESSION', 'CALLED_NOT_FIT', 'MISSED', 'RUDE')").bind(convId).first()) !== null;
 }
 

@@ -555,16 +555,18 @@ describe("talk to a person, and HUMAN mode", () => {
     }
   });
 
-  it("free text, menu words and photos get no bot reply and no new item; they wait for Rohit", async () => {
+  it("free text and photos get no bot reply and no new item; they wait for Rohit. A menu word gets the menu and the chat stays HUMAN", async () => {
     const from = await greeted("en");
     await tapButton(from, "menu_person");
     fetchMock.mockClear();
     await typed(from, "when will someone reply?");
-    await typed(from, "hi");
-    await typed(from, "menu");
     await media(from, "image");
     await media(from, "audio");
     expect(sent()).toHaveLength(0);
+    await typed(from, "hi");
+    await typed(from, "menu");
+    expect(sent()).toHaveLength(2); // the menu, twice
+    expect(last().interactive.body.text).toBe(allCopy.en.menuBody);
     expect(await count("SELECT COUNT(*) AS n FROM attention")).toBe(1); // just the HUMAN_REQUEST
     expect(await count("SELECT COUNT(*) AS n FROM messages WHERE direction = 'IN' AND body LIKE 'when will%'")).toBe(1); // stored, for the reply box
     expect((await convOf(from)).mode).toBe("HUMAN");

@@ -56,3 +56,18 @@ export async function raiseTapReminders(env: Env, nowMs = Date.now()): Promise<n
   for (const r of results) await raiseOnce(env, "AMMA_NO_TAP", `intro:${r.id}`);
   return results.length;
 }
+
+// A chat in HUMAN mode goes back to the bot config.handoff.autoReturnHours after the handoff, unless Rohit has sent a reply from /admin since. The
+// attention item stays open and the customer is not told (docs/AGENT.md section 3.2 step 6).
+export async function returnStaleHumans(env: Env, nowMs = Date.now()): Promise<number> {
+  const res = await env.DB
+    .prepare(
+      `UPDATE conversations SET mode = 'BOT', human_since = NULL
+       WHERE mode = 'HUMAN' AND human_since IS NOT NULL AND human_since <= ?1
+         AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = conversations.id AND m.direction = 'OUT'
+                           AND m.dedupe_key LIKE 'admin-reply:%' AND m.created_at >= conversations.human_since)`,
+    )
+    .bind(iso(nowMs - config.handoff.autoReturnHours * 3_600_000))
+    .run();
+  return res.meta.changes;
+}
