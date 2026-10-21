@@ -59,7 +59,7 @@ export async function answerWithAI(ctx: AnswerCtx): Promise<Answered> {
   const cp = copyFor(conv.locale);
   const open = await openStep(db, conv.id);
 
-  const facts: Facts = await gatherFacts(db, conv.id, conv.locale);
+  const facts: Facts = await gatherFacts(db, conv.id, conv.locale, Date.now(), open?.step ?? null);
   await recordAiReply(db, conv.id); // every call counts against the budgets, whatever comes back
   let result: Awaited<ReturnType<typeof callAI>>;
   try {

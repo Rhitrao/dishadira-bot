@@ -56,6 +56,14 @@ export type Facts = {
   hadIntroCall: boolean;
   creditsLeft: number;
   next: { kind: "call" | "session"; day: string; time: string; status: string; callLanguage: "English" | "Hindi" } | null;
+  openStep: string | null; // the booking step waiting for a tap (conversations.pending_step), if any
+};
+
+// How the open step reads in the facts (KNOWLEDGE.md §12, §17: while a step is open the assistant answers in one line and `next` is none).
+const STEP_WORDS: Record<string, string> = {
+  language: "choosing a language", age: "the age question", service: "choosing a service", who: "choosing who it is for", day: "choosing a day",
+  time: "choosing a time", pay: "paying; a time is held for them until they pay", gate: "choosing between the first call and a session",
+  bookings: "looking at My bookings", packages: "looking at Sessions & packages",
 };
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -75,13 +83,14 @@ export function factsText(f: Facts): string {
     `- Has had a ${config.prices.intro / 100}-rupee first call: ${f.hadIntroCall ? "yes" : "no"}`,
     `- Package sessions left: ${f.creditsLeft}`,
     n ? `- Next booking: ${n.kind} on ${n.day} at ${n.time} (India time), status ${n.status}, call in ${n.callLanguage}` : "- Next booking: none",
+    f.openStep ? `- open_step: ${f.openStep} (${STEP_WORDS[f.openStep] ?? "a booking step"})` : "- open_step: none",
   ].join("\n");
 }
 
 // The numbers a reply may repeat from the person's own facts.
 export const factNumbers = (f: Facts): number[] => [f.creditsLeft, ...(f.next ? [...`${f.next.day} ${f.next.time}`.matchAll(/\d+/g)].map((m) => Number(m[0])) : [])];
 
-export async function gatherFacts(db: D1Database, convId: number, locale: string, nowMs = Date.now()): Promise<Facts> {
+export async function gatherFacts(db: D1Database, convId: number, locale: string, nowMs = Date.now(), openStep: string | null = null): Promise<Facts> {
   const lang = langOf(locale);
   const row = await db
     .prepare(
@@ -107,6 +116,7 @@ export async function gatherFacts(db: D1Database, convId: number, locale: string
     hadIntroCall: await hadFirstCall(db, convId),
     creditsLeft: await creditBalance(db, convId),
     next,
+    openStep,
   };
 }
 

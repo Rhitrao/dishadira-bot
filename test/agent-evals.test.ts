@@ -10,7 +10,7 @@ import { NOW, Wa } from "./wa";
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
-// The 72 scenarios of docs/KNOWLEDGE.md section 7, run through the real handler with a FAKE assistant that returns the canned answer in each case.
+// The 145 scenarios of docs/KNOWLEDGE.md section 7, run through the real handler with a FAKE assistant that returns the canned answer in each case.
 // This proves the wiring (gate, strikes, blocks, buttons, fallbacks, the output check, the fake-facts case), not the model: the model is judged by
 // the manual workflow .github/workflows/eval.yml, which runs test/agent-evals/live.eval.ts against the real API.
 const w = new Wa();
@@ -19,9 +19,9 @@ beforeAll(() => w.start());
 afterAll(() => w.stop());
 
 describe("the case file", () => {
-  it("has the 72 scenarios in order, each either decided by the assistant or by code", () => {
-    expect(ALL_CASES.map((c) => c.id)).toEqual(Array.from({ length: 72 }, (_, i) => i + 1));
-    expect(AI_CASES.length + CODE_CASES.length).toBe(72);
+  it("has the 145 scenarios in order, each either decided by the assistant or by code", () => {
+    expect(ALL_CASES.map((c) => c.id)).toEqual(Array.from({ length: 145 }, (_, i) => i + 1));
+    expect(AI_CASES.length + CODE_CASES.length).toBe(145);
     expect(CODE_CASES.map((c) => c.id)).toEqual([14, 32, 42, 43, 44, 45, 57, 63, 64]);
     expect(AI_CASES.some((c) => c.safety)).toBe(true);
   });
@@ -79,6 +79,9 @@ async function giveFacts(from: string, c: EvalCase) {
   const id = (await w.conv(from)).id as number;
   if (f.next) {
     const [s, e] = slotAt("2026-10-21", "CALL", 2); // Wed 21 Oct, 2:30 pm
+    // Several cases use the same booked time: free it from the earlier case first (one row per kind and start).
+    await w.db.prepare("DELETE FROM intros WHERE slot_id IN (SELECT id FROM slots WHERE kind = 'CALL' AND start_utc = ?1)").bind(s).run();
+    await w.db.prepare("DELETE FROM slots WHERE kind = 'CALL' AND start_utc = ?1").bind(s).run();
     const slot = await w.db.prepare("INSERT INTO slots (kind,start_utc,end_utc,owner_id,state) VALUES ('CALL',?1,?2,?3,'BOOKED')").bind(s, e, id).run();
     await w.db.prepare("INSERT INTO intros (conversation_id,slot_id,service,state,call_lang) VALUES (?1,?2,'HEALING','PAID','en')").bind(id, slot.meta.last_row_id).run();
   } else if (f.hadIntroCall) {
@@ -107,11 +110,11 @@ describe("cases decided by the assistant: the canned answer goes through the han
       await w.db.prepare("INSERT INTO messages (conversation_id, direction, kind, body, status, created_at) VALUES (?1, ?2, 'text', ?3, ?4, ?5)")
         .bind(convId, turn.role === "user" ? "IN" : "OUT", turn.content, turn.role === "user" ? "RECEIVED" : "SENT", iso(NOW - 7_200_000 + i * 60_000)).run();
     }
-    if (c.step === "day") {
+    if (c.step === "day" || c.step === "who") {
       await w.ageOk(from);
       await w.tap(from, "menu_book");
       await w.tap(from, "svc_HEALING");
-      await w.tap(from, "who_HEALING_SELF");
+      if (c.step === "day") await w.tap(from, "who_HEALING_SELF");
     }
     w.fetchMock.mockClear();
     w.emails.length = 0;
@@ -163,8 +166,9 @@ describe("cases decided by the assistant: the canned answer goes through the han
     expect(texts).toContain(f.reply);
     for (const bad of forbidden(c, texts)) throw new Error(`case ${c.id} sent "${bad}"`);
     const buttons = m.interactive?.action?.buttons?.map((b: { reply: { id: string } }) => b.reply.id);
-    if (c.step === "day") {
-      expect(m.interactive.body.text).toBe(`${f.reply}\n\n${allCopy[c.lang].chooseDay}`);
+    if (c.step === "day" || c.step === "who") {
+      expect(req.system[1].text).toContain(`open_step: ${c.step}`);
+      expect(m.interactive.body.text).toBe(`${f.reply}\n\n${allCopy[c.lang][c.step === "day" ? "chooseDay" : "whoFor"]}`);
       expect(buttons!.length).toBeGreaterThan(0);
       return;
     }

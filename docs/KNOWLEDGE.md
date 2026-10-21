@@ -489,8 +489,8 @@ The `show_booking` button is always "See call times" / "कॉल का सम�
 77. "fees kya hai aur kab available ho?" → relevant_question → show_booking; Roman Hinglish, both parts answered
 78. "My mother is not well and how much is it?" → personal_concern → ask_more; sorry + doctor line + price; no booking push
 79. "is sunday possible?" with `open_step` = day → relevant_question → none; one line (weekdays only); code resends the step
-80. "what happens on the call?" with `open_step` = time → relevant_question → none; one line; no button
-81. "wait, can I book for my wife instead?" with `open_step` = who_for → relevant_question → none; yes if she agrees, choose Family member
+80. "what happens on the call?" with `open_step` = day → relevant_question → none; one line; no button
+81. "wait, can I book for my wife instead?" with `open_step` = who → relevant_question → none; yes if she agrees, choose Family member
 82. "actually I want a full session, not the call" → booking_intent → show_menu; points to Sessions & packages
 83. "799 bahut zyada hai, 500 mein karo" → objection → show_booking; no discount, package rate mentioned once
 84. "Why should I pay before even talking?" → objection → show_booking; keeps her time for serious people + refund rule

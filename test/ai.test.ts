@@ -10,7 +10,7 @@ import { slotAt, ymdOf } from "./slotat";
 import { aiResponse, NOW } from "./wa";
 import { newDb } from "./db";
 
-const FACTS: Facts = { today: "Monday, 5 October 2026", language: "en", noSell: false, hadIntroCall: true, creditsLeft: 3, next: { kind: "call", day: "Wed, 7 Oct", time: "2:30 pm", status: "confirmed and paid", callLanguage: "Hindi" } };
+const FACTS: Facts = { today: "Monday, 5 October 2026", language: "en", noSell: false, hadIntroCall: true, creditsLeft: 3, next: { kind: "call", day: "Wed, 7 Oct", time: "2:30 pm", status: "confirmed and paid", callLanguage: "Hindi" }, openStep: null };
 const GOOD = { label: "relevant_question", language: "en", script: "latin", reply: "Hello.", next: "ask_more" };
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
@@ -57,7 +57,7 @@ describe("the request", () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
     const body = JSON.parse(init.body);
     expect(body.model).toBe("claude-haiku-5-5");
-    expect(body.max_tokens).toBe(400);
+    expect(body.max_tokens).toBe(800);
     expect(body.system).toHaveLength(2);
     expect(body.system[0].cache_control).toEqual({ type: "ephemeral" });
     expect(body.system[0].text).toBe(`${RULES_HEADER}\n\n${knowledgeMd}`);
@@ -84,6 +84,9 @@ describe("the request", () => {
     expect(t).toContain("Package sessions left: 3");
     expect(t).toContain("Next booking: call on Wed, 7 Oct at 2:30 pm (India time), status confirmed and paid, call in Hindi");
     expect(factsText({ ...FACTS, next: null, noSell: true, hadIntroCall: false })).toContain("Next booking: none");
+    expect(t).toContain("open_step: none");
+    expect(factsText({ ...FACTS, openStep: "day" })).toContain("open_step: day (choosing a day)");
+    expect(factsText({ ...FACTS, openStep: "pay" })).toContain("open_step: pay (paying; a time is held for them until they pay)");
     expect(t).not.toMatch(/\d{6,}|@|pay_|rzp_/);
     expect(factNumbers(FACTS)).toEqual([3, 7, 2, 30]);
   });
@@ -176,7 +179,7 @@ describe("what goes into the assistant's context", () => {
   });
 
   it("facts: the next booking, package credits, the first call, and no_sell come from our own tables", async () => {
-    expect(await gatherFacts(db, 1, "en", NOW)).toEqual({ today: "Monday, 5 October 2026", language: "en", noSell: false, hadIntroCall: false, creditsLeft: 0, next: null });
+    expect(await gatherFacts(db, 1, "en", NOW)).toEqual({ today: "Monday, 5 October 2026", language: "en", noSell: false, hadIntroCall: false, creditsLeft: 0, next: null, openStep: null });
     const ymd = ymdOf(NOW + 2 * 86_400_000); // Wed 7 Oct
     const slot = await db.prepare("INSERT INTO slots (kind, start_utc, end_utc, owner_id, state) VALUES ('CALL', ?1, ?2, 1, 'BOOKED')").bind(...slotAt(ymd, "CALL", 3)).run();
     await db.prepare("INSERT INTO intros (conversation_id, slot_id, service, state, call_lang) VALUES (1, ?1, 'HEALING', 'PAID', 'hi')").bind(slot.meta.last_row_id).run();

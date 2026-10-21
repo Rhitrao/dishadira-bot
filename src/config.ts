@@ -76,7 +76,7 @@ export const config = {
     model: "claude-haiku-5-5",
     apiUrl: "https://api.anthropic.com/v1/messages",
     apiVersion: "2023-06-01",
-    maxTokens: 400,
+    maxTokens: 800, // a 600-character Hindi reply plus the tool's JSON can pass 400 tokens; output is cheap
     timeoutMs: 8000,
     historyMessages: 10, // the last N messages of the chat go to the model, oldest first
     maxReplyChars: 600,
@@ -87,10 +87,12 @@ export const config = {
       "black magic", "evil eye", "nazar", "kala jadu", "jadu", "tona", "totka", "curse", "cursed", "possessed", "ghost", "spirit", "bhoot", "vashikaran", "miracle", "miraculous", "magic",
       "cure", "cured", "cures", "guarantee", "guaranteed", "100%", "sau pratishat", "will definitely", "for sure", "permanent", "permanently", "chamatkar", "pakka",
       "theek ho jayega", "theek ho jaogi", "theek ho jaoge",
+      // Fear words (KNOWLEDGE.md v3): customers use them; the assistant never repeats them
+      "negative energy", "negative energies", "blockage", "blockages", "नकारात्मक ऊर्जा",
       // Devanagari
       "काला जादू", "जादू", "जादू-टोना", "टोना", "टोटका", "बुरी नज़र", "भूत", "वशीकरण", "चमत्कार", "गारंटी", "पक्का", "100 प्रतिशत", "ठीक हो जाएगा", "ठीक हो जाएगी", "ठीक हो जाएँगे", "ठीक कर देंगी",
       // Illness names, even when the customer used them
-      "cancer", "tumour", "tumor", "diabetes", "thyroid", "depression", "pcod", "pcos", "infertility", "kidney", "heart disease", "asthma", "arthritis", "paralysis", "epilepsy", "fits", "hiv", "migraine", "bp", "blood pressure",
+      "cancer", "tumour", "tumor", "diabetes", "thyroid", "depression", "pcod", "pcos", "infertility", "kidney", "heart disease", "asthma", "arthritis", "paralysis", "epilepsy", "seizure", "seizures", "hiv", "migraine", "bp", "blood pressure",
       "कैंसर", "डायबिटीज़", "शुगर की बीमारी", "थायराइड", "डिप्रेशन", "बांझपन", "लकवा", "मिर्गी",
     ],
     // A reply that talks about the assistant's own set-up is replaced.
@@ -105,7 +107,7 @@ export const config = {
       1980, // "developed in the 1980s"
       7, // chat messages are deleted 7 days after the last one; also the 7 pm closing time
       6, // refunds for payments older than 6 months are arranged by the team
-      112, 108, // the emergency numbers KNOWLEDGE.md tells the assistant to mention
+      112, 108, 181, 1098, 14416, // safety numbers (KNOWLEDGE.md §8, §15): emergency, ambulance, women's helpline, child helpline, Tele-MANAS
     ],
   },
   // Talking to a person (docs/AGENT.md section 3.2 step 6).

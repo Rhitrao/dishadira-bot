@@ -38,7 +38,7 @@ export const CODE_CASES = ALL_CASES.filter((c) => c.kind === "code");
 
 export function factsFor(c: EvalCase, now = Date.now()): Facts {
   const f = c.facts;
-  return { today: todayInIndia(now), language: c.lang, noSell: false, hadIntroCall: f?.hadIntroCall ?? false, creditsLeft: f?.creditsLeft ?? 0, next: f?.next ?? null };
+  return { today: todayInIndia(now), language: c.lang, noSell: false, hadIntroCall: f?.hadIntroCall ?? false, creditsLeft: f?.creditsLeft ?? 0, next: f?.next ?? null, openStep: c.step ?? null };
 }
 
 // Case-insensitive; the reply must not contain any of these, and (if given) must contain at least one of the others.

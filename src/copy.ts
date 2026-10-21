@@ -379,8 +379,8 @@ const en: Copy = {
   mediaNotice: "Only typed messages can be read here. Please type your question, or tap a button below.",
   mediaNoticeCustomer: "Only typed messages can be read here. If this was about your payment or booking, our team will check and reply here.",
   crisis:
-    "We're really sorry you're feeling this way. You don't have to face it alone. Please talk to someone right now: Tele-MANAS is a free government helpline, open 24×7. " +
-    "Call *14416* or *1-800-891-4416*. If you are in danger right now, call *112*. A person from our team has been told and will message you here as soon as they can.",
+    "We're really sorry you're going through this. You don't have to face it alone. Please talk to someone right now: Tele-MANAS is a free government helpline, open 24×7. " +
+    "Call *14416* or *1-800-891-4416*. If you or anyone else is in danger right now, call *112*. A person from our team has been told and will message you here as soon as they can.",
   emergency: "This sounds like an emergency. Please call *112*, or *108* for an ambulance, right now, or go to the nearest hospital.",
   quietClose: "It seems we can't help with this. If you'd like to book a call with Shantha Rao later, just type *book*.",
   optOutConfirm: "Done. We won't send you any more messages. If you write to us again, we'll reply.",
@@ -543,8 +543,8 @@ const hi: Copy = {
   mediaNotice: "यहाँ सिर्फ़ लिखे हुए मैसेज पढ़े जा सकते हैं। कृपया अपना सवाल लिखें या नीचे कोई बटन दबाएँ।",
   mediaNoticeCustomer: "यहाँ सिर्फ़ लिखे हुए मैसेज पढ़े जा सकते हैं। अगर यह आपके भुगतान या बुकिंग के बारे में था, तो हमारी टीम देखकर यहीं जवाब देगी।",
   crisis:
-    "हमें बहुत दुख है कि आप ऐसा महसूस कर रहे हैं। आप अकेले नहीं हैं। कृपया अभी किसी से बात करें। टेली-मानस (Tele-MANAS) सरकार की मुफ़्त हेल्पलाइन है, जो हर दिन 24 घंटे खुली रहती है: " +
-    "*14416* या *1-800-891-4416* पर कॉल करें। अगर आप अभी खतरे में हैं, तो *112* पर कॉल करें। हमने अपनी टीम को बता दिया है, वे जल्द से जल्द आपको यहीं मैसेज करेंगे।",
+    "हमें बहुत दुख है कि आप इस मुश्किल से गुज़र रहे हैं। आप अकेले नहीं हैं। कृपया अभी किसी से बात करें। टेली-मानस (Tele-MANAS) सरकार की मुफ़्त हेल्पलाइन है, जो हर दिन 24 घंटे खुली रहती है: " +
+    "*14416* या *1-800-891-4416* पर कॉल करें। अगर आप या कोई और अभी खतरे में है, तो *112* पर कॉल करें। हमने अपनी टीम को बता दिया है, वे जल्द से जल्द आपको यहीं मैसेज करेंगे।",
   emergency: "यह इमरजेंसी लग रही है। कृपया तुरंत *112* पर, या एम्बुलेंस के लिए *108* पर कॉल करें, या सबसे नज़दीकी अस्पताल जाएँ।",
   quietClose: "लगता है हम इसमें मदद नहीं कर पाएँगे। अगर आप बाद में शांता राव जी के साथ कॉल बुक करना चाहें, तो बस *बुक* लिखें।",
   optOutConfirm: "ठीक है। अब हम आपको कोई मैसेज नहीं भेजेंगे। अगर आप फिर से लिखेंगे, तो हम जवाब देंगे।",
@@ -588,7 +588,7 @@ const hi: Copy = {
       `पैकेज का सेशन ${rules.changeBeforeHours} घंटे या उससे पहले बदलने या रद्द करने पर आपके पैकेज में वापस जुड़ जाता है। ` +
       "अगर हमें कॉल रद्द करनी पड़े, तब भी पैसे वापस मिलते हैं।",
     privacy:
-      "हम सिर्फ़ आपका नाम, WhatsApp नंबर, बुकिंग और भुगतान की जानकारी रखते हैं। चैट के मैसेज आख़िरी मैसेज के 30 दिन बाद मिटा दिए जाते हैं। " +
+      "हम सिर्फ़ आपका नाम, WhatsApp नंबर, बुकिंग और भुगतान की जानकारी रखते हैं। चैट के मैसेज आख़िरी मैसेज के 7 दिन बाद मिटा दिए जाते हैं। " +
       "कृपया यहाँ सेहत से जुड़ी जानकारी या रिपोर्ट न भेजें।",
   },
   // सेशन और पैकेज (ticket 13)
