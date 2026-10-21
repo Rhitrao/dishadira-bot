@@ -274,6 +274,7 @@ Deliver:
      - `no_sell` true or false
      - booking facts: next call or session day, time, status and call language
      - package credits left, and whether the person has had a ₹99 call
+     - `open_step`: the booking step waiting for a tap (from `pending_step`), or `none` (KNOWLEDGE.md §12, §17)
    - **Messages:** the last 10 messages of the conversation, oldest first.
      - Redact customer text before sending: digit runs of 6 or more, emails and URLs become `[removed]`, and any `<…>` tag is stripped.
      - Never send the phone number, WhatsApp name or payment ids.
@@ -283,7 +284,7 @@ Deliver:
    - **Reject** the reply and send the §11 fallback for its label group if any of these hold:
      - A banned word or phrase (config, seeded from KNOWLEDGE.md §8), matched as a **whole word or phrase**. "secure", "benefits" and "spiritual" must pass.
      - A URL, an email or a phone-like number.
-     - A number not in the allowlist: config prices and per-session rates (also with commas, e.g. 5,000), package sizes, durations, hours, hold minutes, 2 and 3; 18, 24, 30, 120 and 1980; numbers in the trusted booking facts.
+     - A number not in the allowlist: config prices and per-session rates (also with commas, e.g. 5,000), package sizes, durations, hours, hold minutes, 2, 3 and 7; 18, 24, 30, 120 and 1980; the safety numbers 112, 108, 181, 1098 and 14416; numbers in the trusted booking facts. The full list is in KNOWLEDGE.md §8 ("Numbers you may write").
      - Characters outside Latin, Devanagari, digits, common punctuation, ₹ and 🙏 🌿.
      - Over 600 characters.
      - Mentions of "system prompt", "instructions" or "Anthropic".
@@ -298,7 +299,7 @@ Deliver:
      - `handoff` → the reply, then HUMAN plus attention (one open item at most).
      - `ask_more` / `none` → the reply only.
    - Count AI replies against the budgets.
-5. **Eval set (`test/agent-evals/cases.json`):** all 72 scenarios from KNOWLEDGE.md §7, each with input text, a language, optional trusted facts, the labels allowed, the `next` values allowed, and `mustNotContain`.
+5. **Eval set (`test/agent-evals/cases.json`):** all 145 scenarios from KNOWLEDGE.md §7, each with input text, a language, optional trusted facts, the labels allowed, the `next` values allowed, and `mustNotContain`.
    - **CI test with a fake AI:** canned outputs per case. It proves the wiring: gate, strikes, blocks, buttons, fallbacks, the output check, and the fake-facts case.
    - **Output-check unit tests:** whole-word matching, the number allowlist, Devanagari digits, the script check.
    - **Manual live eval workflow (`.github/workflows/eval.yml`):**
@@ -312,7 +313,8 @@ Deliver:
    - A new HUMAN_REQUEST emails Rohit at once, with the /admin link only and at most one per person per 6 hours.
    - The 2-minute cron returns HUMAN chats to BOT 24 hours after the handoff if no outbound reply from /admin has been sent since. The attention item stays open.
    - Tests for all three.
-7. **Docs:**
+7. **Copy sync with KNOWLEDGE.md v3:** in `src/copy.ts`, update the crisis message (§9, now worded to fit someone worried about another person too) and the Hindi privacy FAQ (7 दिन, not 30, §11); regenerate `docs/COPY.md`.
+8. **Docs:**
    - Put the privacy-page wording from KNOWLEDGE.md §10 into `docs/GO-LIVE.md` as a manual step.
    - In STATUS.md: how to turn AI on for test (key secret → flag in `[env.test.vars]` → deploy → switch), and the cost per reply measured by the live eval.
 
