@@ -2,7 +2,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { config } from "./config";
 import { langOf } from "./copy";
 import type { Env } from "./env";
-import { sendsOn } from "./switches";
+import { sendsEnvOn, sendsOn } from "./switches";
 
 export type ListRow = { id: string; title: string; description?: string };
 export type ListSection = { title: string; rows: ListRow[] };
@@ -18,7 +18,7 @@ export type Out =
 
 export type SendResult =
   | "SENT" | "FAILED" | "UNKNOWN" | "SKIPPED" // row written
-  | "BLOCKED" | "WINDOW_CLOSED" | "TEMPLATE_UNAPPROVED" | "DUPLICATE"; // nothing sent
+  | "BLOCKED" | "WINDOW_CLOSED" | "TEMPLATE_UNAPPROVED" | "OPTED_OUT" | "DUPLICATE"; // nothing sent
 
 const nowIso = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
@@ -115,15 +115,20 @@ export function buildPayload(out: Out, to: string, locale = "en"): Record<string
 const summary = (out: Out) => (out.type === "template" ? `template:${out.name}` : out.type === "text" ? out.text : out.body);
 
 // The single send path. dedupeKey makes a retry of the same intent a no-op (never a second message).
-export async function sendMessage(env: Env, conversationId: number, out: Out, dedupeKey: string): Promise<SendResult> {
+// `safety` is for the crisis and emergency messages only: they reach blocked people too, and go out while the SENDS switch is paused
+// (never when the SENDS env flag is "false").
+export async function sendMessage(env: Env, conversationId: number, out: Out, dedupeKey: string, opts: { safety?: boolean } = {}): Promise<SendResult> {
   const db = env.DB;
   const conv = await db
     .prepare("SELECT wa_id, mode, locale, last_user_at FROM conversations WHERE id = ?1")
     .bind(conversationId)
     .first<{ wa_id: string; mode: string; locale: string; last_user_at: string | null }>();
-  if (!conv || conv.mode === "BLOCKED") return "BLOCKED";
+  if (!conv || (conv.mode === "BLOCKED" && !opts.safety)) return "BLOCKED";
 
   if (out.type === "template") {
+    // Someone who wrote "stop" gets no template until they write again.
+    const optedOut = await db.prepare("SELECT 1 FROM person_state WHERE conversation_id = ?1 AND opted_out_at IS NOT NULL").bind(conversationId).first();
+    if (optedOut) return "OPTED_OUT";
     if (!templateVariant(out, conv.locale).approved) {
       await raiseAttention(db, "TEMPLATE_UNAPPROVED", `${out.name}:conv:${conversationId}`);
       return "TEMPLATE_UNAPPROVED";
@@ -160,7 +165,7 @@ export async function sendMessage(env: Env, conversationId: number, out: Out, de
       .bind(id, status, waId, nowIso())
       .run();
 
-  if (!(await sendsOn(env))) {
+  if (!(opts.safety ? sendsEnvOn(env) : await sendsOn(env))) {
     await setStatus("SKIPPED");
     return "SKIPPED";
   }

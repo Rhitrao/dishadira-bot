@@ -65,11 +65,49 @@ export async function bookingsBetween(env: Env, fromUtc: string, toUtc: string):
 export const dayRange = (ymd: string, days = 1) => [iso(Date.parse(`${ymd}T00:00:00+05:30`)), iso(Date.parse(`${ymd}T00:00:00+05:30`) + days * 86_400_000)] as const;
 export const firstName = (n: string | null) => n?.trim().split(/\s+/)[0] || "(no name)";
 
+// Counts for the last 24 hours, from the bot's own audit rows and the blocks table. Never any message text.
+export async function noiseLines(env: Env, nowMs = Date.now()): Promise<string[]> {
+  const since = iso(nowMs - 86_400_000);
+  const actions = await env.DB.prepare("SELECT action, COUNT(*) AS n FROM audit_log WHERE actor = 'bot' AND at >= ?1 GROUP BY action").bind(since).all<{ action: string; n: number }>();
+  const n = (action: string) => actions.results.find((a) => a.action === action)?.n ?? 0;
+  const blocks = await env.DB.prepare("SELECT reason, COUNT(*) AS n FROM blocks WHERE created_at >= ?1 GROUP BY reason ORDER BY reason").bind(since).all<{ reason: string; n: number }>();
+  return [
+    `- Crisis messages: ${n("CRISIS")}`,
+    `- Medical emergencies: ${n("EMERGENCY")}`,
+    `- Blocks: ${blocks.results.length ? blocks.results.map((b) => `${b.reason} ${b.n}`).join(", ") : "none"}`,
+    `- Quiet periods: ${n("QUIET")}`,
+    `- Budget fallbacks: ${n("BUDGET_FALLBACK")}`,
+    `- Opt-outs: ${n("OPT_OUT")}`,
+  ];
+}
+
+// People who showed interest in the last 24 hours (an expired hold, or a tap on Book) and have never paid. First name and a link only, so Rohit
+// can follow up inside the 24-hour window. Nobody who is blocked, opted out, or in the week after a crisis message.
+export async function warmLeads(env: Env, nowMs = Date.now()): Promise<{ id: number; name: string | null }[]> {
+  const paid = "('PAID','REFUND_PENDING','REFUNDED','REFUND_FAILED')";
+  const { results } = await env.DB
+    .prepare(
+      `SELECT c.id, c.display_name AS name FROM conversations c JOIN person_state ps ON ps.conversation_id = c.id
+       WHERE c.mode != 'BLOCKED' AND ps.opted_out_at IS NULL AND (ps.no_sell_until IS NULL OR ps.no_sell_until <= ?1)
+         AND (ps.book_tap_at >= ?2
+           OR EXISTS (SELECT 1 FROM intros i JOIN slots s ON s.id = i.slot_id WHERE i.conversation_id = c.id AND i.created_at >= ?2 AND (i.state = 'EXPIRED' OR (i.state = 'HELD' AND s.hold_until < ?1)))
+           OR EXISTS (SELECT 1 FROM sessions se JOIN slots s ON s.id = se.slot_id WHERE se.conversation_id = c.id AND se.created_at >= ?2 AND (se.state = 'EXPIRED' OR (se.state = 'HELD' AND s.hold_until < ?1))))
+         AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.state IN ${paid} AND (
+           (p.purpose = 'INTRO' AND p.target_id IN (SELECT id FROM intros WHERE conversation_id = c.id))
+           OR (p.purpose = 'SESSION' AND p.target_id IN (SELECT id FROM sessions WHERE conversation_id = c.id))))
+       ORDER BY c.id LIMIT 20`,
+    )
+    .bind(iso(nowMs), iso(nowMs - 86_400_000))
+    .all<{ id: number; name: string | null }>();
+  return results;
+}
+
 export async function digestText(env: Env, nowMs = Date.now()): Promise<string> {
   const attention = await env.DB.prepare("SELECT kind, COUNT(*) AS n FROM attention WHERE resolved_at IS NULL GROUP BY kind ORDER BY kind").all<{ kind: string; n: number }>();
   const tomorrow = istDay(nowMs + 86_400_000);
   const items = await bookingsBetween(env, ...dayRange(tomorrow));
   const off = (await switchStates(env)).filter((s) => (s.name === "AMMA_AWAY" ? s.on : !s.on)).map((s) => (s.name === "AMMA_AWAY" ? "AMMA_AWAY is ON (new bookings paused)" : `${s.name} is OFF${s.envOn ? "" : " (env flag)"}`));
+  const leads = await warmLeads(env, nowMs);
   const lines = [
     "Open attention items",
     ...(attention.results.length ? attention.results.map((a) => `- ${a.kind}: ${a.n}`) : ["- none"]),
@@ -79,6 +117,12 @@ export async function digestText(env: Env, nowMs = Date.now()): Promise<string> 
     "",
     "Last 7 days",
     ...scoreLines(await scoreboard(env, nowMs)).map((l) => `- ${l}`),
+    "",
+    "Safety and noise (last 24 hours)",
+    ...(await noiseLines(env, nowMs)),
+    "",
+    "Warm leads (last 24 hours, not paid yet)",
+    ...(leads.length ? leads.map((l) => `- ${firstName(l.name)} · ${env.PUBLIC_URL ?? ""}/admin/conv/${l.id}`) : ["- none"]),
     "",
     "Switches that are off",
     ...(off.length ? off.map((o) => `- ${o}`) : ["- none"]),

@@ -4,7 +4,7 @@ Every message the bot sends to customers on WhatsApp, in English and Hindi, exac
 
 Words in {curly brackets} are filled in automatically (a day, a time, a number). Prices, call lengths, the hold time, the opening hours and the name of the "Energy cleansing" service come from `src/config.ts`.
 
-Rules the copy follows: it never names an illness, never promises a result, never asks for health details. Amma's page (section 6) is English only.
+Rules the copy follows: it never names an illness, never promises a result, never asks for health details. Amma's page (section 7) is English only.
 
 Dates and times customers see are in India time: English `Wed, 21 Oct` and `2:30 pm`; Hindi `बुध, 21 अक्टूबर` and `दोपहर 2:30` (`सुबह` before noon, `शाम` from 4 pm).
 
@@ -114,7 +114,26 @@ Sent the evening before a call or a session. The two words are the first value o
 | The word "call" (template value) | call | कॉल |
 | The word "session" (template value) | session | सेशन |
 
-## 6. Amma's page
+## 6. Safety, noise and re-prompts
+
+Sent by code, never by the AI. The crisis and emergency messages go to everyone, whatever their state. When someone types while a booking step is open, the step is sent again with the re-prompt line and, on the day and time steps, the hint.
+
+| Where it appears | English | हिंदी |
+|---|---|---|
+| A message that talks of ending one's life (fixed text; Tele-MANAS 14416 or 1-800-891-4416, and 112) | We're really sorry you're feeling this way. You don't have to face it alone. Please talk to someone right now: Tele-MANAS is a free government helpline, open 24×7. Call *14416* or *1-800-891-4416*. If you are in danger right now, call *112*. A person from our team has been told and will message you here as soon as they can. | हमें बहुत दुख है कि आप ऐसा महसूस कर रहे हैं। आप अकेले नहीं हैं। कृपया अभी किसी से बात करें। टेली-मानस (Tele-MANAS) सरकार की मुफ़्त हेल्पलाइन है, जो हर दिन 24 घंटे खुली रहती है: *14416* या *1-800-891-4416* पर कॉल करें। अगर आप अभी खतरे में हैं, तो *112* पर कॉल करें। हमने अपनी टीम को बता दिया है, वे जल्द से जल्द आपको यहीं मैसेज करेंगे। |
+| A message that describes a medical emergency (fixed text) | This sounds like an emergency. Please call *112*, or *108* for an ambulance, right now, or go to the nearest hospital. | यह इमरजेंसी लग रही है। कृपया तुरंत *112* पर, या एम्बुलेंस के लिए *108* पर कॉल करें, या सबसे नज़दीकी अस्पताल जाएँ। |
+| After the third strike: the last line before 7 quiet days | It seems we can't help with this. If you'd like to book a call with Shantha Rao later, just type *book*. | लगता है हम इसमें मदद नहीं कर पाएँगे। अगर आप बाद में शांता राव जी के साथ कॉल बुक करना चाहें, तो बस *बुक* लिखें। |
+| After "stop" | Done. We won't send you any more messages. If you write to us again, we'll reply. | ठीक है। अब हम आपको कोई मैसेज नहीं भेजेंगे। अगर आप फिर से लिखेंगे, तो हम जवाब देंगे। |
+| One line after a flirting message | This chat is only for bookings. | यह चैट सिर्फ़ बुकिंग के लिए है। |
+| Menu heading when the AI cannot answer or the day's AI budget is used up | Sorry, we can't answer that right now. You can book a call below or talk to a person. | माफ़ कीजिए, अभी इसका जवाब नहीं दिया जा सका। आप नीचे से कॉल बुक कर सकते हैं या किसी व्यक्ति से बात कर सकते हैं। |
+| The same, while selling is paused after a crisis message | Sorry, we can't answer that right now. You can talk to a person from our team below. | माफ़ कीजिए, अभी इसका जवाब नहीं दिया जा सका। आप नीचे से हमारी टीम के किसी व्यक्ति से बात कर सकते हैं। |
+| Re-prompt: added above the step when someone types instead of tapping ({hint} is the next row, or nothing) | {hint} Please choose from the options below. | {hint} कृपया नीचे दिए विकल्पों में से चुनें। |
+| Hint on the day and time steps (from config.hours) | Calls and sessions are Monday to Friday, 2 pm to 7 pm (India time). | कॉल और सेशन सोमवार से शुक्रवार, दोपहर 2 से शाम 7 बजे तक (भारतीय समय) होते हैं। |
+| From the third re-prompt in a row: a second message with the Talk to a person button | If you would rather talk to a person from our team, tap below. | अगर आप हमारी टीम के किसी व्यक्ति से बात करना चाहें, तो नीचे टैप करें। |
+| Book tapped by someone who already has a call (with the buttons below) | You already have a call on {day} at {time}. Shantha Rao will call you then. | आपकी कॉल पहले से {day} को {time} बजे बुक है। शांता राव जी उसी समय कॉल करेंगी। |
+| Button under it (max 20 letters); the other button is Talk to a person | Keep it | ठीक है |
+
+## 7. Amma's page
 
 English only. No chat text and no health details are ever shown here.
 

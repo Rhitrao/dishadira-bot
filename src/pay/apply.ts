@@ -3,6 +3,7 @@
 import { config } from "../config";
 import { copyFor, langOf } from "../copy";
 import type { Env } from "../env";
+import { paymentCleared } from "../noise";
 import { raiseAttention, sendOrTemplate } from "../send";
 import { formatIstLang, iso } from "../slots";
 import type { PayStatus, PaymentProvider } from "./provider";
@@ -44,12 +45,24 @@ async function closeUnpaid(env: Env, pay: Payment): Promise<Applied> {
     .run();
   if (!moved.meta.changes) return "NOOP";
   const table = pay.purpose === "SESSION" ? "sessions" : "intros";
+  await closePayStep(db, table, pay.target_id);
   await db.prepare(`UPDATE ${table} SET state = 'EXPIRED', updated_at = ?2 WHERE id = ?1 AND state = 'HELD'`).bind(pay.target_id, nowIso()).run();
   await db
     .prepare(`UPDATE slots SET hold_until = ?2 WHERE state = 'HELD' AND id = (SELECT slot_id FROM ${table} WHERE id = ?1)`)
     .bind(pay.target_id, nowIso())
     .run();
   return "CLOSED";
+}
+
+// The payment step of the booking is over (paid, expired or cancelled): a typed message no longer re-sends the pay button.
+async function closePayStep(db: Env["DB"], table: "intros" | "sessions", targetId: number): Promise<number | null> {
+  const row = await db.prepare(`SELECT conversation_id AS conv FROM ${table} WHERE id = ?1`).bind(targetId).first<{ conv: number }>();
+  if (!row) return null;
+  await db
+    .prepare("UPDATE conversations SET pending_step = NULL, pending_out = NULL, pending_until = NULL, pending_reprompts = 0 WHERE id = ?1 AND pending_step = 'pay'")
+    .bind(row.conv)
+    .run();
+  return row.conv;
 }
 
 // paid_paise keeps what the customer really paid, so a refund returns that amount and never the expected price.
@@ -87,6 +100,10 @@ async function applyPaid(env: Env, provider: PaymentProvider, pay: Payment, ev: 
     )
     .bind(pay.id, ev.orderId ?? null, nowIso(), ev.payerRef ?? null)
     .run();
+
+  // Paying ends the pay step and clears the person's strikes and quiet period.
+  const payer = await closePayStep(db, pay.purpose === "SESSION" ? "sessions" : "intros", pay.target_id);
+  if (payer !== null) await paymentCleared(db, payer);
 
   // The first paid payment for a target (lowest id) is the real one; any other is a duplicate to refund.
   const first = await db
