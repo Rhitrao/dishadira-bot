@@ -130,6 +130,31 @@ describe("page", () => {
     expect(page).toMatch(/min-height:56px/);
     expect(page).not.toContain("<script");
   });
+  it("shows the call language and who it is for next to each name; the service has the customer-facing name", async () => {
+    const hindi = await booking("2026-10-05", 0, "Priya");
+    await db.prepare("UPDATE conversations SET locale = 'hi' WHERE id = ?1").bind(hindi.conv).run();
+    await db.prepare("UPDATE intros SET call_lang = 'hi', for_whom = 'FAMILY' WHERE id = ?1").bind(hindi.introId).run();
+    const english = await booking("2026-10-05", 2, "Anita");
+    await db.prepare("UPDATE intros SET call_lang = 'en', for_whom = 'PET' WHERE id = ?1").bind(english.introId).run();
+    const legacy = await booking("2026-10-05", 4, "Meera"); // booked before the new steps: no who-for, language from the chat
+    await db.prepare("UPDATE conversations SET locale = 'hi' WHERE id = ?1").bind(legacy.conv).run();
+    const page = await (await get("/amma")).text();
+    expect(page).toContain("· Priya · Hindi · family<");
+    expect(page).toContain("· Anita · English · pet<");
+    expect(page).toContain("· Meera · Hindi<");
+    expect(page).toContain("Energy cleansing"); // PROTECTION as customers know it
+    expect(page).not.toContain("Protection");
+    expect(page).not.toMatch(/[\u0900-\u097F]/); // Amma's page stays English
+  });
+  it("a confirmed session shows the language and who-for of the call before it", async () => {
+    const { conv, introId } = await booking("2026-10-05", 0, "Priya");
+    await db.prepare("UPDATE intros SET call_lang = 'hi', for_whom = 'SELF' WHERE id = ?1").bind(introId).run();
+    const s = generateSlots("2026-10-05", "SESSION")[3];
+    const slot = await db.prepare("INSERT INTO slots (kind,start_utc,end_utc,owner_id,state) VALUES ('SESSION',?1,?2,?3,'BOOKED')").bind(s.startUtc, s.endUtc, conv).run();
+    await db.prepare("INSERT INTO sessions (conversation_id,intro_id,slot_id,service,state) VALUES (?1,?2,?3,'HEALING','CONFIRMED')").bind(conv, introId, slot.meta.last_row_id).run();
+    const page = await (await get("/amma")).text();
+    expect(page.match(/Priya · Hindi · self/g)).toHaveLength(2); // the call and the session
+  });
   it("never shows chat text or health details", async () => {
     const { conv } = await booking("2026-10-05", 0, "Priya");
     await db.prepare("INSERT INTO messages (conversation_id,direction,kind,body,status) VALUES (?1,'IN','text','my knee hurts, diagnosis cancer','RECEIVED')").bind(conv).run();
@@ -297,7 +322,7 @@ describe("one open intro per person", () => {
     expect((await db.prepare("SELECT count(*) AS n FROM intros").first<{ n: number }>())!.n).toBe(1);
     expect((await db.prepare("SELECT count(*) AS n FROM payments").first<{ n: number }>())!.n).toBe(0);
     const m = await db.prepare("SELECT body FROM messages WHERE direction = 'OUT' ORDER BY id DESC LIMIT 1").first<{ body: string }>();
-    expect(m?.body ?? "").toContain("already booked for Mon 5 Oct");
+    expect(m?.body ?? "").toContain("already booked for Mon, 5 Oct at 2:45 pm");
   });
   it("a person with a live HELD intro is told the same, and no new hold is made", async () => {
     const { conv } = await booking("2026-10-05", 3, "Priya", { state: "HELD" });

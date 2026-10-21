@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-21 (v2 design: docs/AGENT.md, docs/KNOWLEDGE.md, CONTRACT v4; tickets 11-13 added)
+Updated: 2026-10-21 (Ticket 11: English + Hindi, clear booking flow; tickets 12-13 next)
 
 ## Payment provider
 Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
@@ -32,7 +32,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [x] 08 Reminders + go-live (PR https://github.com/Rhitrao/dishadira-bot/pull/8, CI green)
 - [x] 09 Test bot ready to send (PR https://github.com/Rhitrao/dishadira-bot/pull/11)
 - [x] 10 Razorpay replaces the previous payment provider (PR https://github.com/Rhitrao/dishadira-bot/pull/12)
-- [ ] 11 English + Hindi, clear booking flow
+- [x] 11 English + Hindi, clear booking flow (PR: see below, CI green)
 - [ ] 12 Gatekeeper (noise, safety, quiet periods)
 - [ ] 13 AI assistant (behind AI_REPLIES, default off)
 
@@ -58,6 +58,19 @@ Nothing below was done by Claude; no keys, webhooks or settings were touched. Te
 5. [ ] `NEW_BOOKINGS` is still `"false"` everywhere. When you want to try a test booking, switch it on for the test Worker yourself (ticket 10 does not change it), then follow `docs/GO-LIVE.md` step 11 with Razorpay's test card / test UPI.
 6. [ ] Live later: Live Mode keys only appear after Razorpay approves the account; repeat steps 1-3 for `dishadira-bot-live` with different values and `https://bot.disha-dira.com/pay/razorpay/webhook`. A `rzp_test_` key on the live Worker (or the reverse) makes the bot refuse to create links.
 7. [ ] Check on the first test payment that the Razorpay webhook log (dashboard → Webhooks) shows 200 for each of the five events.
+
+## Session notes (Ticket 11)
+- Languages: Kannada is gone (`kn` copy, `LANGUAGE_BUTTONS`, config `languages`, docs). Hindi added; all text in `src/copy.ts` from KNOWLEDGE.md §10-11, prices/minutes/hold time built from config. Migration `0005_hindi_booking_steps.sql`: `kn` conversations become `en`; adds `conversations.age_ok_at`, `conversations.first_question_msg`, `intros.for_whom` (SELF|FAMILY|PET) and `intros.call_lang` (en|hi). Old buttons still work: `lang_kn` reads as English, `menu_ask`, `svc_*`, and old `slot_<SERVICE>_<time>` rows book that exact time (who-for stays empty; the age question comes first if never answered).
+- `docs/COPY.md` is now generated from `src/copy.ts` (`test/copydoc.ts`); `test/copy.test.ts` fails if it is out of date, if any value has `KN_TODO`, or if a key is in one language only. Regenerate: `UPDATE_COPY_DOC=1 npx vitest run test/copy.test.ts`.
+- Service name: `config.serviceNames` ("Energy cleansing" / "एनर्जी क्लींजिंग" for PROTECTION). One line to change it back; Amma's page and the English FAQ use the same label. Internal code is unchanged.
+- Flow (`src/booking.ts`, ids carry the choices so nothing is stored between steps): greeting (one bilingual message + [English] [हिंदी]; a real question in the first message is kept and gets today's ack after the language tap) -> menu [Book ₹99 call] [How it works] [Talk to a person] -> age (once; "No" is not remembered) -> service -> who for -> up to 3 day buttons (full days skipped) -> time list (spread rule: one time per half hour, :00/:30 first, :15/:45 fill a taken half hour, max 9 + "Another day", Afternoon/Evening sections, never an empty one) -> existing guarded hold and payment. Session picker: same day/time steps, ids `sday_`, `smore_`, `sess_`.
+- Talk to a person: HUMAN + one `HUMAN_REQUEST` item + `handoffAck`. In HUMAN, button taps work and typed text/menu words get no reply. Resolving the item in /admin puts the chat back to BOT (audited; a blocked chat stays blocked). Photos, voice notes, files: with a hold, open payment or booking -> `MEDIA_FROM_CUSTOMER` item + customer notice; otherwise the first each India day gets the notice + menu. Never downloaded. Menu words (config `menuWords`) get the menu: no item, no ack.
+- Dates/times for customers use the person's language (`Wed, 21 Oct` / `2:30 pm`; `बुध, 21 अक्टूबर` / `दोपहर 2:30`, `शाम 5:30`): confirmations, reminders, reschedules, "already booked". The confirmation names the call language (the chat language when booking). Amma's page shows "Priya · Hindi · family".
+- Templates: `config.templates.<name>.hi` = `{ name: "<name>_hi", approved: false }`. A Hindi customer gets the Hindi template only when its own flag is true, otherwise the English one (with English values). Drafts of the five Hindi bodies are in `docs/TEMPLATES.md`; GO-LIVE step 10 updated.
+- Checks (local): typecheck, vitest all passed (new: `test/copy.test.ts`, `test/flow.test.ts`, plus additions in admin, amma, remind), `wrangler deploy --dry-run`. GitHub Actions: see PR.
+- Credits: not visible to Claude; check the Usage page.
+- Open questions for Rohit / Amma: (1) The English FAQ `what_is_this` now says "energy cleansing and healing" (built from the config label) and `timings` is in plain words; KNOWLEDGE §11 said "English stays as in copy.ts", but "protection" next to an "Energy cleansing" button looked wrong. (2) The Hindi privacy FAQ mentions the 30-day deletion, the English one (kept as it was) does not. (3) `ack` has no Hindi in §11; I wrote "धन्यवाद। हमारी टीम का कोई व्यक्ति 24 घंटे के अंदर यहीं जवाब देगा।" for Amma to check. (4) Hindi time words: `सुबह` before noon was added (§11 only has दोपहर/शाम), for if the hours ever start in the morning. (5) A person with an open session offer who types a menu word gets the session days, not the menu. (6) §11 keys used only by tickets 12-13 (quietClose, optOutConfirm, aiFallback, the fallbacks, payInProgress, btnSeeTimes) are not added yet. (7) The Hindi template drafts need Amma's reading before submission. (8) The ticket named the branch `t11-hindi-booking`; this session was assigned `claude/epic-euler-2b20hd` and used that.
+- Next: Rohit merges, submits the Hindi templates, then Ticket 12 (gatekeeper).
 
 ## Session notes (Ticket 10)
 - Step 0 (own commit): a person who wrote while SENDS was off never got a greeting or an ack. Cause: the "already greeted" lookup (`greet:<conv>`) and the "ack in the last 24h" lookup counted SKIPPED and FAILED outbound rows as sent, and `messages.dedupe_key` is UNIQUE, so `sendMessage` also answered DUPLICATE for the same key. Both lookups now count only SENT, SENDING, UNKNOWN (`WENT_OUT` in `src/whatsapp.ts`), and `sendMessage` reuses a SKIPPED or FAILED row with the same dedupe key (one caller wins the UPDATE; SENT, SENDING, PENDING and UNKNOWN never resend). Audit of other "was this sent?" lookups: none exist besides these two and the dedupe insert itself; reminders return before writing while SENDS is paused. Side effect, on purpose: a replayed/retried intent whose first row was SKIPPED or FAILED now sends if sends are on (it never double-sends).

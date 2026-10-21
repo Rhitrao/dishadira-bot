@@ -4,22 +4,30 @@ import initSql from "../migrations/0001_init.sql?raw";
 import messagesSql from "../migrations/0002_messages_skipped.sql?raw";
 import outcomesSql from "../migrations/0003_outcomes_refunds.sql?raw";
 import paidSql from "../migrations/0004_paid_amount_declined.sql?raw";
+import hindiSql from "../migrations/0005_hindi_booking_steps.sql?raw";
 
-// A fresh local D1 (real workerd SQLite) with the migrations applied.
-export async function newDb(): Promise<{ db: D1Database; close: () => Promise<void> }> {
-  const mf = new Miniflare({ modules: true, script: "export default {}", d1Databases: { DB: "test" } });
-  const db = (await mf.getD1Database("DB")) as unknown as D1Database;
-  // D1 runs one statement per prepare(); split the migration file on ";" at line ends.
-  const statements = (initSql + "\n" + messagesSql + "\n" + outcomesSql + "\n" + paidSql)
+// D1 runs one statement per prepare(); split a migration file on ";" at line ends.
+export async function applySql(db: D1Database, sql: string): Promise<void> {
+  const statements = sql
     .replace(/^--.*$/gm, "")
     .split(/;\s*$/m)
     .map((s) => s.replace(/\s+/g, " ").trim())
     .filter(Boolean);
   for (const s of statements) await db.prepare(s).run();
+}
+
+export const migrations = { initSql, messagesSql, outcomesSql, paidSql, hindiSql };
+
+// A fresh local D1 (real workerd SQLite) with the migrations applied. `through` stops early (4 = before the Hindi/booking-steps migration).
+export async function newDb(through = 5): Promise<{ db: D1Database; close: () => Promise<void> }> {
+  const mf = new Miniflare({ modules: true, script: "export default {}", d1Databases: { DB: "test" } });
+  const db = (await mf.getD1Database("DB")) as unknown as D1Database;
+  await applySql(db, [initSql, messagesSql, outcomesSql, paidSql, hindiSql].slice(0, through).join("\n"));
   return { db, close: () => mf.dispose() };
 }
 
-export async function addPerson(db: D1Database, waId: string): Promise<number> {
-  const r = await db.prepare("INSERT INTO conversations (wa_id) VALUES (?1)").bind(waId).run();
+// Tests of the booking, payment and reminder steps start from someone who has already said they are 18+ (the age gate has its own tests).
+export async function addPerson(db: D1Database, waId: string, ageOk = true): Promise<number> {
+  const r = await db.prepare("INSERT INTO conversations (wa_id, age_ok_at) VALUES (?1, ?2)").bind(waId, ageOk ? "2026-01-01T00:00:00Z" : null).run();
   return r.meta.last_row_id;
 }

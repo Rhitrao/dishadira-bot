@@ -212,16 +212,29 @@ describe("razorpay provider", () => {
 });
 
 describe("bot flow", () => {
-  it("menu -> service buttons -> slot list (max 10, IST labels) -> pay button", async () => {
+  it("menu -> service -> who for -> day -> times (max 10, IST labels) -> pay button", async () => {
     const c = await person("test-a");
+    const ids = (m: { interactive: { action: { buttons: { reply: { id: string } }[] } } }) => m.interactive.action.buttons.map((b) => b.reply.id);
     await tap(c, "menu_book");
-    expect(waSent()[0].interactive.action.buttons.map((b: { reply: { id: string } }) => b.reply.id)).toEqual(["svc_PROTECTION", "svc_HEALING"]);
+    expect(ids(waSent()[0])).toEqual(["svc_HEALING", "svc_PROTECTION"]);
     await tap(c, "svc_PROTECTION");
-    const rows = waSent()[1].interactive.action.sections[0].rows;
-    expect(rows).toHaveLength(10);
-    expect(rows[0]).toEqual({ id: `slot_PROTECTION_${call(0).startUtc}`, title: "Mon 5 Oct, 2:00pm" });
+    expect(ids(waSent()[1])).toEqual(["who_PROTECTION_SELF", "who_PROTECTION_FAMILY", "who_PROTECTION_PET"]);
+    await tap(c, "who_PROTECTION_FAMILY");
+    expect(ids(waSent()[2])).toEqual(["day_PROTECTION_FAMILY_2026-10-05", "day_PROTECTION_FAMILY_2026-10-06", "day_PROTECTION_FAMILY_2026-10-07"]);
+    expect(waSent()[2].interactive.action.buttons.map((b: { reply: { title: string } }) => b.reply.title)).toEqual(["Mon, 5 Oct", "Tue, 6 Oct", "Wed, 7 Oct"]);
+    await tap(c, "day_PROTECTION_FAMILY_2026-10-05");
+    const rows = waSent()[3].interactive.action.sections.flatMap((x: { rows: unknown[] }) => x.rows);
+    expect(rows).toHaveLength(10); // 9 times + "Another day"
+    expect(rows[0]).toEqual({ id: `time_PROTECTION_FAMILY_${call(0).startUtc}`, title: "2:00 pm", description: "15-min call" });
+    expect(rows.at(-1)).toEqual({ id: "more_PROTECTION_FAMILY", title: "Another day" });
+    await tap(c, rows[1].id); // 2:30 pm, the second half hour
+    expect(await db.prepare("SELECT service, for_whom, call_lang FROM intros").first()).toEqual({ service: "PROTECTION", for_whom: "FAMILY", call_lang: "en" });
+    expect(waSent().at(-1).interactive.body.text).toBe("Mon, 5 Oct at 2:30 pm is held for you for 20 minutes. Tap below to pay ₹99 and confirm. Please don't pay twice.");
+  });
 
-    const pay = await book(c, 1);
+  it("the hold, the payment row and a link that expires with the hold", async () => {
+    const c = await person("test-a");
+    const pay = await book(c, 1); // a legacy list row still books directly
     const slot = await db.prepare("SELECT state, hold_until FROM slots").first<{ state: string; hold_until: string }>();
     expect(slot?.state).toBe("HELD");
     expect(await db.prepare("SELECT state FROM intros").first()).toEqual({ state: "HELD" });
@@ -303,7 +316,7 @@ describe("webhook", () => {
     expect(await count("SELECT COUNT(*) AS n FROM events WHERE provider = 'razorpay'")).toBe(1);
     const texts = waSent().map((m) => m.text?.body).filter(Boolean);
     expect(texts.filter((t) => t.startsWith("Received your ₹99"))).toEqual([
-      `Received your ₹99. Shantha Rao will call you on Mon 5 Oct at 2:00pm from ${config.businessNumber}. That number is for her calls only, so please message us here.`,
+      `Received your ₹99. Shantha Rao will call you on Mon, 5 Oct at 2:00 pm from ${config.businessNumber}. Call in English. That number is for her calls only, so please message us here.`,
     ]);
     expect(await count("SELECT COUNT(*) AS n FROM refunds")).toBe(0);
   });

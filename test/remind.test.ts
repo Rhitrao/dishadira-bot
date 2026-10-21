@@ -12,7 +12,7 @@ const NOW = Date.parse("2026-10-05T13:00:00Z");
 let db: D1Database;
 let close: () => Promise<void>;
 let fetchMock: ReturnType<typeof vi.fn>;
-const templates = config.templates as unknown as Record<string, { approved: boolean }>;
+const templates = config.templates as unknown as Record<string, { approved: boolean; hi: { name: string; approved: boolean } }>;
 const env = (o: Record<string, string> = {}) => ({ DB: db, SENDS: "true", WA_TOKEN: "tok", WA_PHONE_ID: "1000", ...o }) as never;
 const sent = () => fetchMock.mock.calls.map((c) => JSON.parse((c[1] as { body: string }).body));
 const count = async (sql: string) => (await db.prepare(sql).first<{ n: number }>())!.n;
@@ -28,6 +28,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   templates.reminder.approved = false;
+  templates.reminder.hi.approved = false;
   vi.useRealTimers();
   vi.unstubAllGlobals();
   await close?.();
@@ -76,10 +77,10 @@ describe("day-before reminders", () => {
     const out = sent();
     expect(out).toHaveLength(3);
     expect(out[0].type).toBe("text");
-    expect(out[0].text.body).toMatch(/^Reminder: your call with Shantha Rao is tomorrow, Tue 6 Oct at 2:00pm/);
+    expect(out[0].text.body).toMatch(/^Reminder: your call with Shantha Rao is tomorrow, Tue, 6 Oct at 2:00 pm/);
     expect(out[1].type).toBe("template");
     expect(out[1].template.name).toBe("reminder");
-    expect(out[1].template.components[0].parameters.map((p: { text: string }) => p.text)).toEqual(["call", "Tue 6 Oct", "2:15pm"]);
+    expect(out[1].template.components[0].parameters.map((p: { text: string }) => p.text)).toEqual(["call", "Tue, 6 Oct", "2:15 pm"]);
     expect(out[2].text.body).toContain("your session with Shantha Rao is tomorrow");
   });
 
@@ -114,5 +115,64 @@ describe("day-before reminders", () => {
     expect(await sendReminders(env())).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'TEMPLATE_UNAPPROVED'")).toBe(1);
+  });
+});
+
+describe("Hindi reminders (ticket 11)", () => {
+  const hindi = async (inWindow: boolean) => {
+    const id = await person(inWindow);
+    await db.prepare("UPDATE conversations SET locale = 'hi' WHERE id = ?1").bind(id).run();
+    return id;
+  };
+  const params = (p: { template: { components: { parameters: { text: string }[] }[] } }) => p.template.components[0].parameters.map((x) => x.text);
+
+  it("inside the window: Hindi text with Hindi day and time, for calls and for sessions", async () => {
+    await call(await hindi(true), "2026-10-06", 0);
+    await session(await hindi(true), "2026-10-06", 2); // 4:00 pm
+    expect(await sendReminders(env())).toBe(2);
+    expect(sent()[0].text.body).toBe("याद दिला दें: शांता राव जी के साथ आपकी कॉल कल, मंगल, 6 अक्टूबर को दोपहर 2:00 बजे (भारतीय समय) है। कृपया फ़ोन अपने पास रखें।");
+    expect(sent()[1].text.body).toBe("याद दिला दें: शांता राव जी के साथ आपका सेशन कल, मंगल, 6 अक्टूबर को शाम 4:00 बजे (भारतीय समय) है। कृपया फ़ोन अपने पास रखें।");
+  });
+
+  it("outside the window: the Hindi template when its own flag is approved, with Hindi values", async () => {
+    templates.reminder.approved = false; // the English one need not be approved
+    templates.reminder.hi.approved = true;
+    await call(await hindi(false), "2026-10-06", 0);
+    expect(await sendReminders(env())).toBe(1);
+    expect(sent()[0].template.name).toBe("reminder_hi");
+    expect(sent()[0].template.language.code).toBe("hi");
+    expect(params(sent()[0])).toEqual(["कॉल", "मंगल, 6 अक्टूबर", "दोपहर 2:00"]);
+  });
+
+  it("outside the window and the Hindi template is not approved: the English template with English values", async () => {
+    templates.reminder.approved = true;
+    templates.reminder.hi.approved = false;
+    await call(await hindi(false), "2026-10-06", 0);
+    expect(await sendReminders(env())).toBe(1);
+    expect(sent()[0].template.name).toBe("reminder");
+    expect(sent()[0].template.language.code).toBe("en");
+    expect(params(sent()[0])).toEqual(["call", "Tue, 6 Oct", "2:00 pm"]);
+  });
+
+  it("neither approved: attention for Rohit, nothing sent; an English person never gets the Hindi template", async () => {
+    templates.reminder.approved = false;
+    await call(await hindi(false), "2026-10-06", 0);
+    expect(await sendReminders(env())).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'TEMPLATE_UNAPPROVED'")).toBe(1);
+
+    templates.reminder.hi.approved = true; // Hindi approved, English not
+    await call(await person(false), "2026-10-06", 1);
+    expect(await sendReminders(env())).toBe(1); // only the Hindi person (their reminder was never recorded as sent)
+    expect(sent().map((p) => p.template.name)).toEqual(["reminder_hi"]);
+    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'TEMPLATE_UNAPPROVED'")).toBe(2);
+  });
+
+  it("every template has a Hindi version in the registry with its own flag, off by default", () => {
+    for (const [name, t] of Object.entries(config.templates)) {
+      expect(t.hi.name, name).toBe(`${name}_hi`);
+      expect(t.hi.language).toBe("hi");
+      expect(t.hi.approved, name).toBe(false);
+    }
   });
 });

@@ -89,8 +89,9 @@ The flags are in `wrangler.toml`, under `[env.test.vars]`. For the sandbox run, 
 
 ### 10. Submit the 5 templates
 - [ ] WhatsApp Manager → **Message templates → Create template**. Create all five exactly as written in `docs/TEMPLATES.md`: `call_booked`, `session_offer`, `session_confirmed`, `reminder`, `payment_update`. Category **Utility**, language English.
-- [ ] Approval usually takes minutes to a day. When one is approved, ask Claude (or edit `src/config.ts` yourself) to set that template's `approved` to `true`, then run **Deploy → test**.
-- [ ] Amma and the family review `docs/COPY.md` and write the Kannada.
+- [ ] Then create the five **Hindi** versions (language **Hindi**, names ending in `_hi`: `call_booked_hi`, `session_offer_hi`, `session_confirmed_hi`, `reminder_hi`, `payment_update_hi`), wording in the "Hindi versions" part of `docs/TEMPLATES.md`.
+- [ ] Approval usually takes minutes to a day. When one is approved, ask Claude (or edit `src/config.ts` yourself) to set that template's `approved` to `true` (for a Hindi one, its `hi.approved`), then run **Deploy → test**. A Hindi customer gets the Hindi template only once its own flag is `true`, and otherwise the English one.
+- [ ] Amma reads `docs/COPY.md` (every message, English and Hindi) and tells you about anything that sounds wrong.
 
 ---
 

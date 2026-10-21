@@ -4,12 +4,12 @@ import { Hono, type Context } from "hono";
 import { html } from "hono/html";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { config } from "./config";
-import { copyFor, type AmmaCopy } from "./copy";
+import { copyFor, langOf, type AmmaCopy, type ForWhom } from "./copy";
 import type { Env } from "./env";
 import { formatIstParts, iso, istDay } from "./slots";
 
 type Ctx = Context<{ Bindings: Env; Variables: { jwt: string; email: string } }>;
-const t = (): AmmaCopy => copyFor("en").amma; // Amma's page is English until the Kannada copy is written
+const t = (): AmmaCopy => copyFor("en").amma; // Amma's page is English
 
 const OUTCOMES = { SESSION: "btnSession", NOT_FIT: "btnNotFit", MISSED: "btnMissed", RUDE: "btnRude" } as const;
 type Outcome = keyof typeof OUTCOMES;
@@ -66,12 +66,14 @@ const firstName = (n: string | null) => n?.trim().split(/\s+/)[0] || t().noName;
 type Row = {
   startUtc: string; name: string; waId: string; service: string; kind: "CALL" | "SESSION";
   introId: number | null; oid: number | null; value: string | null; undoUntil: string | null; appliedAt: string | null;
+  locale: string; callLang: string | null; forWhom: ForWhom | null;
 };
 
 async function rowsBetween(env: Env, fromUtc: string, toUtc: string): Promise<Row[]> {
   const calls = await env.DB
     .prepare(
       `SELECT s.start_utc AS startUtc, c.display_name AS name, c.wa_id AS waId, i.service, i.id AS introId,
+              c.locale, i.call_lang AS callLang, i.for_whom AS forWhom,
               o.id AS oid, o.value, o.undo_until AS undoUntil, o.applied_at AS appliedAt
        FROM intros i JOIN slots s ON s.id = i.slot_id JOIN conversations c ON c.id = i.conversation_id
        LEFT JOIN outcomes o ON o.intro_id = i.id AND o.slot_id = i.slot_id
@@ -82,8 +84,10 @@ async function rowsBetween(env: Env, fromUtc: string, toUtc: string): Promise<Ro
     .all<Omit<Row, "kind">>();
   const sessions = await env.DB
     .prepare(
-      `SELECT s.start_utc AS startUtc, c.display_name AS name, c.wa_id AS waId, se.service
+      `SELECT s.start_utc AS startUtc, c.display_name AS name, c.wa_id AS waId, se.service,
+              c.locale, i.call_lang AS callLang, i.for_whom AS forWhom
        FROM sessions se JOIN slots s ON s.id = se.slot_id JOIN conversations c ON c.id = se.conversation_id
+       LEFT JOIN intros i ON i.id = se.intro_id
        WHERE se.state = 'CONFIRMED' AND s.kind = 'SESSION' AND s.start_utc >= ?1 AND s.start_utc < ?2`,
     )
     .bind(fromUtc, toUtc)
@@ -95,7 +99,7 @@ async function rowsBetween(env: Env, fromUtc: string, toUtc: string): Promise<Ro
   return all.sort((a, b) => a.startUtc.localeCompare(b.startUtc));
 }
 
-const serviceLabel = (s: string) => (s === "HEALING" ? t().healing : t().protection);
+const serviceLabel = (s: string) => (s === "HEALING" ? t().healing : t().protection); // names come from config.serviceNames
 const dayStartUtc = (ymd: string) => iso(Date.parse(`${ymd}T00:00:00+05:30`));
 
 function undoForm(oid: number, jwtToken: string, label: string) {
@@ -106,7 +110,10 @@ function undoForm(oid: number, jwtToken: string, label: string) {
 async function rowHtml(r: Row, jwt: string, nowIsoStr: string) {
   const c = t();
   const time = formatIstParts(r.startUtc).time;
-  const head = html`<div class="top">${time} · ${firstName(r.name)}</div>
+  // "Priya · Hindi · family": the language to speak and who it is for (a session takes both from the call before it).
+  const lang = c.callLang[langOf(r.callLang ?? r.locale)];
+  const who = r.forWhom ? ` · ${c.forWhom[r.forWhom]}` : "";
+  const head = html`<div class="top">${time} · ${firstName(r.name)} · ${lang}${who}</div>
 <div class="sub">${serviceLabel(r.service)} · ${r.kind === "CALL" ? c.kindCall : c.kindSession}</div>
 <a class="btn call" href="${telHref(r.waId)}">${c.btnCall}</a>`;
   if (r.kind !== "CALL" || r.introId === null) return html`<div class="row">${head}</div>`;

@@ -14,6 +14,8 @@ The wording matches what the code sends (free text inside 24 hours uses the same
 
 When Meta approves a template, set its `approved` flag to `true` in `src/config.ts` (section `templates`) through a pull request, then run the Deploy workflow. Do it per template; the others stay off until approved.
 
+A Hindi customer gets the Hindi version of a template (see "Hindi versions" at the end) once Meta has approved it and its own `hi.approved` flag in `src/config.ts` is `true`. Until then the English template is sent.
+
 ---
 
 ## 1. call_booked
@@ -28,8 +30,8 @@ Thank you, we have received your payment. Shantha Rao will call you on {{1}} at 
 
 | Variable | Meaning | Sample value |
 |---|---|---|
-| {{1}} | Day of the call | Tue 6 Oct |
-| {{2}} | Time of the call (India time) | 2:00pm |
+| {{1}} | Day of the call | Tue, 6 Oct |
+| {{2}} | Time of the call (India time) | 2:00 pm |
 | {{3}} | The business number Amma calls from | +91 00000 00000 |
 
 ## 2. session_offer
@@ -58,8 +60,8 @@ Your session with Shantha Rao is confirmed for {{1}} at {{2}} (India time). It i
 
 | Variable | Meaning | Sample value |
 |---|---|---|
-| {{1}} | Day of the session | Wed 7 Oct |
-| {{2}} | Time of the session (India time) | 3:00pm |
+| {{1}} | Day of the session | Wed, 7 Oct |
+| {{2}} | Time of the session (India time) | 3:00 pm |
 
 ## 4. reminder
 
@@ -74,8 +76,8 @@ Reminder: your {{1}} with Shantha Rao is tomorrow, {{2}} at {{3}} (India time). 
 | Variable | Meaning | Sample value |
 |---|---|---|
 | {{1}} | The word "call" or "session" | call |
-| {{2}} | Day | Tue 6 Oct |
-| {{3}} | Time (India time) | 2:00pm |
+| {{2}} | Day | Tue, 6 Oct |
+| {{3}} | Time (India time) | 2:00 pm |
 
 ## 5. payment_update
 
@@ -90,3 +92,49 @@ Thank you for speaking with Shantha Rao. She feels a session isn't the right fit
 | Variable | Meaning | Sample value |
 |---|---|---|
 | {{1}} | The amount refunded | ₹99 |
+
+---
+
+## Hindi versions
+
+Five more templates, one per template above, with the same variables in the same order. **Name:** the English name plus `_hi` (for example `reminder_hi`). **Language:** Hindi. Category, header, footer and buttons as for the English one. The values the bot sends are in Hindi too: the day as `मंगल, 6 अक्टूबर` and the time as `दोपहर 2:00` or `शाम 5:30`. These drafts are built from the sentences in `docs/KNOWLEDGE.md` §11; Amma should read them before they are submitted. Set the template's `hi.approved` flag in `src/config.ts` when Meta approves it.
+
+### 1. call_booked_hi
+
+```
+हमें आपका भुगतान मिल गया है। शांता राव जी {{1}} को {{2}} बजे {{3}} से आपको कॉल करेंगी। वह नंबर सिर्फ़ उनकी कॉल के लिए है, इसलिए मैसेज यहीं भेजें।
+```
+
+Samples: {{1}} मंगल, 6 अक्टूबर · {{2}} दोपहर 2:00 · {{3}} +91 00000 00000
+
+### 2. session_offer_hi
+
+```
+शांता राव जी से बात करने के लिए धन्यवाद। वे आपको पूरा सेशन देना चाहेंगी। समय चुनने के लिए नीचे टैप करें।
+```
+
+One Quick reply button, text `समय चुनें`. No variables.
+
+### 3. session_confirmed_hi
+
+```
+शांता राव जी के साथ आपका सेशन {{1}} को {{2}} बजे (भारतीय समय) तय हो गया है। यह दूर से होने वाला सेशन है: आप जहाँ हैं वहीं रहें, वे तय समय पर आपको कॉल करेंगी। कृपया किसी शांत जगह पर फ़ोन साथ रखें। एक दिन पहले हम आपको याद दिलाएँगे।
+```
+
+Samples: {{1}} बुध, 7 अक्टूबर · {{2}} दोपहर 3:00
+
+### 4. reminder_hi
+
+```
+याद दिला दें: शांता राव जी के साथ आपकी बुकिंग ({{1}}) कल, {{2}} को {{3}} बजे (भारतीय समय) है। कृपया फ़ोन अपने पास रखें।
+```
+
+{{1}} is the word `कॉल` or `सेशन` (the Hindi sentence is built around "बुकिंग" so that it reads right for both). Samples: {{1}} कॉल · {{2}} मंगल, 6 अक्टूबर · {{3}} दोपहर 2:00
+
+### 5. payment_update_hi
+
+```
+शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी सेशन आपके लिए सही नहीं है, इसलिए आपके {{1}} वापस कर दिए गए हैं।
+```
+
+Sample: {{1}} ₹99

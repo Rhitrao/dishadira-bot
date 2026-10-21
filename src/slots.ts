@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { config } from "./config";
+import { dayLabel, timeLabel, type Lang } from "./copy";
 
 export type SlotKind = "CALL" | "SESSION";
 export type Slot = { kind: SlotKind; startUtc: string; endUtc: string };
@@ -47,10 +48,35 @@ export function formatIstParts(utc: string): { day: string; time: string } {
     time: `${h % 12 || 12}:${mm}${h < 12 ? "am" : "pm"}`,
   };
 }
-export const formatIst = (utc: string) => {
-  const p = formatIstParts(utc);
-  return `${p.day}, ${p.time}`;
-};
+
+// What a customer sees, in their language: { day: "Wed, 21 Oct", time: "2:30 pm" } / { day: "बुध, 21 अक्टूबर", time: "दोपहर 2:30" }.
+export function formatIstLang(utc: string, lang: Lang): { day: string; time: string } {
+  const d = new Date(Date.parse(utc) + IST_OFFSET_MINUTES * 60_000);
+  return {
+    day: dayLabel(lang, d.getUTCDay(), d.getUTCDate(), d.getUTCMonth()),
+    time: timeLabel(lang, d.getUTCHours(), d.getUTCMinutes()),
+  };
+}
+
+// The same day label from an IST calendar day ("YYYY-MM-DD").
+export function dayLabelFor(ymd: string, lang: Lang): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return dayLabel(lang, new Date(Date.UTC(y, m - 1, d)).getUTCDay(), d, m - 1);
+}
+
+// IST minutes since midnight of a UTC instant.
+export const istMinutes = (utc: string) => ((Date.parse(utc) + IST_OFFSET_MINUTES * 60_000) % 86_400_000) / 60_000;
+
+// The spread rule for the time list: one time per half hour, :00 and :30 first; when that one is taken, the next free
+// quarter (:15 or :45) stands in for it. Time order, and only the first `max` (the latest are dropped).
+export function spreadTimes(free: Slot[], max: number): Slot[] {
+  const byHalfHour = new Map<number, Slot>();
+  for (const s of [...free].sort((a, b) => a.startUtc.localeCompare(b.startUtc))) {
+    const half = Math.floor(istMinutes(s.startUtc) / 30);
+    if (!byHalfHour.has(half)) byHalfHour.set(half, s); // earliest in the half hour: :00 / :30 beats :15 / :45
+  }
+  return [...byHalfHour.values()].slice(0, max);
+}
 
 // The next `count` working days (IST "YYYY-MM-DD"), starting with today.
 export function nextWorkingDays(nowMs: number, count: number): string[] {
@@ -102,15 +128,18 @@ export async function holdSlot(
 }
 
 // Slots of one kind on one IST day that a customer could hold right now.
-export async function availableSlots(db: D1Database, kind: SlotKind, ymd: string, nowMs: number): Promise<Slot[]> {
+// `nowMs` is the earliest start (the caller adds the booking lead time). Holds are judged at `busyAtMs`, the real now: a hold that
+// is live right now keeps the slot off the list even when it will have lapsed by the time the lead has passed.
+export async function availableSlots(db: D1Database, kind: SlotKind, ymd: string, nowMs: number, busyAtMs = nowMs): Promise<Slot[]> {
   const now = iso(nowMs);
+  const busyAt = iso(busyAtMs);
   const out: Slot[] = [];
   for (const s of generateSlots(ymd, kind)) {
     if (s.startUtc <= now) continue;
     const busy = await first(
       db,
       `SELECT 1 AS x FROM slots WHERE ${ACTIVE} AND start_utc < :end AND end_utc > :start`,
-      { end: s.endUtc, start: s.startUtc, now },
+      { end: s.endUtc, start: s.startUtc, now: busyAt },
     );
     if (!busy) out.push(s);
   }
