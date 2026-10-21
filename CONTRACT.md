@@ -24,7 +24,8 @@ Payments go through a PaymentProvider interface: createLink, getStatus, verifyWe
 Razorpay (Payment Links) is the one provider, behind that interface. Only one provider may be in the code at a time.
 
 States
-Conversation: BOT | HUMAN | BLOCKED. Typed text goes through the gatekeeper (docs/AGENT.md §3.2) before any AI call; "Talk to a person" -> HUMAN.
+Conversation: BOT | HUMAN | BLOCKED. Typed text goes through the gatekeeper (docs/AGENT.md §3.2) before any AI call; "Talk to a person" -> HUMAN
+  (buttons still work in HUMAN; free text waits for Rohit; resolving the attention item returns the chat to BOT).
 Intro (₹99): HELD -> PAID -> CALLED_SESSION | CALLED_NOT_FIT | MISSED | RUDE; HELD -> EXPIRED;
   MISSED -> RESCHEDULED (once) -> ...; PAID -> CANCELLED_BY_US.
 Session (₹700): OFFERED -> HELD -> CONFIRMED -> COMPLETED | NO_SHOW; HELD -> EXPIRED; CONFIRMED -> CANCELLED.
@@ -33,7 +34,8 @@ Payment: CREATING -> PENDING -> PAID | FAILED | UNKNOWN; PAID -> REFUND_PENDING 
 PAID and REFUNDED never move backwards. A verified later success supersedes FAILED/UNKNOWN.
 
 Data (D1)
-Tables: conversations, events, messages, slots, intros, sessions, payments, refunds, blocks, outcomes, attention, audit_log, settings.
+Tables: conversations, events, messages, slots, intros, sessions, payments, refunds, blocks, outcomes, attention, audit_log, settings,
+  person_state (strikes, quiet_until, AI reply counters, no_sell_until, opt-out).
 conversations: unique wa_id, display name, locale, mode, last_user_at, source_ad_id, consent_at.
 events: unique(provider, event_key); minimal payload; status; error. Receipt is not processing.
 slots: kind (CALL|SESSION), UNIQUE(kind, start_utc), owner id, hold_until. Availability by conditional SQL only.
@@ -71,24 +73,29 @@ Outside the 24-hour window only approved templates: call_booked, session_offer, 
 
 Amma's page (/amma)
 Behind Cloudflare Access (Amma's Google account) plus Worker JWT check. Big text, one column, phone-first.
-Today's and tomorrow's calls and sessions: time, first name, service, big tap-to-call (tel:) button.
+Today's and tomorrow's calls and sessions: time, first name, service, call language, who it is for
+  (self/family/pet), big tap-to-call (tel:) button.
 Outcome buttons: Session / Not right fit / Missed; "Report rude" separate. Every tap: confirm, then undo for 10 min.
 No chat content, no free text, no health details on this page.
 
 Rohit (/admin) and alerts
 Behind Cloudflare Access + JWT check + CSRF/origin checks + output escaping.
 Needs-attention queue with reply box (sends within 24h window only), block/unblock, approve rude refunds,
-override offers, switches (NEW_BOOKINGS, AMMA_AWAY, SENDS). 9pm IST email digest. Health alert email if no webhook
+override offers, switches (NEW_BOOKINGS, AMMA_AWAY, SENDS, AI_REPLIES). 9pm IST email digest. Health alert email if no webhook
 or cron run seen for a set period, or any REFUND_FAILED / UNKNOWN payment.
 
 Privacy and safety
 Never store or send: home address, private phone numbers, medical advice, diagnoses, cure claims, "black magic"/"evil eye" (full banned list: docs/KNOWLEDGE.md §8).
 Never send to the AI: phone numbers, names, payment ids, emails, links, digit runs of 6+. First message and privacy page
   disclose the automated assistant and the AI provider.
-Never ask for health details; do not download inbound media. First message states booking-only use.
+Never ask for health details; do not download inbound media. First message states booking-only use, that it is an
+  automated assistant, and that messages are processed by the AI provider (docs/KNOWLEDGE.md §10).
+Safety messages (crisis, medical emergency) are sent to everyone, including blocked, quiet and HUMAN chats, and even when
+  the SENDS switch is paused (never when the SENDS env flag is "false").
 Store only name, WhatsApp number, bookings, payments. Delete conversation text 30 days after last activity and
 personal fields 90 days after last booking; keep dedupe keys, payment, refund and audit rows.
-Secrets, real phone numbers and customer data stay out of git, PRs, logs, fixtures and prompts. Fixtures are synthetic.
+Secrets, real phone numbers and customer data stay out of git, PRs, logs, fixtures and coding prompts.
+  Live chat text may go to the AI provider only through src/ai.ts, redacted as above. Fixtures are synthetic.
 Test and live credentials and data never mix; going live switches the Worker to a fresh live D1.
 
 Release and process

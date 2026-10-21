@@ -8,7 +8,8 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - Lines marked [CONFIRM] in docs/KNOWLEDGE.md (call content, video or not, years of practice, international cards, space cleansing, no-training wording).
 - Meta Billing Hub: payment method + INR billing for the business number (service messages are charged since 1 Oct 2026).
 - Anthropic API key with a monthly spend limit, test Worker first.
-- Privacy page wording (docs/KNOWLEDGE.md §10). Decide on the "Protection" menu name.
+- Privacy page wording (docs/KNOWLEDGE.md §10). Confirm "Energy cleansing" as the customer-facing name for PROTECTION.
+- Submit Hindi versions of the 5 utility templates to Meta.
 - Amma reads docs/KNOWLEDGE.md and the Hindi copy.
 
 ## Owner setup
