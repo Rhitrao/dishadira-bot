@@ -204,14 +204,14 @@ Before replying to a typed message, check whether a newer inbound message exists
 - Published price today: $0.10 in, $0.50 out, $0.01 cache read and $0.125 cache write per million tokens.
 - The model id and prices go in config.
 
-**Cost sketch** (per AI reply, ~8k-token knowledge bank):
+**Cost sketch** (per AI reply, ~30k-token knowledge bank, KNOWLEDGE.md v3):
 
 | Item | Cost per reply |
 |---|---|
-| Knowledge bank, cache hit | ~₹0.01 |
-| Knowledge bank, cache miss (likely at low traffic) | ~₹0.08 |
+| Knowledge bank, cache hit | ~₹0.03 |
+| Knowledge bank, cache miss (the first reply in a conversation, at low traffic) | ~₹0.33 |
 | New tokens in (~1.5k) and out (~300) | ~₹0.03 |
-| **AI total** | **₹0.04 to ₹0.11** |
+| **AI total** | **₹0.06 to ₹0.36** |
 | WhatsApp delivery (free inside the 72-hour ad window) | ₹0.115 |
 
 That's about ₹1 to ₹1.50 per 6-reply conversation. Some providers report the first 1,000 service messages a month are free; Meta's own page doesn't confirm it, so don't count on it.
@@ -228,6 +228,7 @@ That's about ₹1 to ₹1.50 per 6-reply conversation. Some providers report the
   - today's date in India
   - the chat language
   - booking facts: next call or session day and time, status, package credits left, and whether they've had a ₹99 call
+  - `open_step`: the booking step waiting for a tap, or none (so the AI answers in one line and code resends the step)
   - the `no_sell` flag
 - Messages: the last 10 messages of the chat. Before sending, code:
   - replaces digit runs of 6 or more, emails and links with `[removed]`
@@ -265,7 +266,8 @@ The reply is replaced by the fixed safe fallback for its label (KNOWLEDGE.md §1
 - It contains a URL, an email or a phone-like number.
 - It contains a number that isn't on the allowlist:
   - prices (99, 799, 5000, 9000, 500, 450, also written with commas), package sizes (10, 20), durations, hours, the hold minutes, 3 (hours notice) and 2 (upcoming sessions)
-  - 18, 24, 30, 120 and 1980
+  - 7 (days), 18, 24, 30, 120 and 1980
+  - the safety numbers 112, 108, 181, 1098 and 14416, which are also exempt from the phone-like-number rule
   - numbers that appear in today's booking facts
 - It contains characters outside Latin, Devanagari, common punctuation and the allowed emoji.
 - It is over 600 characters.
