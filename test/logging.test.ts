@@ -74,6 +74,45 @@ describe("logging", () => {
     noPii();
   });
 
+  it("the gatekeeper paths (crisis, emergency, noise, opt-out, burst, wipe) log nothing about the person, and their emails carry no message text", async () => {
+    const emails: { subject: string; text: string }[] = [];
+    const env = { DB: db, SENDS: "true", WA_APP_SECRET: SECRET, WA_TOKEN: "t", WA_PHONE_ID: "1000", CHAT_RETENTION_MINUTES: "10", DIGEST_TO: MAIL, PUBLIC_URL: "https://bot.example.test", EMAIL: { send: async (m: { subject: string; text: string }) => void emails.push(m) } };
+    const now = Math.floor(Date.now() / 1000);
+    const say = (id: string, body: string, ts = now) =>
+      post({ entry: [{ changes: [{ value: { contacts: [{ wa_id: PHONE, profile: { name: NAME } }], messages: [{ id, from: PHONE, timestamp: String(ts), type: "text", text: { body } }] } }] }] }, env);
+    const SECRET_PHRASE = `I want to die, ${TEXT}`;
+    await say("wamid.Q1", `hello ${TEXT}`); // greeting
+    await say("wamid.Q2", SECRET_PHRASE); // crisis: message, item, email
+    await say("wamid.Q3", `${TEXT} chest pain`); // emergency
+    await say("wamid.Q4", `earn ${TEXT} click https://example.invalid/x`); // HUMAN mode now: waits
+    await say("wamid.Q5", "stop");
+    await say("wamid.Q6", `you idiot ${TEXT}`, now - 100); // older than the others: its reply would be skipped
+    await db.prepare("UPDATE conversations SET mode = 'BOT'").run();
+    await say("wamid.Q7", `earn ${TEXT} click https://example.invalid/x`);
+    await say("wamid.Q8", `send nudes ${TEXT}`);
+    await say("wamid.Q9", `my question ${TEXT}`);
+    const { wipeChats } = await import("../src/wipe");
+    await wipeChats(env as never, Date.now() + 3600_000);
+    for (const line of lines) {
+      // these paths log nothing at all today; if one ever does, it must not carry the person's data
+      expect(line, line).not.toMatch(/\d{10,}/);
+      for (const secret of [PHONE, NAME, TEXT, MAIL, "want to die", "chest pain"]) expect(line).not.toContain(secret);
+    }
+    expect(emails.length).toBeGreaterThan(0);
+    for (const m of emails) {
+      for (const secret of [PHONE, NAME, TEXT, "want to die", "chest pain", "idiot", "nudes"]) {
+        expect(m.subject).not.toContain(secret);
+        expect(m.text).not.toContain(secret);
+      }
+    }
+    expect(emails.map((m) => m.subject)).toContain("Urgent: crisis message");
+    // nothing stored in the audit log carries the text either
+    const audit = (await db.prepare("SELECT actor, action, target, detail FROM audit_log").all()).results;
+    expect(audit.length).toBeGreaterThan(0);
+    expect(JSON.stringify(audit)).not.toContain(TEXT);
+    expect(JSON.stringify(audit)).not.toContain(PHONE);
+  });
+
   it("an unhandled error logs the route, not the error text", async () => {
     // No DB binding: the handler throws with a message that mentions the data.
     const env = { SENDS: "true", WA_APP_SECRET: SECRET, DB: { prepare: () => { throw new Error(`boom ${PHONE} ${NAME} ${TEXT}`); } } };

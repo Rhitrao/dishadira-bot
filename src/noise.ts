@@ -112,7 +112,7 @@ export type Apply = { stop: boolean }; // stop: nothing more is sent for this me
 type Say = (out: Out, step: string) => Promise<unknown>;
 
 export async function blockPerson(db: D1Database, conv: NoiseConv, reason: "NOISE_ABUSE" | "NOISE_SEXUAL" | "NOISE_REPEAT"): Promise<void> {
-  await db.prepare("INSERT INTO blocks (wa_id, reason, by) SELECT ?1, ?2, 'system' WHERE NOT EXISTS (SELECT 1 FROM blocks WHERE wa_id = ?1)").bind(conv.wa_id, reason).run();
+  await db.prepare("INSERT INTO blocks (wa_id, reason, by, created_at) SELECT ?1, ?2, 'system', ?3 WHERE NOT EXISTS (SELECT 1 FROM blocks WHERE wa_id = ?1)").bind(conv.wa_id, reason, iso(Date.now())).run();
   await db.prepare("UPDATE conversations SET mode = 'BLOCKED' WHERE id = ?1").bind(conv.id).run();
   await botAudit(db, "BLOCK", `conv:${conv.id}`, reason);
 }

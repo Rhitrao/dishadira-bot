@@ -51,7 +51,7 @@ export const safetyLang = (conv: SafetyConv, text: string | null): Lang => (hasD
 
 // Audit rows by the bot: an action and a target only, never any text.
 export async function botAudit(db: D1Database, action: string, target: string, detail = ""): Promise<void> {
-  await db.prepare("INSERT INTO audit_log (actor, action, target, detail) VALUES ('bot', ?1, ?2, ?3)").bind(action, target, detail).run();
+  await db.prepare("INSERT INTO audit_log (at, actor, action, target, detail) VALUES (?4, 'bot', ?1, ?2, ?3)").bind(action, target, detail, nowIso()).run();
 }
 
 // The person was spoken to by code, so the bot's own greeting must not follow: mark the chat as greeted.

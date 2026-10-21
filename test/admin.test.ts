@@ -428,3 +428,123 @@ describe("digest and alerts", () => {
     expect(emails.filter((m) => m.subject.includes("heartbeat"))).toHaveLength(1);
   });
 });
+
+describe("a person's page: strikes, quiet period, no-sell, opt-out (ticket 12)", () => {
+  async function noisy() {
+    const conv = await person({ name: "Zoya Quillfeather" });
+    await db.prepare("INSERT OR IGNORE INTO person_state (conversation_id) VALUES (?1)").bind(conv).run();
+    await db
+      .prepare("UPDATE person_state SET strikes = 2, last_strike_at = '2026-10-04T09:00:00Z', quiet_until = '2026-10-12T09:00:00Z', no_sell_until = '2026-10-11T09:00:00Z', opted_out_at = '2026-10-03T09:00:00Z' WHERE conversation_id = ?1")
+      .bind(conv)
+      .run();
+    return conv;
+  }
+  const stateOf = (conv: number) => db.prepare("SELECT strikes, last_strike_at, quiet_until, no_sell_until, opted_out_at FROM person_state WHERE conversation_id = ?1").bind(conv).first();
+  // The first form on the page that posts to `action`, with its own fields and CSRF token.
+  async function pressOn(path: string, action: string) {
+    const page = await (await get(path)).text();
+    const m = new RegExp(`<form method="post" action="/admin/${action}">([\\s\\S]*?)</form>`).exec(page);
+    if (!m) throw new Error(`no ${action} form`);
+    const fields: Record<string, string> = {};
+    for (const h of m[1].matchAll(/name="([^"]+)" value="([^"]*)"/g)) fields[h[1]] = h[2];
+    return fields;
+  }
+
+  it("shows the state and no message text", async () => {
+    const conv = await noisy();
+    await db.prepare("INSERT INTO messages (conversation_id,direction,kind,body,status) VALUES (?1,'IN','text','a private sentence','RECEIVED')").bind(conv).run();
+    const res = await get(`/admin/conv/${conv}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const page = await res.text();
+    expect(page).toContain("Zoya");
+    expect(page).not.toContain("Quillfeather");
+    expect(page).toContain("Strikes: 2");
+    expect(page).toContain("Quiet until: 2026-10-12 09:00 UTC");
+    expect(page).toContain("No selling until: 2026-10-11 09:00 UTC");
+    expect(page).toContain("Opted out of messages: yes, since 2026-10-03 09:00 UTC");
+    expect(page).toContain("Clear strikes / end quiet");
+    expect(page).toContain("Clear no-sell");
+    expect(page).not.toContain("a private sentence");
+    // a person with nothing set
+    const calm = await person();
+    const calmPage = await (await get(`/admin/conv/${calm}`)).text();
+    expect(calmPage).toContain("Strikes: 0");
+    expect(calmPage).toContain("not in a quiet period");
+    expect(calmPage).toContain("selling is allowed");
+    expect(calmPage).toContain("Opted out of messages: no");
+  });
+
+  it("an unknown person is a 404; Amma and anyone without Access are refused", async () => {
+    expect((await get("/admin/conv/99999")).status).toBe(404);
+    expect((await get("/admin/conv/abc")).status).toBe(404);
+    const conv = await noisy();
+    expect((await app.request(`${ORIGIN}/admin/conv/${conv}`, {}, env())).status).toBe(403);
+    expect((await app.request(`${ORIGIN}/admin/conv/${conv}`, { headers: { "Cf-Access-Jwt-Assertion": await token({ email: AMMA }) } }, env())).status).toBe(403);
+  });
+
+  it("'Clear strikes / end quiet' clears strikes and the quiet period only, and is audited", async () => {
+    const conv = await noisy();
+    const res = await post("/admin/clear-strikes", await pressOn(`/admin/conv/${conv}`, "clear-strikes"));
+    expect(res.status).toBe(303);
+    expect(res.headers.get("Location")).toBe(`/admin/conv/${conv}?m=cleared`);
+    expect(await stateOf(conv)).toEqual({ strikes: 0, last_strike_at: null, quiet_until: null, no_sell_until: "2026-10-11T09:00:00Z", opted_out_at: "2026-10-03T09:00:00Z" });
+    expect(await auditRows()).toEqual([{ actor: ROHIT, action: "ADMIN_CLEAR_STRIKES", target: `conv:${conv}`, detail: "" }]);
+    expect(await (await get(`/admin/conv/${conv}?m=cleared`)).text()).toContain("Strikes cleared and the quiet period ended.");
+  });
+
+  it("'Clear no-sell' clears the no-sell date only, and is audited", async () => {
+    const conv = await noisy();
+    const res = await post("/admin/clear-nosell", await pressOn(`/admin/conv/${conv}`, "clear-nosell"));
+    expect(res.headers.get("Location")).toBe(`/admin/conv/${conv}?m=nosellcleared`);
+    expect(await stateOf(conv)).toMatchObject({ strikes: 2, quiet_until: "2026-10-12T09:00:00Z", no_sell_until: null });
+    expect((await auditRows()).map((r) => r.action)).toEqual(["ADMIN_CLEAR_NOSELL"]);
+  });
+
+  it("a wrong token, a token for another person or another button, a missing Origin and a foreign Origin change nothing", async () => {
+    const a = await noisy();
+    const b = await noisy();
+    const form = await pressOn(`/admin/conv/${a}`, "clear-strikes");
+    expect((await post("/admin/clear-strikes", { ...form, csrf: "nope" })).status).toBe(403);
+    expect((await post("/admin/clear-strikes", { ...form, conv: String(b) })).status).toBe(403); // a's token on b
+    expect((await post("/admin/clear-nosell", form)).status).toBe(403); // the other button's endpoint
+    expect((await post("/admin/clear-strikes", form, { origin: null })).status).toBe(403);
+    expect((await post("/admin/clear-strikes", form, { origin: "https://evil.test" })).status).toBe(403);
+    expect((await post("/admin/clear-strikes", { ...form, conv: "x" })).status).toBe(403);
+    expect(await stateOf(a)).toMatchObject({ strikes: 2 });
+    expect(await stateOf(b)).toMatchObject({ strikes: 2 });
+    expect(await auditRows()).toEqual([]);
+    const gone = await post("/admin/clear-strikes", { conv: "99999", csrf: await csrfFor("clear-strikes:99999") });
+    expect(gone.headers.get("Location")).toBe("/admin?m=gone");
+  });
+
+  it("a crisis item can be answered from the queue, links to the person, and resolving it hands the chat back (no-sell stays until cleared)", async () => {
+    const conv = await person({ name: "Zoya" });
+    await db.prepare("UPDATE conversations SET mode = 'HUMAN' WHERE id = ?1").bind(conv).run();
+    await db.prepare("INSERT OR IGNORE INTO person_state (conversation_id, no_sell_until) VALUES (?1, '2026-10-12T09:00:00Z')").bind(conv).run();
+    await attention("CRISIS", `conv:${conv}`);
+    await attention("EMERGENCY", `conv:${conv}`);
+    const page = await (await get("/admin")).text();
+    expect(page).toContain("CRISIS");
+    expect(page).toContain("thinking of ending their life");
+    expect(page).toContain("EMERGENCY");
+    expect(page).toContain(`href="/admin/conv/${conv}"`);
+    expect(page).toContain("<textarea");
+    expect((await press("resolve", {}, env(), "")).headers.get("Location")).toBe("/admin?m=resolved");
+    // the newest item (EMERGENCY) comes first; the crisis item is the second
+    expect(await db.prepare("SELECT mode FROM conversations WHERE id = ?1").bind(conv).first()).toEqual({ mode: "HUMAN" });
+    await press("resolve");
+    expect(await db.prepare("SELECT mode FROM conversations WHERE id = ?1").bind(conv).first()).toEqual({ mode: "BOT" });
+    expect(await db.prepare("SELECT no_sell_until FROM person_state WHERE conversation_id = ?1").bind(conv).first()).toEqual({ no_sell_until: "2026-10-12T09:00:00Z" });
+  });
+
+  it("wiped text shows as '(message text removed)'", async () => {
+    const conv = await person();
+    await db.prepare("INSERT INTO messages (conversation_id,direction,kind,body,status,wiped_at) VALUES (?1,'IN','text',NULL,'RECEIVED','2026-10-05T09:30:00Z')").bind(conv).run();
+    await db.prepare("INSERT INTO messages (conversation_id,direction,kind,body,status) VALUES (?1,'IN','text','this one is still here','RECEIVED')").bind(conv).run();
+    await attention("FREE_TEXT", `conv:${conv}`);
+    const page = await (await get("/admin")).text();
+    expect(page).toContain("(message text removed)");
+    expect(page).toContain("this one is still here");
+  });
+});
