@@ -8,6 +8,7 @@ import { razorpay } from "./pay/razorpay";
 import type { PaymentProvider } from "./pay/provider";
 import { loadConv, sendDays, sendTimes } from "./booking";
 import { raiseAttention, sendMessage, type Out } from "./send";
+import { clearStep, sendStep } from "./steps";
 import { formatIstLang, holdSlot, iso, istDay } from "./slots";
 
 const nowIso = () => iso(Date.now());
@@ -28,6 +29,7 @@ export async function sessionChoice(env: Env, choice: string | null, convId: num
   if (!conv) return false;
   const cp = copyFor(conv.locale);
   const send = (out: Out, step: string) => sendMessage(env, conv.id, out, `${msgId}:${step}`);
+  await clearStep(db, conv.id); // the step that was open is over; the one sent below (if any) becomes the open one
 
   if (!(await bookingsOpen(env))) {
     await send({ type: "text", text: cp.bookSoon }, "book");
@@ -139,7 +141,7 @@ async function startSession(env: Env, provider: PaymentProvider, conv: Conv, ses
     });
     await db.prepare("UPDATE payments SET state = 'PENDING', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();
     const p = formatIstLang(startUtc, langOf(conv.locale));
-    await send({ type: "cta", body: cp.sessionPayBody(p.day, p.time), label: cp.sessionPayLabel, url: link.url }, "pay");
+    await sendStep(env, conv.id, "pay", { type: "cta", body: cp.sessionPayBody(p.day, p.time), label: cp.sessionPayLabel, url: link.url }, `${msgId}:pay`, { until: hold.holdUntil });
   } catch {
     await db.prepare("UPDATE payments SET state = 'FAILED', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();
     await db.prepare("UPDATE sessions SET state = 'OFFERED', updated_at = ?2 WHERE id = ?1 AND state = 'HELD'").bind(ses.id, nowIso()).run();

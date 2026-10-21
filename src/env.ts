@@ -24,6 +24,10 @@ export type Env = {
   NEW_BOOKINGS: string;
   SENDS: string;
   PAYMENT_MODE: string;
+  // Minutes after a person's last message that their chat text is wiped: live "10080" (7 days), test "10".
+  CHAT_RETENTION_MINUTES: string;
+  // The Worker's public address, for links in emails to Rohit (https://bot.disha-dira.com); unset: a relative /admin link.
+  PUBLIC_URL?: string;
   // Cloudflare send_email binding (optional: without it, emails are logged and skipped).
   EMAIL?: { send(message: { to: string; from: string; subject: string; text: string }): Promise<unknown> };
 } & Record<SecretName, string>;

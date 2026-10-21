@@ -11,6 +11,7 @@ import { bookingsOpen } from "./switches";
 import { razorpay } from "./pay/razorpay";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, type ListSection, type Out } from "./send";
+import { clearStep, sendStep, type StepName } from "./steps";
 import { availableSlots, dayLabelFor, formatIstLang, holdSlot, iso, istDay, istMinutes, nextWorkingDays, spreadTimes, type Slot, type SlotKind } from "./slots";
 
 const SERVICES = config.services as readonly string[];
@@ -40,10 +41,11 @@ export async function sendDays(env: Env, conv: Conv, kind: SlotKind, idFor: (ymd
   const lang = langOf(conv.locale);
   const days = [...(await freeByDay(env.DB, kind, kind === "CALL" ? config.booking.workingDays : 5, Date.now())).keys()].slice(0, config.booking.dayButtons);
   if (!days.length) {
+    await clearStep(env.DB, conv.id);
     await sendMessage(env, conv.id, { type: "text", text: kind === "CALL" ? cp.noSlots : cp.noSessionSlots }, `${key}:noslots`);
     return false;
   }
-  await sendMessage(env, conv.id, { type: "buttons", body: cp.chooseDay, buttons: days.map((ymd) => ({ id: idFor(ymd), title: dayLabelFor(ymd, lang) })) }, `${key}:days`);
+  await sendStep(env, conv.id, "day", { type: "buttons", body: cp.chooseDay, buttons: days.map((ymd) => ({ id: idFor(ymd), title: dayLabelFor(ymd, lang) })) }, `${key}:days`);
   return true;
 }
 
@@ -63,7 +65,7 @@ export async function sendTimes(env: Env, conv: Conv, kind: SlotKind, ymd: strin
   ].filter((x) => x.rows.length > 0);
   sections[sections.length - 1].rows.push({ id: moreId, title: cp.anotherDay });
   const day = formatIstLang(picked[0].startUtc, lang).day;
-  await sendMessage(env, conv.id, { type: "list", body: kind === "CALL" ? cp.timesFor(day) : cp.sessionTimesFor(day), button: cp.listButtonTimes, sections }, `${key}:times`);
+  await sendStep(env, conv.id, "time", { type: "list", body: kind === "CALL" ? cp.timesFor(day) : cp.sessionTimesFor(day), button: cp.listButtonTimes, sections }, `${key}:times`);
   return true;
 }
 
@@ -112,6 +114,28 @@ export async function bookingChoice(env: Env, choice: string | null, convId: num
   if (!conv) return false;
   const cp = copyFor(conv.locale);
   const send = (out: Out, step: string) => sendMessage(env, conv.id, out, `${msgId}:${step}`);
+  const sendAs = (name: StepName, out: Out, step: string) => sendStep(env, conv.id, name, out, `${msgId}:${step}`);
+  await clearStep(env.DB, conv.id); // whatever step was open is over; the step sent below (if any) becomes the open one
+
+  // Checked at the tap, not at the end of the flow: someone who already has a call is told so and nothing else happens (AGENT.md 3.1a).
+  if (choice === "menu_book") {
+    const upcoming = await upcomingCall(env.DB, conv.id);
+    if (upcoming) {
+      const p = formatIstLang(upcoming, langOf(conv.locale));
+      await send(
+        {
+          type: "buttons",
+          body: cp.alreadyBookedStart(p.day, p.time),
+          buttons: [
+            { id: "book_keep", title: cp.btnKeep },
+            { id: "menu_person", title: cp.btnPerson },
+          ],
+        },
+        "booked",
+      );
+      return true;
+    }
+  }
 
   if (!(await bookingsOpen(env))) {
     await send({ type: "text", text: cp.bookSoon }, "book"); // switch is off: booking stays closed
@@ -125,21 +149,21 @@ export async function bookingChoice(env: Env, choice: string | null, convId: num
   }
   if (choice === "age_yes") {
     await env.DB.prepare("UPDATE conversations SET age_ok_at = COALESCE(age_ok_at, ?2) WHERE id = ?1").bind(conv.id, nowIso()).run();
-    await send(serviceButtons(cp), "service");
+    await sendAs("service", serviceButtons(cp), "service");
     return true;
   }
   if (!conv.age_ok_at) {
     // Nothing past this point (not even an old button still sitting in the chat) works until the person has said they are 18 or older.
-    await send(ageButtons(cp), "age");
+    await sendAs("age", ageButtons(cp), "age");
     return true;
   }
 
   if (choice === "menu_book") {
-    await send(serviceButtons(cp), "service");
+    await sendAs("service", serviceButtons(cp), "service");
     return true;
   }
   if (svc) {
-    await send(whoButtons(cp, svc[1]), "who");
+    await sendAs("who", whoButtons(cp, svc[1]), "who");
     return true;
   }
   if (legacy) {
@@ -160,6 +184,18 @@ export async function bookingChoice(env: Env, choice: string | null, convId: num
   const [, service, forWhom, startUtc] = time!;
   await startBooking(env, provider, conv, service, forWhom as ForWhom, startUtc, msgId);
   return true;
+}
+
+// The start of a call the person has paid for (PAID or RESCHEDULED) that has not ended yet, or null.
+async function upcomingCall(db: D1Database, convId: number): Promise<string | null> {
+  const row = await db
+    .prepare(
+      `SELECT s.start_utc AS startUtc FROM intros i JOIN slots s ON s.id = i.slot_id
+       WHERE i.conversation_id = ?1 AND i.state IN ('PAID', 'RESCHEDULED') AND s.end_utc > ?2 ORDER BY s.start_utc LIMIT 1`,
+    )
+    .bind(convId, nowIso())
+    .first<{ startUtc: string }>();
+  return row?.startUtc ?? null;
 }
 
 // The times of one day; if the day filled up meanwhile, say so and show the days again.
@@ -211,7 +247,7 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
       await send({ type: "text", text: cp.slotTaken }, "taken");
       // A legacy row has no "who for" yet, so the flow goes on from that step; otherwise the same day's times again.
       if (forWhom) await showTimes(env, conv, service, forWhom, istDay(Date.parse(startUtc)), `${msgId}:again`);
-      else await send(whoButtons(cp, service), "who");
+      else await sendStep(env, conv.id, "who", whoButtons(cp, service), `${msgId}:who`);
     }
     return;
   }
@@ -242,7 +278,7 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
     });
     await db.prepare("UPDATE payments SET state = 'PENDING', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();
     const p = formatIstLang(startUtc, lang);
-    await send({ type: "cta", body: cp.payBody(p.day, p.time), label: cp.payLabel, url: link.url }, "pay");
+    await sendStep(env, conv.id, "pay", { type: "cta", body: cp.payBody(p.day, p.time), label: cp.payLabel, url: link.url }, `${msgId}:pay`, { until: hold.holdUntil });
   } catch {
     // No link: free the hold. If a link did get created and is paid later, the late-payment rules apply.
     await db.prepare("UPDATE payments SET state = 'FAILED', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();

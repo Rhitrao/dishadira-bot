@@ -43,3 +43,6 @@ export async function bookingsOpen(env: Env): Promise<boolean> {
 export async function sendsOn(env: Env): Promise<boolean> {
   return (await switchStates(env)).find((s) => s.name === "SENDS")!.on;
 }
+
+// The env flag alone: the crisis and emergency messages ignore a paused SENDS switch, but not an env flag that is off.
+export const sendsEnvOn = (env: Env): boolean => env.SENDS === "true";

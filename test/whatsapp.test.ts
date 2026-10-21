@@ -247,9 +247,11 @@ describe("messages written while SENDS was off (ticket 10, step 0)", () => {
 
   it("the free-text acknowledgement skipped while SENDS was off is sent once it is back on, then once per 24h", async () => {
     await post(text("wamid.A0")); // greeting, delivered
+    await post(button("wamid.A00", "lang_en")); // language chosen: no booking step is open, so typed text gets the acknowledgement
+    fetchMock.mockClear();
     sends = "false";
     await post(text("wamid.A1", "my question"));
-    expect((await out()).map((r) => r.status)).toEqual(["SENT", "SKIPPED"]);
+    expect((await out()).map((r) => r.status)).toEqual(["SENT", "SENT", "SKIPPED"]); // greeting, menu, skipped ack
 
     sends = "true";
     await post(text("wamid.A2", "my question again"));
@@ -322,6 +324,7 @@ describe("session offer follow-up", () => {
   async function offered(state = "OFFERED") {
     bookings = "true";
     await post(text("wamid.SEED")); // creates the conversation + greeting
+    await post(button("wamid.SEEDL", "lang_en")); // language chosen, so no step is open
     const conv = (await db.prepare("SELECT id FROM conversations WHERE wa_id = ?1").bind(PHONE).first<{ id: number }>())!.id;
     const intro = await db.prepare("INSERT INTO intros (conversation_id, service, state) VALUES (?1, 'PROTECTION', 'CALLED_SESSION')").bind(conv).run();
     await db.prepare("INSERT INTO sessions (conversation_id, intro_id, service, state) VALUES (?1, ?2, 'PROTECTION', ?3)").bind(conv, intro.meta.last_row_id, state).run();
@@ -353,6 +356,7 @@ describe("session offer follow-up", () => {
   it("no open offer: unchanged (free text -> attention + ack, a stray button tap is ignored into the same path)", async () => {
     bookings = "true";
     await post(text("wamid.G0")); // greeting
+    await post(button("wamid.G00", "lang_en"));
     fetchMock.mockClear();
     await post(text("wamid.G1", "hello, can you help me"));
     expect(lists()).toHaveLength(0);

@@ -135,6 +135,12 @@ Always one at a time, with a Deploy in between and a look at `/admin` after each
 4. [ ] Only after steps 1 to 3 have worked for a few days: start the ad.
 `PAYMENT_MODE` is already `"live"` on the live side and `"test"` on the test side; never swap them.
 
+### 14b. Safety and privacy checks (ticket 12)
+- [ ] `CHAT_RETENTION_MINUTES` in `wrangler.toml` is `"10080"` (7 days) under `[vars]` and `[env.live.vars]`, and `"10"` under `[env.test.vars]`. Message text is erased that long after a person's last message; bookings, payments and refunds are kept.
+- [ ] `PUBLIC_URL` under `[env.live.vars]` is the address of the live Worker (`https://bot.disha-dira.com`). The urgent e-mail "Urgent: crisis message" links to `<PUBLIC_URL>/admin` and never contains what the person wrote. Check `DIGEST_TO` and the e-mail binding work before the ad starts: this e-mail is the one that must never be missed.
+- [ ] On the test copy, send the words "I want to die" from your own phone: you must get the Tele-MANAS message at once, an e-mail within a minute, and an item "CRISIS" in `/admin`. The chat then belongs to a person (resolve the item to give it back to the bot) and the bot sells nothing to that number for 7 days ("Clear no-sell" on the person's page, `/admin/conv/<id>`, lifts it early).
+- [ ] The word lists for crisis, emergency, spam, flirting and abuse are in `src/config.ts` (`safety`, `noise`, `words`). Read them once and ask Claude to add what is missing.
+
 ### 15. How to pause everything
 Fastest first. None of these needs coding.
 - **One tap, instant:** `/admin` → switch **New bookings** to paused (nobody can start a new booking) and **Sends** to paused (the bot stops sending messages; incoming messages are still recorded). Resume with the same switch.

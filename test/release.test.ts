@@ -31,6 +31,11 @@ describe("wrangler environments", () => {
     }
     for (const k of flags) expect(["true", "false"], `env.test.vars ${k}`).toContain(value(section("env.test.vars"), k));
   });
+  it("chat text is wiped after 7 days on live and at the top level, after 10 minutes on test", () => {
+    expect(value(section("vars"), "CHAT_RETENTION_MINUTES")).toBe("10080");
+    expect(value(section("env.live.vars"), "CHAT_RETENTION_MINUTES")).toBe("10080");
+    expect(value(section("env.test.vars"), "CHAT_RETENTION_MINUTES")).toBe("10");
+  });
   it("logs and traces are on at the top level and in both environments", () => {
     for (const name of ["observability", "env.test.observability", "env.live.observability"]) {
       expect(section(name)).toMatch(/^enabled\s*=\s*true\s*$/m);

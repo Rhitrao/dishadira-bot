@@ -11,6 +11,7 @@ import { razorpayWebhook } from "./pay/webhook";
 import { sendReminders } from "./remind";
 import { runDigest } from "./report";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat } from "./watch";
+import { wipeChats } from "./wipe";
 import { receiveWebhook, verifyWebhook } from "./whatsapp";
 
 export const VERSION = "0.1.0";
@@ -46,7 +47,7 @@ const scheduled = async (event: { cron: string }, env: Env) => {
   await recordHeartbeat(env).catch(() => 0);
   // One failing job must not stop the others; each is safe to run again.
   for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);
-  for (const job of [raiseAwayItems, raiseTapReminders, sendAlerts]) await job(env).catch(() => 0);
+  for (const job of [raiseAwayItems, raiseTapReminders, sendAlerts, wipeChats]) await job(env).catch(() => 0);
 };
 
 export default Object.assign(app, { scheduled });

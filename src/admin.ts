@@ -6,6 +6,7 @@ import { allowedJwt, CSS, csrf } from "./amma";
 import { config } from "./config";
 import type { Env } from "./env";
 import { heartbeatStale, sendAlerts } from "./mail";
+import { ensureState, noSellActiveFor, personState, quietActive } from "./noise";
 import { approveRefund, declineRefund, requestRefund, retryFailedRefund } from "./pay/refund";
 import { razorpay } from "./pay/razorpay";
 import { bookingsBetween, dayRange, firstName, scoreboard, scoreLines, type DayItem } from "./report";
@@ -25,6 +26,7 @@ const MSG: Record<string, string> = {
   nopay: "No payment found for this item.", approved: "Refund approved and started.", kept: "Kept: no refund.", gone: "Nothing to change (already done).",
   blockedok: "Person blocked.", unblocked: "Person unblocked.", switched: "Switch updated.", envoff: "The env flag in wrangler.toml is off; a setting cannot turn it on.",
   done: "Saved.", notyet: "That session has not started yet.",
+  cleared: "Strikes cleared and the quiet period ended.", nosellcleared: "Selling is allowed again for this person.",
 };
 
 admin.use("*", async (c, next) => {
@@ -60,13 +62,15 @@ const WORDS: Record<string, string> = {
   NOT_FIT_REFUND_REFUSED: "Amma said 'not right fit' but the refund limit (once per person, daily cap) stopped it. Nothing was sent.",
   NOT_FIT_NO_PAYMENT: "Amma said 'not right fit' but no paid payment was found.",
   UNKNOWN_PAYMENT_LINK: "A payment event arrived for a link we do not know.",
+  CRISIS: "A customer wrote something that may mean they are thinking of ending their life. They were sent the helpline message (Tele-MANAS 14416, 112), the chat is with a person now, and nothing is sold to them for 7 days. Please write to them yourself as soon as you can.",
+  EMERGENCY: "A customer described what may be a medical emergency. They were told to call 112 or 108. Check whether they need anything from you.",
   HUMAN_REQUEST: "A customer tapped 'Talk to a person'. The bot is quiet in this chat until you resolve this: resolving hands the chat back to the bot.",
   MEDIA_FROM_CUSTOMER: "A customer with a booking, a held time or a payment in progress sent a photo, voice note or file (never downloaded). It may be a payment screenshot.",
   AMMA_NO_TAP: `Amma has not tapped an outcome ${config.limits.ammaTapReminderHours} hours after a call.`,
   AMMA_AWAY_CALL: "Amma is away. This call is booked: offer a new time or refund.",
   AMMA_AWAY_SESSION: "Amma is away. This session is booked: offer a new time or refund.",
 };
-const REPLY_KINDS = ["FREE_TEXT", "HUMAN_REQUEST", "MEDIA_FROM_CUSTOMER", "OUTSIDE_WINDOW", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION", "LATE_PAYMENT_NO_SLOT"];
+const REPLY_KINDS = ["CRISIS", "EMERGENCY", "FREE_TEXT", "HUMAN_REQUEST", "MEDIA_FROM_CUSTOMER", "OUTSIDE_WINDOW", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION", "LATE_PAYMENT_NO_SLOT"];
 const REFUND_KINDS = ["LATE_PAYMENT_NO_SLOT", "PAYMENT_MISMATCH", "DUPLICATE_PAYMENT", "REFUND_FAILED", "REFUND_STUCK", "OUTCOME_FAILED", "NOT_FIT_REFUND_REFUSED", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION"];
 
 type Item = { id: number; kind: string; target: string | null; createdAt: string };
@@ -117,8 +121,13 @@ async function itemHtml(c: Ctx, it: Item) {
   const parts: unknown[] = [];
 
   if (REPLY_KINDS.includes(it.kind) && conv) {
-    const msgs = await env.DB.prepare("SELECT body, created_at AS at FROM messages WHERE conversation_id = ?1 AND direction = 'IN' ORDER BY id DESC LIMIT 5").bind(conv.id).all<{ body: string | null; at: string }>();
-    parts.push(html`<div class="msgs">${msgs.results.reverse().map((m) => html`<div class="m">${m.at.slice(0, 16).replace("T", " ")} UTC · ${m.body ?? ""}</div>`)}</div>`);
+    const msgs = await env.DB
+      .prepare("SELECT body, wiped_at AS wipedAt, created_at AS at FROM messages WHERE conversation_id = ?1 AND direction = 'IN' ORDER BY id DESC LIMIT 5")
+      .bind(conv.id)
+      .all<{ body: string | null; wipedAt: string | null; at: string }>();
+    parts.push(
+      html`<div class="msgs">${msgs.results.reverse().map((m) => html`<div class="m">${m.at.slice(0, 16).replace("T", " ")} UTC · ${m.wipedAt ? "(message text removed)" : (m.body ?? "")}</div>`)}</div>`,
+    );
     parts.push(
       inWindow(conv)
         ? await form(c, "reply", `reply:${it.id}`, { item: it.id }, "Send reply", "go", html`<textarea name="text" rows="3" maxlength="1000" required></textarea>`)
@@ -131,6 +140,7 @@ async function itemHtml(c: Ctx, it: Item) {
   } else if (REFUND_KINDS.includes(it.kind) && pay && (pay.refundState === "FAILED" || (!pay.refundState && ["PAID", "UNKNOWN"].includes(pay.state)))) {
     parts.push(await form(c, "refund", `refund:${it.id}`, { item: it.id }, pay.refundState === "FAILED" ? "Retry refund" : "Refund"));
   }
+  if (conv) parts.push(html`<a class="btn" href="/admin/conv/${conv.id}">Open person</a>`);
   parts.push(await form(c, "resolve", `resolve:${it.id}`, { item: it.id }, "Resolve", "", html`<input type="text" name="note" maxlength="200" placeholder="Note (optional)">`));
   if (conv) {
     parts.push(
@@ -221,8 +231,9 @@ admin.post("/resolve", (c) =>
     const res = await resolveItem(c, item.id);
     if (!res.meta.changes) return "gone";
     await audit(c, "ADMIN_RESOLVE", `attention:${item.id}`, `${item.kind}: ${String(f.note ?? "").slice(0, 200)}`);
-    if (item.kind === "HUMAN_REQUEST") {
-      // The person asked for a human and one has now answered: the chat goes back to the bot (a blocked chat stays blocked).
+    if (item.kind === "HUMAN_REQUEST" || item.kind === "CRISIS") {
+      // The person asked for a human (or wrote a crisis message) and one has now answered: the chat goes back to the bot (a blocked chat stays blocked).
+      // A crisis message also stopped selling for 7 days; that stays until it runs out or Rohit clears it on the person's page.
       const conv = await convOf(c.env, item.target);
       const back = conv ? await c.env.DB.prepare("UPDATE conversations SET mode = 'BOT' WHERE id = ?1 AND mode = 'HUMAN'").bind(conv.id).run() : null;
       if (back?.meta.changes) await audit(c, "ADMIN_HUMAN_DONE", `conv:${conv!.id}`, "mode HUMAN -> BOT");
@@ -284,6 +295,48 @@ async function blockAction(c: Ctx, block: boolean) {
 }
 admin.post("/block", (c) => blockAction(c, true));
 admin.post("/unblock", (c) => blockAction(c, false));
+
+// ---- one person: strikes, quiet period, no-sell and opt-out (no message text here) ----
+const when = (v: string | null) => (v ? `${v.slice(0, 16).replace("T", " ")} UTC` : "no");
+
+admin.get("/conv/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  const conv = Number.isInteger(id) ? await c.env.DB.prepare("SELECT id, wa_id AS waId, display_name AS name, mode, locale FROM conversations WHERE id = ?1").bind(id).first<Conv & { locale: string }>() : null;
+  if (!conv) return c.text("Not found", 404);
+  const st = await personState(c.env.DB, id);
+  const now = Date.now();
+  const quiet = quietActive(st, now);
+  const noSell = noSellActiveFor(st, now);
+  const m = c.req.query("m");
+  const clearStrikes = await form(c, "clear-strikes", `clear-strikes:${id}`, { conv: id }, "Clear strikes / end quiet", "go");
+  const clearNoSell = await form(c, "clear-nosell", `clear-nosell:${id}`, { conv: id }, "Clear no-sell", "go");
+  return c.html(html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Disha Dira admin</title><style>${(CSS + "h3{font-size:22px;margin:16px 0 4px}.red{color:#b00000;border-color:#b00000}") as unknown as never}</style></head><body>
+<h1>${firstName(conv.name)} · …${conv.waId.slice(-4)}</h1>${m && MSG[m] ? html`<p class="msg"><b>${MSG[m]}</b></p>` : ""}
+<div class="row"><div class="top">Chat: ${conv.mode} · language ${conv.locale}</div>
+<div>Strikes: ${st.strikes}${st.lastStrikeAt ? ` (last ${when(st.lastStrikeAt)})` : ""}</div>
+<div>Quiet until: ${quiet ? when(st.quietUntil) : "not in a quiet period"}</div>
+<div>No selling until: ${noSell ? when(st.noSellUntil) : "selling is allowed"}</div>
+<div>Opted out of messages: ${st.optedOutAt ? `yes, since ${when(st.optedOutAt)}` : "no"}</div></div>
+${clearStrikes}${clearNoSell}
+<a class="btn" href="/admin">Back</a></body></html>`);
+});
+
+async function stateAction(c: Ctx, scope: string, action: string, sql: string, code: string) {
+  const f = await c.req.parseBody();
+  const id = Number(f.conv);
+  if (!Number.isInteger(id) || f.csrf !== (await csrf(c.get("jwt"), `${scope}:${id}`))) return bad(c);
+  const conv = await c.env.DB.prepare("SELECT id FROM conversations WHERE id = ?1").bind(id).first();
+  if (!conv) return c.redirect("/admin?m=gone", 303);
+  await ensureState(c.env.DB, id);
+  await c.env.DB.prepare(sql).bind(id).run();
+  await audit(c, action, `conv:${id}`, "");
+  return c.redirect(`/admin/conv/${id}?m=${code}`, 303);
+}
+admin.post("/clear-strikes", (c) =>
+  stateAction(c, "clear-strikes", "ADMIN_CLEAR_STRIKES", "UPDATE person_state SET strikes = 0, last_strike_at = NULL, quiet_until = NULL WHERE conversation_id = ?1", "cleared"),
+);
+admin.post("/clear-nosell", (c) => stateAction(c, "clear-nosell", "ADMIN_CLEAR_NOSELL", "UPDATE person_state SET no_sell_until = NULL WHERE conversation_id = ?1", "nosellcleared"));
 
 // A setting can only turn something OFF that the env allows. "Resume" removes the pause; it never overrides an env flag that is off.
 admin.post("/switch", async (c) => {
