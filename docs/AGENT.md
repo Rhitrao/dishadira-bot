@@ -1,10 +1,10 @@
 # Disha Dira booking assistant: v2 design
 
-Version: 2026-10-21 (rev 2, after independent review). Status: draft for Rohit's approval. CONTRACT.md v4 summarises the binding parts; this file has the detail.
+Version: 2026-10-21 (rev 3: sessions and packages, the 7-day chat wipe, re-prompts). Status: draft for Rohit's approval. CONTRACT.md v4 summarises the binding parts; this file has the detail.
 
 ## 1. What we are building, from first principles
 
-**The job.** Turn people who message from an ad into paid ₹99 calls with Shantha Rao. She only ever speaks to people who have paid. The ₹700 session is offered by Amma on the call, not by the bot.
+**The job.** Turn people who message from an ad into paid ₹99 calls with Shantha Rao, which is the recommended first step, and let people who already know what they want buy a single session (₹799) or a package (10 for ₹5,000, 20 for ₹9,000). She only ever speaks to people who have paid.
 
 **Who actually messages.** In rough order of how often:
 
@@ -54,8 +54,9 @@ Any inbound text ──► SAFETY CHECK (always first)
 First message? ──► Greeting (bilingual) + [English] [हिंदी]
                    (a real question in it is kept and answered after the language tap)
                           ▼
-              Menu: [Book ₹99 call] [How it works] [Talk to a person]
-                     │                 │                 │
+              Menu: [Book ₹99 call] [Sessions & packages] [Help]
+                     │                 │                     └─ FAQ rows · My bookings · Talk to a person · Change language
+                     │                 └─ single ₹799 · 10 for ₹5,000 · 20 for ₹9,000 (soft nudge to the ₹99 call first)
    typed question ───┼──► GATEKEEPER ──► AI ──► output check ──► one message (+ ≤1 button)
                      ▼
             Booking (fixed, no AI):
@@ -77,6 +78,41 @@ First message? ──► Greeting (bilingual) + [English] [हिंदी]
    - A final "Another day" row.
    - Sections: Afternoon (before 4 pm) and Evening. The "Another day" row goes in the last non-empty section, and empty sections are never sent.
 6. **Payment:** the message names the day and time held, then a [Pay ₹99] button. Everything after that already exists.
+
+### 3.1a Start-of-booking checks
+- **Book ₹99 call** when the person already has an upcoming call: send `alreadyBookedStart` with [Keep it] [Talk to a person], and go no further. This check happens at the tap, not at the end of the flow.
+- **One open ₹99 call per person.** The ₹99 call is once per person for the "not right fit" refund (CONTRACT), so a second intro is for a different family member only, and Rohit can allow it from /admin.
+
+### 3.1b Sessions and packages (fixed messages only)
+1. **[Sessions & packages]** opens a list: ₹99 first call · Single session ₹799 · 10 sessions ₹5,000 · 20 sessions ₹9,000.
+2. **Soft gate:** if the person has never had a ₹99 call, picking a session or package shows `softGate` with [Book ₹99 call] [Continue]. Continue is always allowed.
+3. **Single session:** age check (once) → service → who for → day → time → hold → pay ₹799 → confirmed. This is the same machinery as today's session after Amma's offer, priced from config.
+4. **Package:** age check (once) → pay ₹5,000 or ₹9,000 (no slot is held) → PAID adds 10 or 20 credits → `packConfirmed` with [Book a session].
+5. **Booking with credits** (from `packConfirmed` or **My bookings → Book a session**): service → who for → day → time → booked at once, using a credit with no payment step.
+   - At most **2 upcoming sessions** per buyer.
+   - The hold and booking write is atomic with the credit decrement, so a double tap can't use two credits or book two slots.
+6. **My bookings** (Help list): upcoming calls and sessions, with [Move] [Cancel] each, and the credits left.
+   - **Package session:** move or cancel ≥ 3 h before gives the credit back. Later, or a no-show, uses the credit.
+   - **Single session:** move once ≥ 3 h before. Cancel ≥ 24 h before for a full refund. Between 3 and 24 h, no refund, but it can be moved once. No-show, no refund.
+   - **₹99 call:** the existing missed-call reschedule only.
+   - These match the website refund policy.
+7. **Amma's "Session" outcome after a ₹99 call:** offers the same three choices (single, 10, 20) instead of one ₹700 link.
+8. **Amma's "Not right fit" on someone's very first session** (they skipped the ₹99 call): refund the whole purchase (single or package), once per person.
+9. **Stopping a package:** "Talk to a person" → Rohit approves in /admin. Refund = unused credits × the package rate (₹500 or ₹450).
+   - Payments older than 6 months can't be refunded through Razorpay. The bot raises a `MANUAL_REFUND` attention item, and Rohit pays by bank or UPI and marks it done.
+10. **Packages never expire.** Credits belong to the buyer, who can book them for self, family, a child or a pet.
+
+### 3.1c Re-prompts during booking
+If a typed message arrives while a booking step is open (language, age, service, who for, day, time, pay, soft gate, my bookings), and it isn't a safety, handoff, opt-out or menu word:
+- Before the AI (ticket 12): resend that step with `reprompt(hint)`. For the day and time steps the hint is `hintDays`; otherwise there's no hint.
+- With the AI (ticket 14): the AI answers in one line ("Calls are only Monday to Friday"), and the same step is resent as the body of one message.
+- A re-prompt never counts as a strike. After 3 re-prompts in a row, offer "Talk to a person".
+
+### 3.1d Chat wipe
+- **Message text** (inbound and outbound bodies, and AI context) is wiped `CHAT_RETENTION_MINUTES` after a person's **last** message: 10080 (7 days) on live and 10 on test, set in `[env.*.vars]`. It runs on the existing 2-minute cron.
+- **Kept:** rows needed for dedupe, bookings, payments, refunds, credits, blocks, audit, `person_state`, and the conversation's language, greeted flag and age-check flag. These live on `conversations` or `person_state`, never only in `messages`.
+- **Personal fields** (name) are still removed 90 days after the last booking.
+- After the wipe, /admin shows "(message text removed)".
 
 ### 3.2 When a text arrives: the order of checks
 1. **Safety** (code, not AI): English, Hindi and Hinglish phrase lists (KNOWLEDGE.md §9), after normalising.
@@ -189,7 +225,7 @@ That's about ₹1 to ₹1.50 per 6-reply conversation. Some providers report the
 - System part 2 (not cached), the trusted facts:
   - today's date in India
   - the chat language
-  - booking facts: next call or session day and time, and status
+  - booking facts: next call or session day and time, status, package credits left, and whether they've had a ₹99 call
   - the `no_sell` flag
 - Messages: the last 10 messages of the chat. Before sending, code:
   - replaces digit runs of 6 or more, emails and links with `[removed]`
@@ -226,7 +262,7 @@ The reply is replaced by the fixed safe fallback for its label (KNOWLEDGE.md §1
 - It contains a banned word or phrase (KNOWLEDGE.md §8), matched as a **whole word or phrase**, so "secure" and "spiritual" pass.
 - It contains a URL, an email or a phone-like number.
 - It contains a number that isn't on the allowlist:
-  - prices, durations, hours and the hold minutes
+  - prices (99, 799, 5000, 9000, 500, 450, also written with commas), package sizes (10, 20), durations, hours, the hold minutes, 3 (hours notice) and 2 (upcoming sessions)
   - 18, 24, 30, 120 and 1980
   - numbers that appear in today's booking facts
 - It contains characters outside Latin, Devanagari, common punctuation and the allowed emoji.
@@ -243,7 +279,7 @@ The reply is replaced by the fixed safe fallback for its label (KNOWLEDGE.md §1
 **Vendor and privacy:**
 - Anthropic processes the text in the US.
 - The greeting and the privacy page disclose the automated assistant and the AI provider (KNOWLEDGE.md §10).
-- Chat text is still deleted 30 days after the last activity.
+- Chat text is wiped 7 days after the last message on live, and 10 minutes after on test (§3.1d).
 
 **Meta policy:** this is a business-specific assistant for one practice's bookings and questions, which is allowed under the 15 Jan 2026 rules (only general-purpose assistants are banned). The AI refuses general-knowledge chat (`off_topic`), which keeps it on the right side of that line.
 
