@@ -266,7 +266,8 @@ The reply is replaced by the fixed safe fallback for its label (KNOWLEDGE.md §1
 - It contains a URL, an email or a phone-like number.
 - It contains a number that isn't on the allowlist:
   - prices (99, 799, 5000, 9000, 500, 450, also written with commas), package sizes (10, 20), durations, hours, the hold minutes, 3 (hours notice) and 2 (upcoming sessions)
-  - 18, 24, 30, 120 and 1980
+  - 7 (days), 18, 24, 30, 120 and 1980
+  - the safety numbers 112, 108, 181, 1098 and 14416, which are also exempt from the phone-like-number rule
   - numbers that appear in today's booking facts
 - It contains characters outside Latin, Devanagari, common punctuation and the allowed emoji.
 - It is over 600 characters.

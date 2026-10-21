@@ -313,7 +313,8 @@ Deliver:
    - A new HUMAN_REQUEST emails Rohit at once, with the /admin link only and at most one per person per 6 hours.
    - The 2-minute cron returns HUMAN chats to BOT 24 hours after the handoff if no outbound reply from /admin has been sent since. The attention item stays open.
    - Tests for all three.
-7. **Docs:**
+7. **Copy sync with KNOWLEDGE.md v3:** in `src/copy.ts`, update the crisis message (§9, now worded to fit someone worried about another person too) and the Hindi privacy FAQ (7 दिन, not 30, §11); regenerate `docs/COPY.md`.
+8. **Docs:**
    - Put the privacy-page wording from KNOWLEDGE.md §10 into `docs/GO-LIVE.md` as a manual step.
    - In STATUS.md: how to turn AI on for test (key secret → flag in `[env.test.vars]` → deploy → switch), and the cost per reply measured by the live eval.
 
