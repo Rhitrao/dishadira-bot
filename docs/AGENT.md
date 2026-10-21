@@ -131,9 +131,11 @@ If a typed message arrives while a booking step is open (language, age, service,
    - If they write again later, normal replies resume and the opt-out clears.
 5. **"Talk to a person"** (button or words like "human", "person", "insaan", "इंसान"): always honoured, even when quiet. HUMAN mode, attention item, handoff ack. At most one open handoff item per person.
 6. **HUMAN mode:**
-   - Booking and menu button taps still work.
-   - Free text gets no bot reply. It waits for Rohit in /admin.
-   - Resolving the item returns the chat to BOT.
+   - Booking and menu button taps still work, and so do menu words ("hi", "menu"…): they get the menu, and the mode doesn't change.
+   - Other free text gets no bot reply. It waits for Rohit in /admin.
+   - Each new HUMAN_REQUEST emails Rohit at once: the /admin link only, never message text, at most one email per person per 6 hours.
+   - If Rohit hasn't replied 24 hours after the handoff, the chat returns to BOT. The attention item stays open, and the customer isn't told.
+   - Resolving the item, or Rohit replying from /admin and then resolving, returns the chat to BOT.
 7. **Paying customer:** someone with a PAID, CONFIRMED or RESCHEDULED booking, or a PAID payment, in the last 30 days.
    - Skips strikes and quiet.
    - Gets a higher AI cap (40 replies a day).
