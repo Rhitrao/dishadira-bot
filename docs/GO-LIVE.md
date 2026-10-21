@@ -87,9 +87,9 @@ The flags are in `wrangler.toml`, under `[env.test.vars]`. For the sandbox run, 
 - [ ] **Active events:** tick exactly these five: `payment_link.paid`, `payment_link.expired`, `payment_link.cancelled`, `refund.processed`, `refund.failed`. Save.
 - [ ] Check Payment Links works in Test Mode on your Razorpay account (Razorpay's onboarding/KYC item in `STATUS.md`; Live Mode keys only come after approval).
 
-### 10. Submit the 5 templates
-- [ ] WhatsApp Manager → **Message templates → Create template**. Create all five exactly as written in `docs/TEMPLATES.md`: `call_booked`, `session_offer`, `session_confirmed`, `reminder`, `payment_update`. Category **Utility**, language English.
-- [ ] Then create the five **Hindi** versions (language **Hindi**, names ending in `_hi`: `call_booked_hi`, `session_offer_hi`, `session_confirmed_hi`, `reminder_hi`, `payment_update_hi`), wording in the "Hindi versions" part of `docs/TEMPLATES.md`.
+### 10. Submit the 7 templates
+- [ ] WhatsApp Manager → **Message templates → Create template**. Create all seven exactly as written in `docs/TEMPLATES.md`: `call_booked`, `session_offer`, `session_confirmed`, `reminder`, `payment_update`, `package_confirmed`, `session_booked`. Category **Utility**, language English.
+- [ ] Then create the seven **Hindi** versions (language **Hindi**, names ending in `_hi`: `call_booked_hi`, `session_offer_hi`, `session_confirmed_hi`, `reminder_hi`, `payment_update_hi`, `package_confirmed_hi`, `session_booked_hi`), wording in the "Hindi versions" part of `docs/TEMPLATES.md`.
 - [ ] Approval usually takes minutes to a day. When one is approved, ask Claude (or edit `src/config.ts` yourself) to set that template's `approved` to `true` (for a Hindi one, its `hi.approved`), then run **Deploy → test**. A Hindi customer gets the Hindi template only once its own flag is `true`, and otherwise the English one.
 - [ ] Amma reads `docs/COPY.md` (every message, English and Hindi) and tells you about anything that sounds wrong.
 
@@ -104,7 +104,9 @@ Do this on weekdays between 14:00 and 19:00 India time, because that is when cal
 - [ ] **Is it recognised as a test payment?** After paying you get the "call confirmed" message. Open `/admin`. There must be **no** item saying "A payment arrived with the wrong amount". If that item appears even though you paid exactly ₹99, something is wrong with how the payment was read (amount, currency, or a test/live key mix-up). **Stop here and send Claude the text of the item**; do not go live.
 - [ ] **Amma's page.** Open `/amma` (as Amma or yourself). The call shows under Today with a Call button. The outcome buttons appear only once the call time has started.
 - [ ] **Outcome: Session.** Once the time has started, tap **Session**, then **Yes**. Wait 10 minutes (the undo time). You then get the session offer on WhatsApp.
-- [ ] **₹700.** Tap **Choose a time**, pick a time, pay ₹700 with the test method. You get "Your session … is confirmed". `/amma` shows it under the right day.
+- [ ] **Single session ₹799.** You get a list with three options. Tap **Single session**, pick a time, pay ₹799 with the test method. You get "Your session … is confirmed". `/amma` shows it under the right day, marked "single".
+- [ ] **A package.** From the menu tap **Sessions & packages → 10 sessions**, pay ₹5,000 with the test method (no time is asked). You get "Payment received. You have 10 sessions" with a **Book a session** button. Book one: you get "Your session is booked … Sessions left: 9" with no payment step, and `/amma` shows it as "package 1/10". Open **Help → My bookings** and try **Move** and **Cancel** (a package session cancelled 3 hours or more before goes back to the package).
+- [ ] **Stopping a package.** In `/admin` open the person (`/admin/conv/<id>`), tap **Refund unused sessions**, check the amount (unused × ₹500), confirm, and see the refund in Razorpay's Test Mode dashboard.
 - [ ] **Outcome: Not right fit, and the refund.** Make a second ₹99 booking (use another phone or ask Claude to reset the test database). After the call time starts, tap **Not right fit**, then **Yes**, and wait 10 minutes. You receive the "refunded your ₹99" message, and Razorpay's Test Mode dashboard shows the ₹99 refund as processed. `/admin` shows the refund in the 7-day numbers.
 - [ ] **Reminder.** Leave a booking for the next working day; at 6:30 pm India time the evening before, you should receive the reminder (a template once its approval is done, text inside 24 hours).
 - [ ] **Pause test.** In `/admin` use the **Sends** and **New bookings** switches to pause and resume. While paused, nothing is sent and booking says "Booking opens soon".
@@ -120,7 +122,7 @@ Do this on weekdays between 14:00 and 19:00 India time, because that is when cal
 - [ ] Run **Actions → Deploy → live**. This applies the migrations to the **fresh live database** and deploys. All flags stay off.
 - [ ] Check `https://bot.disha-dira.com/health` opens, and `/admin` asks for sign-in.
 - [ ] Set the real business number in `src/config.ts` (`businessNumber`) if it is still the placeholder (ask Claude).
-- [ ] Make sure all five templates are approved and set to approved in `src/config.ts` before you go further.
+- [ ] Make sure all seven templates are approved and set to approved in `src/config.ts` before you go further.
 
 ### 13. One real ₹99
 - [ ] In `wrangler.toml` under `[env.live.vars]` set only `SENDS = "true"` first, deploy **live**, and message the Airtel number: you should get the greeting and menu; booking says "Booking opens soon".
@@ -140,6 +142,16 @@ Always one at a time, with a Deploy in between and a look at `/admin` after each
 - [ ] `PUBLIC_URL` under `[env.live.vars]` is the address of the live Worker (`https://bot.disha-dira.com`). The urgent e-mail "Urgent: crisis message" links to `<PUBLIC_URL>/admin` and never contains what the person wrote. Check `DIGEST_TO` and the e-mail binding work before the ad starts: this e-mail is the one that must never be missed.
 - [ ] On the test copy, send the words "I want to die" from your own phone: you must get the Tele-MANAS message at once, an e-mail within a minute, and an item "CRISIS" in `/admin`. The chat then belongs to a person (resolve the item to give it back to the bot) and the bot sells nothing to that number for 7 days ("Clear no-sell" on the person's page, `/admin/conv/<id>`, lifts it early).
 - [ ] The word lists for crisis, emergency, spam, flirting and abuse are in `src/config.ts` (`safety`, `noise`, `words`). Read them once and ask Claude to add what is missing.
+
+### 14c. The website must say the same (Rohit does this, before live)
+- [ ] The website's **fees page**, **terms** and **refund page** must show the same prices and rules as the bot, because customers will compare them. If they ever differ, the website wins and the bot must be fixed.
+  - Prices: first call ₹99; single session ₹799; 10 sessions for ₹5,000 (₹500 each); 20 sessions for ₹9,000 (₹450 each). Packages never expire, and package sessions are booked later with no payment each time (at most 2 upcoming).
+  - First call: refunded in full if Shantha Rao feels a session is not the right fit; a missed call gets one free new time.
+  - Single session: can be moved once, up to 3 hours before; cancel 24 hours or more before for a full refund; between 3 and 24 hours before there is no refund but it can be moved once; no refund if you do not attend.
+  - Package session: move or cancel up to 3 hours before and it goes back to the package; later, or if you do not attend, the session is used.
+  - Stopping a package: unused sessions are refunded at the package rate (₹500 or ₹450 each). Payments older than 6 months are refunded directly by the team, not through the payment provider.
+  - "Not right fit" at the very first session (when the ₹99 call was skipped): the whole payment is refunded, once per person.
+  - Remove any line that says "no packages", and any "in person" wording if the work is by phone only.
 
 ### 15. How to pause everything
 Fastest first. None of these needs coding.

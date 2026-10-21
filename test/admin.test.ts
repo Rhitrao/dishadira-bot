@@ -548,3 +548,114 @@ describe("a person's page: strikes, quiet period, no-sell, opt-out (ticket 12)",
     expect(page).toContain("this one is still here");
   });
 });
+
+describe("packages in /admin (ticket 13)", () => {
+  async function pack(o: { size?: 10 | 20; used?: number; paidAt?: string } = {}) {
+    const conv = await person({ name: "Pooja Longsurname" });
+    const size = o.size ?? 10;
+    const price = size === 10 ? 500000 : 900000;
+    const pk = (await db.prepare("INSERT INTO packages (conversation_id, size, price_paise, state) VALUES (?1, ?2, ?3, 'PAID')").bind(conv, size, price).run()).meta.last_row_id;
+    const paidAt = o.paidAt ?? "2026-10-01T09:00:00Z";
+    const py = await db
+      .prepare("INSERT INTO payments (provider, purpose, target_id, provider_link_id, provider_order_id, provider_payment_id, amount_paise, state, created_at, updated_at) VALUES ('razorpay','PACKAGE',?1,'di-pack-t','pay_PK1','pay_PK1',?2,'PAID',?3,?3)")
+      .bind(pk, price, paidAt)
+      .run();
+    await db.prepare("UPDATE packages SET payment_id = ?2 WHERE id = ?1").bind(pk, py.meta.last_row_id).run();
+    await db.prepare("INSERT INTO credits (package_id, delta, reason, at, by) VALUES (?1, ?2, 'PURCHASE', 'x', 'system')").bind(pk, size).run();
+    if (o.used) await db.prepare("INSERT INTO credits (package_id, delta, reason, at, by) VALUES (?1, ?2, 'ADJUST', 'x', 'test')").bind(pk, -o.used).run();
+    return { conv, pk, payId: py.meta.last_row_id as number };
+  }
+  const fieldsOf = (page: string, action: string) => {
+    const m = new RegExp(`<form method="post" action="/admin/${action}">([\\s\\S]*?)</form>`).exec(page);
+    if (!m) throw new Error(`no ${action} form`);
+    return Object.fromEntries([...m[1].matchAll(/name="([^"]+)" value="([^"]*)"/g)].map((h) => [h[1], h[2]]));
+  };
+  const balance = async (pk: number) => (await db.prepare("SELECT COALESCE(SUM(delta), 0) AS n FROM credits WHERE package_id = ?1").bind(pk).first<{ n: number }>())!.n;
+
+  it("the person's page shows each package with unused × rate and a button; the next page shows the maths and asks again", async () => {
+    const { conv, pk } = await pack({ used: 3 });
+    const page = await (await get(`/admin/conv/${conv}`)).text();
+    expect(page).toContain("10 sessions · ₹5,000");
+    expect(page).toContain("Unused: 7 × ₹500 = ₹3,500");
+    expect(page).toContain(`/admin/pack-refund/${pk}`);
+    expect(page).toContain("Refund unused sessions");
+    expect(page).not.toContain("Longsurname");
+    const confirm = await (await get(`/admin/pack-refund/${pk}`)).text();
+    expect(confirm).toContain("7 unused × ₹500 = ₹3,500");
+    expect(confirm).toContain("Yes, refund ₹3,500");
+    expect(fake.posts("/refund")).toHaveLength(0); // looking changes nothing
+    expect(await balance(pk)).toBe(7);
+  });
+
+  it("confirming refunds unused × rate through Razorpay, sets the balance to 0, closes the package and is audited", async () => {
+    const { conv, pk, payId } = await pack({ size: 20, used: 2 });
+    const confirm = await (await get(`/admin/pack-refund/${pk}`)).text();
+    expect(confirm).toContain("18 unused × ₹450 = ₹8,100");
+    const res = await post("/admin/pack-refund", fieldsOf(confirm, "pack-refund"));
+    expect(res.status).toBe(303);
+    expect(res.headers.get("Location")).toBe("/admin?m=packrefunded");
+    expect(refundPosts()).toEqual([expect.objectContaining({ amount: 810000 })]);
+    expect(await balance(pk)).toBe(0);
+    expect(await db.prepare("SELECT state FROM packages WHERE id = ?1").bind(pk).first()).toEqual({ state: "CLOSED" });
+    expect(await db.prepare("SELECT reason, amount_paise, requested_by FROM refunds WHERE payment_id = ?1").bind(payId).first()).toEqual({ reason: "PACKAGE_UNUSED", amount_paise: 810000, requested_by: ROHIT });
+    expect(await auditRows()).toEqual([{ actor: ROHIT, action: "ADMIN_PACKAGE_REFUND", target: `package:${pk}`, detail: "18 unused, ₹8,100, Razorpay" }]);
+    expect(await (await get(`/admin/conv/${conv}`)).text()).toContain("Closed. Unused: 0");
+    // pressing it again does nothing (a replay of the same form)
+    const again = await post("/admin/pack-refund", fieldsOf(confirm, "pack-refund"));
+    expect(again.headers.get("Location")).toBe("/admin?m=packstale");
+    expect(refundPosts()).toHaveLength(1);
+  });
+
+  it("a forged token, a foreign origin, a changed count and Amma are all refused; nothing moves", async () => {
+    const { pk } = await pack({ used: 3 });
+    const confirm = await (await get(`/admin/pack-refund/${pk}`)).text();
+    const f = fieldsOf(confirm, "pack-refund");
+    expect((await post("/admin/pack-refund", { ...f, csrf: "nope" })).status).toBe(403);
+    expect((await post("/admin/pack-refund", { ...f, unused: "8" })).status).toBe(403); // the token is for 7
+    expect((await post("/admin/pack-refund", f, { origin: "https://evil.example" })).status).toBe(403);
+    expect((await post("/admin/pack-refund", f, { origin: null })).status).toBe(403);
+    const amma = await token({ email: AMMA });
+    expect((await app.request(`${ORIGIN}/admin/pack-refund/${pk}`, { headers: { "Cf-Access-Jwt-Assertion": amma } }, env())).status).toBe(403);
+    // the count changed after Rohit looked: nothing is refunded
+    await db.prepare("INSERT INTO credits (package_id, delta, reason, at, by) VALUES (?1, -1, 'ADJUST', 'x', 'test')").bind(pk).run();
+    expect((await post("/admin/pack-refund", f)).headers.get("Location")).toBe("/admin?m=packstale");
+    expect(await balance(pk)).toBe(6);
+    expect(refundPosts()).toHaveLength(0);
+    expect((await get("/admin/pack-refund/999")).headers.get("Location")).toBe("/admin?m=packstale");
+  });
+
+  it("a payment over 180 days old becomes a MANUAL_REFUND item with the amount; 'Mark refunded by hand' resolves it, records it and tells the customer", async () => {
+    const { pk } = await pack({ used: 4, paidAt: "2026-03-01T09:00:00Z" });
+    const confirm = await (await get(`/admin/pack-refund/${pk}`)).text();
+    expect(confirm).toContain("older than 180 days");
+    const res = await post("/admin/pack-refund", fieldsOf(confirm, "pack-refund"));
+    expect(res.headers.get("Location")).toBe("/admin?m=packmanual");
+    expect(refundPosts()).toHaveLength(0);
+    expect(await balance(pk)).toBe(0);
+    expect(await db.prepare("SELECT kind, target FROM attention WHERE resolved_at IS NULL").all().then((r) => r.results)).toEqual([{ kind: "MANUAL_REFUND", target: `package:${pk}` }]);
+    const page = await (await get("/admin")).text();
+    expect(page).toContain("MANUAL REFUND");
+    expect(page).toContain("Pay 6 unused × ₹500 = ₹3,000");
+    const done = await press("manual-paid", {}, env(), "");
+    expect(done.headers.get("Location")).toBe("/admin?m=manualdone");
+    expect(await db.prepare("SELECT delta, reason, by FROM credits WHERE reason = 'ADJUST' AND delta = 0").first()).toEqual({ delta: 0, reason: "ADJUST", by: ROHIT });
+    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE resolved_at IS NULL")).toBe(0);
+    expect((await auditRows()).map((a) => a.action)).toEqual(["ADMIN_PACKAGE_REFUND", "ADMIN_MANUAL_REFUND_PAID"]);
+    expect(waSent().length).toBeGreaterThan(0);
+    expect(JSON.parse((waSent().at(-1)![1] as { body: string }).body).text.body).toContain("₹3,000");
+    await expect(press("manual-paid", {}, env(), "")).rejects.toThrow("no manual-paid form"); // nothing left to press
+  });
+
+  it("a credit-booked session gets the Completed / No-show buttons once it has started, like a paid one", async () => {
+    const { conv } = await pack();
+    const s = generateSlots("2026-10-05", "SESSION")[0]; // 14:00 IST, started at 15:30
+    const slot = await db.prepare("INSERT INTO slots (kind,start_utc,end_utc,owner_id,state) VALUES ('SESSION',?1,?2,?3,'BOOKED')").bind(s.startUtc, s.endUtc, conv).run();
+    const ses = await db.prepare("INSERT INTO sessions (conversation_id, slot_id, service, state, origin) VALUES (?1,?2,'HEALING','CREDIT_BOOKED','CREDIT')").bind(conv, slot.meta.last_row_id).run();
+    const page = await (await get("/admin")).text();
+    expect(page).toContain("credit booked");
+    const res = await press("session", {}, env(), "NO_SHOW");
+    expect(res.headers.get("Location")).toBe("/admin?m=done");
+    expect(await db.prepare("SELECT state FROM sessions WHERE id = ?1").bind(ses.meta.last_row_id).first()).toEqual({ state: "NO_SHOW" });
+    expect(await count("SELECT COUNT(*) AS n FROM credits WHERE reason = 'CANCEL_RETURN'")).toBe(0); // a no-show uses the credit
+  });
+});

@@ -8,7 +8,7 @@ import { raiseAttention } from "../send";
 import { iso, istDay } from "../slots";
 import type { PaymentProvider, RefundResult, RefundStatus } from "./provider";
 
-export type RefundReason = "DUPLICATE" | "NOT_FIT" | "RUDE" | "ADMIN"; // ADMIN: Rohit decided in /admin
+export type RefundReason = "DUPLICATE" | "NOT_FIT" | "RUDE" | "ADMIN" | "CANCEL" | "PACKAGE_UNUSED"; // ADMIN: Rohit decided in /admin; CANCEL: a single session cancelled early; PACKAGE_UNUSED: unused sessions of a package
 export type RefundRequest = "CREATED" | "EXISTS" | "PERSON_LIMIT" | "DAILY_LIMIT";
 
 const nowIso = () => iso(Date.now());
@@ -16,26 +16,33 @@ const LEASE_MS = 60_000; // one worker owns a refund for this long; the 2-minute
 const STUCK_MS = 30 * 60_000; // still not confirmed after this long: Rohit is told
 export const refundIdFor = (paymentId: number) => `refund-${paymentId}`;
 
+// The conversation a payment belongs to, whatever it was for (the 99 call, a session or a package).
+const PAYER_CONV = (p: string) => `CASE ${p}.purpose
+  WHEN 'INTRO' THEN (SELECT conversation_id FROM intros WHERE id = ${p}.target_id)
+  WHEN 'SESSION' THEN (SELECT conversation_id FROM sessions WHERE id = ${p}.target_id)
+  ELSE (SELECT conversation_id FROM packages WHERE id = ${p}.target_id) END`;
+
 // Creates the refunds row and (unless it waits for approval) talks to the provider.
 // NOT_FIT is limited in the INSERT itself: once per person (same conversation/wa_id, or same payer ref) and config.limits.notFitRefundsPerDay.
-export async function requestRefund(env: Env, provider: PaymentProvider, paymentId: number, reason: RefundReason, requestedBy: string): Promise<RefundRequest> {
+// `amountPaise` refunds part of a payment (unused package sessions); without it the whole payment goes back.
+export async function requestRefund(env: Env, provider: PaymentProvider, paymentId: number, reason: RefundReason, requestedBy: string, amountPaise?: number): Promise<RefundRequest> {
   const db = env.DB;
   const now = nowIso();
   let changes: number;
   if (reason === "NOT_FIT") {
     const who = await db
-      .prepare("SELECT i.conversation_id AS conv, p.payer_ref AS payer FROM payments p JOIN intros i ON i.id = p.target_id WHERE p.id = ?1 AND p.purpose = 'INTRO'")
+      .prepare(`SELECT ${PAYER_CONV("p")} AS conv, p.payer_ref AS payer FROM payments p WHERE p.id = ?1`)
       .bind(paymentId)
-      .first<{ conv: number; payer: string | null }>();
-    if (!who) throw new Error("refund: payment is not an intro payment");
+      .first<{ conv: number | null; payer: string | null }>();
+    if (!who?.conv) throw new Error("refund: payment has no owner");
     const dayStart = iso(Date.parse(`${istDay(Date.now())}T00:00:00+05:30`));
     const res = await db
       .prepare(
-        `INSERT OR IGNORE INTO refunds (payment_id, reason, requested_by, state, attempt_at, created_at, updated_at)
-         SELECT ?1, 'NOT_FIT', ?2, 'PENDING', ?3, ?3, ?3
+        `INSERT OR IGNORE INTO refunds (payment_id, reason, requested_by, state, attempt_at, created_at, updated_at, amount_paise)
+         SELECT ?1, 'NOT_FIT', ?2, 'PENDING', ?3, ?3, ?3, NULL
          WHERE NOT EXISTS (
-             SELECT 1 FROM refunds r JOIN payments p2 ON p2.id = r.payment_id JOIN intros i2 ON p2.purpose = 'INTRO' AND i2.id = p2.target_id
-             WHERE r.reason = 'NOT_FIT' AND (i2.conversation_id = ?4 OR (?5 IS NOT NULL AND p2.payer_ref = ?5)))
+             SELECT 1 FROM refunds r JOIN payments p2 ON p2.id = r.payment_id
+             WHERE r.reason = 'NOT_FIT' AND (${PAYER_CONV("p2")} = ?4 OR (?5 IS NOT NULL AND p2.payer_ref = ?5)))
            AND (SELECT COUNT(*) FROM refunds WHERE reason = 'NOT_FIT' AND created_at >= ?6) < ?7`,
       )
       .bind(paymentId, requestedBy, now, who.conv, who.payer, dayStart, config.limits.notFitRefundsPerDay)
@@ -45,8 +52,8 @@ export async function requestRefund(env: Env, provider: PaymentProvider, payment
       if (await db.prepare("SELECT 1 FROM refunds WHERE payment_id = ?1").bind(paymentId).first()) return "EXISTS";
       const person = await db
         .prepare(
-          `SELECT 1 FROM refunds r JOIN payments p2 ON p2.id = r.payment_id JOIN intros i2 ON p2.purpose = 'INTRO' AND i2.id = p2.target_id
-           WHERE r.reason = 'NOT_FIT' AND (i2.conversation_id = ?1 OR (?2 IS NOT NULL AND p2.payer_ref = ?2))`,
+          `SELECT 1 FROM refunds r JOIN payments p2 ON p2.id = r.payment_id
+           WHERE r.reason = 'NOT_FIT' AND (${PAYER_CONV("p2")} = ?1 OR (?2 IS NOT NULL AND p2.payer_ref = ?2))`,
         )
         .bind(who.conv, who.payer)
         .first();
@@ -56,8 +63,8 @@ export async function requestRefund(env: Env, provider: PaymentProvider, payment
     // RUDE waits for Rohit's approval (PENDING_APPROVAL); a duplicate goes straight out.
     const state = reason === "RUDE" ? "PENDING_APPROVAL" : "PENDING";
     const res = await db
-      .prepare("INSERT OR IGNORE INTO refunds (payment_id, reason, requested_by, state, attempt_at, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?5)")
-      .bind(paymentId, reason, requestedBy, state, now)
+      .prepare("INSERT OR IGNORE INTO refunds (payment_id, reason, requested_by, state, attempt_at, created_at, updated_at, amount_paise) VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?5, ?6)")
+      .bind(paymentId, reason, requestedBy, state, now, amountPaise ?? null)
       .run();
     if (!res.meta.changes) return "EXISTS";
     if (state === "PENDING_APPROVAL") return "CREATED";
@@ -99,14 +106,14 @@ export async function retryFailedRefund(env: Env, provider: PaymentProvider, pay
   return true;
 }
 
-// The amount refunded is what was actually paid (paid_paise, recorded on a mismatch), else the price.
+// The amount refunded is the amount asked for (unused package sessions), else what was actually paid (paid_paise, recorded on a mismatch), else the price.
 // Looks up (unless fresh) and, if the provider has no such refund, creates it; then records what the provider says.
 // Any error leaves the refund PENDING: the cron retries with the same refund_id.
 async function settleRefund(env: Env, provider: PaymentProvider, paymentId: number, fresh: boolean): Promise<void> {
   const db = env.DB;
   const r = await db
     .prepare(
-      `SELECT r.state, r.created_at AS createdAt, p.provider_order_id AS orderId, COALESCE(p.paid_paise, p.amount_paise) AS amount
+      `SELECT r.state, r.created_at AS createdAt, p.provider_order_id AS orderId, COALESCE(r.amount_paise, p.paid_paise, p.amount_paise) AS amount
        FROM refunds r JOIN payments p ON p.id = r.payment_id WHERE r.payment_id = ?1`,
     )
     .bind(paymentId)

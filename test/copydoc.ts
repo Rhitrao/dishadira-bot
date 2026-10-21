@@ -17,6 +17,19 @@ const sample: Record<string, (c: Copy, lang: Lang) => string> = {
   reminderSession: (c) => c.reminderSession("{day}", "{time}"),
   alreadyBookedStart: (c) => c.alreadyBookedStart("{day}", "{time}"),
   reprompt: (c) => c.reprompt("{hint}"),
+  packPayBody: (c) => c.packPayBody(10, "{price}"),
+  packPayLabel: (c) => c.packPayLabel("{price}"),
+  packConfirmed: (c) => c.packConfirmed(10),
+  creditBooked: (c) => c.creditBooked("{day}", "{time}", 9),
+  creditsLeft: (c) => c.creditsLeft(9),
+  myBookingsBody: (c) => c.myBookingsBody("{list}", 9),
+  myBookingsNoPack: (c) => c.myBookingsNoPack("{list}"),
+  bookingItem: (c) => c.bookingItem("{call or session}", "{day}", "{time}"),
+  sessionActions: (c) => c.sessionActions("{day}", "{time}"),
+  moved: (c) => c.moved("{day}", "{time}"),
+  cancelledCredit: (c) => c.cancelledCredit(9),
+  notFitRefundSession: (c) => c.notFitRefundSession("{amount}"),
+  packRefunded: (c) => c.packRefunded("{amount}"),
 };
 
 const sections: { title: string; intro?: string; entries: Entry[] }[] = [
@@ -28,8 +41,9 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
       ["chooseLanguage", "Language buttons again, after \"Change language\""],
       ["menuBody", "Menu question"],
       ["btnBook", "Menu button 1 (max 20 letters)"],
-      ["btnHow", "Menu button 2 (max 20 letters)"],
-      ["btnPerson", "Menu button 3 (max 20 letters)"],
+      ["btnPackages", "Menu button 2 (max 20 letters)"],
+      ["btnHelp", "Menu button 3 (max 20 letters)"],
+      ["btnPerson", "\"Talk to a person\" (a row in the Help list; also a button in the fallback menu and while nothing may be sold) (max 20 letters)"],
       ["handoffAck", "After \"Talk to a person\""],
       ["bookSoon", "Shown instead of booking while booking is closed"],
       ["askPrompt", "An old \"Ask a question\" button still in an older chat"],
@@ -39,12 +53,13 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
     ],
   },
   {
-    title: "2. How it works list",
-    intro: "The list behind \"How it works\". Its last row is \"Change language\", in the language of the chat.",
+    title: "2. Help list",
+    intro: "The list behind \"Help\": the six answers, then My bookings, Talk to a person and Change language (nine rows).",
     entries: [
-      ["faqBody", "List heading"],
+      ["helpListBody", "List heading"],
       ["faqButton", "List button (max 20 letters)"],
-      ["changeLanguageRow", "Last row of the list (max 24 letters)"],
+      ["rowMyBookings", "Row: My bookings (max 24 letters)"],
+      ["changeLanguageRow", "Row: Change language (max 24 letters)"],
       ...(["what_is_this", "how_it_works", "price", "timings", "refund", "privacy"] as const).flatMap((id): Entry[] => [
         [`faqTitles.${id}`, `Topic title "${id}" (max 24 letters)`],
         [`faqAnswers.${id}`, `Answer "${id}"`],
@@ -85,10 +100,10 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
   },
   {
     title: "4. After Amma's call",
-    intro: "What the customer gets, depending on what Amma tapped. The session uses the same day and time steps, without the age, service and who-for steps.",
+    intro: "What the customer gets, depending on what Amma tapped. After \"Session\" the customer chooses a single session, 10 or 20 (a list; section 5). A single session uses the same day and time steps, without the age, service and who-for steps.",
     entries: [
-      ["sessionOfferBody", "Session offer: message"],
-      ["btnChooseTime", "Session offer: button (max 20 letters)"],
+      ["sessionOfferBody", "Session offer: message (above the list of options)"],
+      ["btnChooseTime", "Template button \"Choose a time\" (max 20 letters)"],
       ["sessionTimesFor", "Session time list: message"],
       ["rowSession", "Session time list: line under each time (max 72 letters)"],
       ["noSessionSlots", "No session times free"],
@@ -104,7 +119,51 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
     ],
   },
   {
-    title: "5. Reminders",
+    title: "5. Sessions, packages and My bookings",
+    intro:
+      "Prices and the per-session rates are built from `src/config.ts` (price ÷ sessions). Buying a single session uses the same steps as the first call (age check once, service, who for, day, time, pay). A package has no time step: pay, then book each session from the credits.",
+    entries: [
+      ["packagesBody", "Sessions & packages: list heading"],
+      ["packagesButton", "Sessions & packages: list button (max 20 letters)"],
+      ["rowIntroTitle", "Row 1: the first call (max 24 letters)"],
+      ["rowIntroDesc", "Row 1: line under it (max 72 letters)"],
+      ["rowSingleTitle", "Row 2: single session (max 24 letters)"],
+      ["rowSingleDesc", "Row 2: line under it (max 72 letters)"],
+      ["rowPack10Title", "Row 3: the 10-pack (max 24 letters)"],
+      ["rowPack10Desc", "Row 3: line under it (max 72 letters)"],
+      ["rowPack20Title", "Row 4: the 20-pack (max 24 letters)"],
+      ["rowPack20Desc", "Row 4: line under it (max 72 letters)"],
+      ["softGate", "Soft gate: shown when someone who never had the first call picks a session or package (buttons: Book call / Continue)"],
+      ["btnContinue", "Soft gate: Continue (max 20 letters)"],
+      ["packPayBody", "Package: pay message (above the pay button)"],
+      ["packPayLabel", "Package: pay button (max 20 letters)"],
+      ["packPending", "Package: a payment link is already open"],
+      ["packConfirmed", "Package paid: the credits are added (button below: Book a session)"],
+      ["btnBookSession", "Button under it (max 20 letters)"],
+      ["creditBooked", "A session booked from a package credit"],
+      ["maxUpcoming", "Two sessions are already booked"],
+      ["noCredits", "No sessions left in the package"],
+      ["creditsLeft", "Sessions left (added when there is nothing booked)"],
+      ["myBookingsBody", "My bookings: the list and the sessions left, for someone with a package"],
+      ["myBookingsNoPack", "My bookings: the list, for someone without a package"],
+      ["myBookingsNone", "My bookings: nothing booked"],
+      ["bookingItem", "My bookings: one entry (the word is call or session)"],
+      ["sessionActions", "My bookings: one session, with the buttons Move and Cancel (when there is more than one booking)"],
+      ["btnMove", "Button (max 20 letters)"],
+      ["btnCancel", "Button (max 20 letters)"],
+      ["bookingNotFound", "A booking that no longer exists or has changed"],
+      ["moveTooLate", "Less than 3 hours before: it can no longer be moved or cancelled"],
+      ["moveOnlyOnce", "A single session that was already moved once (button: Talk to a person)"],
+      ["moved", "A session moved to a new time"],
+      ["cancelledCredit", "A package session cancelled in time: the credit is back"],
+      ["cancelledSingleRefund", "A single session cancelled 24 hours or more before: refund"],
+      ["cancelledSingleNoRefund", "A single session cancelled 3 to 24 hours before: no refund, move instead (buttons: Move / Keep it)"],
+      ["notFitRefundSession", "\"Not right fit\" on a first session: the whole purchase is refunded"],
+      ["packRefunded", "Unused package sessions refunded"],
+    ],
+  },
+  {
+    title: "6. Reminders",
     intro: "Sent the evening before a call or a session. The two words are the first value of the reminder template.",
     entries: [
       ["reminderCall", "Reminder for a call"],
@@ -114,7 +173,7 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
     ],
   },
   {
-    title: "6. Safety, noise and re-prompts",
+    title: "7. Safety, noise and re-prompts",
     intro:
       "Sent by code, never by the AI. The crisis and emergency messages go to everyone, whatever their state. When someone types while a booking step is open, the step is sent again with the re-prompt line and, on the day and time steps, the hint.",
     entries: [
@@ -149,7 +208,7 @@ export function renderCopyDoc(): string {
     "",
     "Words in {curly brackets} are filled in automatically (a day, a time, a number). Prices, call lengths, the hold time, the opening hours and the name of the \"Energy cleansing\" service come from `src/config.ts`.",
     "",
-    "Rules the copy follows: it never names an illness, never promises a result, never asks for health details. Amma's page (section 7) is English only.",
+    "Rules the copy follows: it never names an illness, never promises a result, never asks for health details. Amma's page (section 8) is English only.",
     "",
     "Dates and times customers see are in India time: English `Wed, 21 Oct` and `2:30 pm`; Hindi `बुध, 21 अक्टूबर` and `दोपहर 2:30` (`सुबह` before noon, `शाम` from 4 pm).",
   ];
@@ -167,7 +226,7 @@ export function renderCopyDoc(): string {
       out.push(`| ${cell(where)} | ${cell(text("en"))} | ${cell(text("hi"))} |`);
     }
   }
-  out.push("", "## 7. Amma's page", "", "English only. No chat text and no health details are ever shown here.", "", "| Label | Text |", "|---|---|");
+  out.push("", "## 8. Amma's page", "", "English only. No chat text and no health details are ever shown here.", "", "| Label | Text |", "|---|---|");
   const amma = allCopy.en.amma as unknown as Record<string, unknown>;
   for (const key of Object.keys(amma)) {
     const v = amma[key];

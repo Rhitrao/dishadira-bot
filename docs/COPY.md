@@ -4,7 +4,7 @@ Every message the bot sends to customers on WhatsApp, in English and Hindi, exac
 
 Words in {curly brackets} are filled in automatically (a day, a time, a number). Prices, call lengths, the hold time, the opening hours and the name of the "Energy cleansing" service come from `src/config.ts`.
 
-Rules the copy follows: it never names an illness, never promises a result, never asks for health details. Amma's page (section 7) is English only.
+Rules the copy follows: it never names an illness, never promises a result, never asks for health details. Amma's page (section 8) is English only.
 
 Dates and times customers see are in India time: English `Wed, 21 Oct` and `2:30 pm`; Hindi `बुध, 21 अक्टूबर` and `दोपहर 2:30` (`सुबह` before noon, `शाम` from 4 pm).
 
@@ -18,8 +18,9 @@ What a customer sees first. The greeting is one message in both languages, follo
 | Language buttons again, after "Change language" | Please choose your language / कृपया भाषा चुनें: | Please choose your language / कृपया भाषा चुनें: |
 | Menu question | What would you like to do? You can also type your question. | आप क्या करना चाहेंगे? आप अपना सवाल लिखकर भी पूछ सकते हैं। |
 | Menu button 1 (max 20 letters) | Book ₹99 call | ₹99 कॉल बुक करें |
-| Menu button 2 (max 20 letters) | How it works | यह कैसे काम करता है |
-| Menu button 3 (max 20 letters) | Talk to a person | किसी से बात करें |
+| Menu button 2 (max 20 letters) | Sessions & packages | सेशन और पैकेज |
+| Menu button 3 (max 20 letters) | Help | मदद |
+| "Talk to a person" (a row in the Help list; also a button in the fallback menu and while nothing may be sold) (max 20 letters) | Talk to a person | किसी से बात करें |
 | After "Talk to a person" | Thank you. A person from our team will reply here, usually within 24 hours. | धन्यवाद। हमारी टीम का कोई व्यक्ति आमतौर पर 24 घंटे के अंदर यहीं जवाब देगा। |
 | Shown instead of booking while booking is closed | Booking opens soon. | बुकिंग जल्द शुरू होगी। |
 | An old "Ask a question" button still in an older chat | Please type your question below. | कृपया अपना सवाल नीचे लिखें। |
@@ -27,25 +28,26 @@ What a customer sees first. The greeting is one message in both languages, follo
 | A voice note, photo, video, sticker, file, location or contact from someone with no booking (first one each day) | Only typed messages can be read here. Please type your question, or tap a button below. | यहाँ सिर्फ़ लिखे हुए मैसेज पढ़े जा सकते हैं। कृपया अपना सवाल लिखें या नीचे कोई बटन दबाएँ। |
 | The same, from someone with a held time, a payment in progress or a booking | Only typed messages can be read here. If this was about your payment or booking, our team will check and reply here. | यहाँ सिर्फ़ लिखे हुए मैसेज पढ़े जा सकते हैं। अगर यह आपके भुगतान या बुकिंग के बारे में था, तो हमारी टीम देखकर यहीं जवाब देगी। |
 
-## 2. How it works list
+## 2. Help list
 
-The list behind "How it works". Its last row is "Change language", in the language of the chat.
+The list behind "Help": the six answers, then My bookings, Talk to a person and Change language (nine rows).
 
 | Where it appears | English | हिंदी |
 |---|---|---|
-| List heading | Choose a topic. | एक विषय चुनें। |
+| List heading | How can we help? | हम कैसे मदद कर सकते हैं? |
 | List button (max 20 letters) | Choose | चुनें |
-| Last row of the list (max 24 letters) | Change language | भाषा बदलें |
+| Row: My bookings (max 24 letters) | My bookings | मेरी बुकिंग |
+| Row: Change language (max 24 letters) | Change language | भाषा बदलें |
 | Topic title "what_is_this" (max 24 letters) | What is this? | यह क्या है? |
 | Answer "what_is_this" | Disha Dira offers energy cleansing and healing sessions with Shantha Rao. You can first book a short call to speak with her. | दिशा दिरा में शांता राव जी के साथ हीलिंग और एनर्जी क्लींजिंग सेशन होते हैं। शुरुआत में आप उनसे बात करने के लिए एक छोटी कॉल बुक कर सकते हैं। |
 | Topic title "how_it_works" (max 24 letters) | How it works | यह कैसे होता है |
-| Answer "how_it_works" | 1. Pick a call time. 2. Pay ₹99. 3. Shantha Rao calls you for 15 minutes. 4. If you both agree, you can book a full session. | 1. कॉल का समय चुनें। 2. ₹99 का भुगतान करें। 3. शांता राव जी आपको 15 मिनट के लिए कॉल करेंगी। 4. अगर आप दोनों को ठीक लगे, तो आप पूरा सेशन बुक कर सकते हैं। |
+| Answer "how_it_works" | 1. Pick a call time. 2. Pay ₹99. 3. Shantha Rao calls you for 15 minutes. 4. If you both agree, you can book a full session or a package. | 1. कॉल का समय चुनें। 2. ₹99 का भुगतान करें। 3. शांता राव जी आपको 15 मिनट के लिए कॉल करेंगी। 4. अगर आप दोनों को ठीक लगे, तो आप पूरा सेशन या पैकेज बुक कर सकते हैं। |
 | Topic title "price" (max 24 letters) | Price | फ़ीस |
-| Answer "price" | The first call is ₹99. A full session is ₹700. | पहली कॉल ₹99 की है। पूरा सेशन ₹700 का है। |
+| Answer "price" | The first call is ₹99. A single session is ₹799. Packages: 10 sessions for ₹5,000 (₹500 each) or 20 for ₹9,000 (₹450 each), with no expiry. | पहली कॉल ₹99 की है। एक सेशन ₹799 का है। पैकेज: 10 सेशन ₹5,000 में (₹500 प्रति सेशन) या 20 सेशन ₹9,000 में (₹450 प्रति सेशन), कोई समय-सीमा नहीं। |
 | Topic title "timings" (max 24 letters) | Call timings | कॉल का समय |
 | Answer "timings" | Calls are Monday to Friday, 2 pm to 7 pm (India time). | कॉल सोमवार से शुक्रवार, दोपहर 2 बजे से शाम 7 बजे तक (भारतीय समय) होती हैं। |
 | Topic title "refund" (max 24 letters) | Refunds | रिफ़ंड |
-| Answer "refund" | If Shantha Rao feels the call is not the right fit, your ₹99 is refunded. If we have to cancel, you are refunded too. | अगर पहली कॉल के बाद शांता राव जी को लगे कि यह आपके लिए सही नहीं है, तो आपके ₹99 वापस कर दिए जाते हैं। अगर हमें कॉल रद्द करनी पड़े, तब भी पैसे वापस मिलते हैं। |
+| Answer "refund" | If Shantha Rao feels the call is not the right fit, your ₹99 is refunded. A single session can be moved once, up to 3 hours before, and cancelled for a full refund 24 hours or more before. A package session that you move or cancel 3 hours or more before goes back to your package. If we have to cancel, you are refunded too. | अगर पहली कॉल के बाद शांता राव जी को लगे कि यह आपके लिए सही नहीं है, तो आपके ₹99 वापस कर दिए जाते हैं। एक सेशन का समय 3 घंटे पहले तक एक बार बदला जा सकता है, और 24 घंटे या उससे पहले रद्द करने पर पूरे पैसे वापस मिलते हैं। पैकेज का सेशन 3 घंटे या उससे पहले बदलने या रद्द करने पर आपके पैकेज में वापस जुड़ जाता है। अगर हमें कॉल रद्द करनी पड़े, तब भी पैसे वापस मिलते हैं। |
 | Topic title "privacy" (max 24 letters) | Your privacy | आपकी प्राइवेसी |
 | Answer "privacy" | We keep only your name, WhatsApp number, bookings and payments. Please do not share health details here. | हम सिर्फ़ आपका नाम, WhatsApp नंबर, बुकिंग और भुगतान की जानकारी रखते हैं। चैट के मैसेज आख़िरी मैसेज के 30 दिन बाद मिटा दिए जाते हैं। कृपया यहाँ सेहत से जुड़ी जानकारी या रिपोर्ट न भेजें। |
 
@@ -84,18 +86,18 @@ The steps before the payment: age check (once per person), service, who it is fo
 
 ## 4. After Amma's call
 
-What the customer gets, depending on what Amma tapped. The session uses the same day and time steps, without the age, service and who-for steps.
+What the customer gets, depending on what Amma tapped. After "Session" the customer chooses a single session, 10 or 20 (a list; section 5). A single session uses the same day and time steps, without the age, service and who-for steps.
 
 | Where it appears | English | हिंदी |
 |---|---|---|
-| Session offer: message | Thank you for speaking with Shantha Rao. She would be glad to offer you a full session (₹700). Tap below to choose a time. | शांता राव जी से बात करने के लिए धन्यवाद। वे आपको पूरा सेशन (₹700) देना चाहेंगी। समय चुनने के लिए नीचे टैप करें। |
-| Session offer: button (max 20 letters) | Choose a time | समय चुनें |
+| Session offer: message (above the list of options) | Thank you for speaking with Shantha Rao. She would be glad to offer you a full session. Choose an option below: a single session, or a package of 10 or 20. | शांता राव जी से बात करने के लिए धन्यवाद। वे आपको पूरा सेशन देना चाहेंगी। नीचे एक विकल्प चुनें: एक सेशन, या 10 या 20 सेशन का पैकेज। |
+| Template button "Choose a time" (max 20 letters) | Choose a time | समय चुनें |
 | Session time list: message | Free times on {day} (India time). Each session is 60 minutes. | {day} के लिए खाली समय (भारतीय समय)। हर सेशन 60 मिनट का होता है। |
 | Session time list: line under each time (max 72 letters) | 60-min session | 60 मिनट का सेशन |
 | No session times free | There are no free session times right now. We will message you when new times are open. | अभी सेशन का कोई खाली समय नहीं है। नए समय खुलते ही हम आपको मैसेज करेंगे। |
 | Session cannot be booked from this message | Sorry, we cannot book a session from this message. A person will look into it. | माफ़ कीजिए, इस मैसेज से सेशन बुक नहीं हो सकता। हमारी टीम इसे देखेगी। |
-| Session pay message | {day} at {time} is held for your session for 20 minutes. Tap below to pay ₹700 and confirm. Please don't pay twice. | {day}, {time} का समय आपके सेशन के लिए 20 मिनट तक रोका गया है। बुकिंग पूरी करने के लिए नीचे ₹700 का भुगतान करें। कृपया दो बार भुगतान न करें। |
-| Session pay button (max 20 letters) | Pay ₹700 | ₹700 भुगतान करें |
+| Session pay message | {day} at {time} is held for your session for 20 minutes. Tap below to pay ₹799 and confirm. Please don't pay twice. | {day}, {time} का समय आपके सेशन के लिए 20 मिनट तक रोका गया है। बुकिंग पूरी करने के लिए नीचे ₹799 का भुगतान करें। कृपया दो बार भुगतान न करें। |
+| Session pay button (max 20 letters) | Pay ₹799 | ₹799 भुगतान करें |
 | Session paid and confirmed | Your session with Shantha Rao is confirmed for {day} at {time} (India time). It is a distance session: you stay where you are and she calls you at the booked time. Please keep your phone with you in a quiet place. We will remind you the day before. | शांता राव जी के साथ आपका सेशन {day} को {time} बजे (भारतीय समय) तय हो गया है। यह दूर से होने वाला सेशन है: आप जहाँ हैं वहीं रहें, वे तय समय पर आपको कॉल करेंगी। कृपया किसी शांत जगह पर फ़ोन साथ रखें। एक दिन पहले हम आपको याद दिलाएँगे। |
 | "Not right fit": refund | Thank you for speaking with Shantha Rao. She feels a session isn't the right fit just now, so we've refunded your ₹99. | शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी सेशन आपके लिए सही नहीं है, इसलिए आपके ₹99 वापस कर दिए गए हैं। |
 | "Missed": choose a new time | Sorry we missed each other. Choose a new time for your call. There is nothing more to pay. | माफ़ कीजिए, हमारी बात नहीं हो पाई। अपनी कॉल के लिए नया समय चुनें। आपको कोई और भुगतान नहीं करना है। |
@@ -103,7 +105,51 @@ What the customer gets, depending on what Amma tapped. The session uses the same
 | A call that cannot be moved again | Sorry, this call cannot be moved again. A person will look into it. | माफ़ कीजिए, यह कॉल दोबारा नहीं बदली जा सकती। हमारी टीम इसे देखेगी। |
 | Missed a second time | We were not able to reach you for the second time, so we are closing this booking. Thank you for your interest, and you are welcome to write to us again. | दूसरी बार भी आपसे बात नहीं हो पाई, इसलिए हम यह बुकिंग बंद कर रहे हैं। आपकी रुचि के लिए धन्यवाद। आप कभी भी हमें फिर से लिख सकते हैं। |
 
-## 5. Reminders
+## 5. Sessions, packages and My bookings
+
+Prices and the per-session rates are built from `src/config.ts` (price ÷ sessions). Buying a single session uses the same steps as the first call (age check once, service, who for, day, time, pay). A package has no time step: pay, then book each session from the credits.
+
+| Where it appears | English | हिंदी |
+|---|---|---|
+| Sessions & packages: list heading | Sessions are 60 minutes by phone. Choose an option. Most people start with the ₹99 call, so Shantha Rao can suggest what suits them. | हर सेशन 60 मिनट का होता है, फ़ोन पर। एक विकल्प चुनें। ज़्यादातर लोग ₹99 की कॉल से शुरू करते हैं, ताकि शांता राव जी बता सकें कि उनके लिए क्या ठीक रहेगा। |
+| Sessions & packages: list button (max 20 letters) | See options | विकल्प देखें |
+| Row 1: the first call (max 24 letters) | ₹99 first call | ₹99 पहली कॉल |
+| Row 1: line under it (max 72 letters) | 15 min with Shantha Rao | शांता राव जी से 15 मिनट |
+| Row 2: single session (max 24 letters) | Single session | एक सेशन |
+| Row 2: line under it (max 72 letters) | ₹799 | ₹799 |
+| Row 3: the 10-pack (max 24 letters) | 10 sessions | 10 सेशन |
+| Row 3: line under it (max 72 letters) | ₹5,000 · ₹500 each · no expiry | ₹5,000 · ₹500 प्रति सेशन · कोई समय-सीमा नहीं |
+| Row 4: the 20-pack (max 24 letters) | 20 sessions | 20 सेशन |
+| Row 4: line under it (max 72 letters) | ₹9,000 · ₹450 each · no expiry | ₹9,000 · ₹450 प्रति सेशन · कोई समय-सीमा नहीं |
+| Soft gate: shown when someone who never had the first call picks a session or package (buttons: Book call / Continue) | Most people start with a ₹99 call, so Shantha Rao can understand what you need first. Would you like to do that, or continue? | ज़्यादातर लोग पहले ₹99 की कॉल करते हैं, ताकि शांता राव जी आपकी ज़रूरत समझ सकें। क्या आप ऐसा करना चाहेंगे, या आगे बढ़ें? |
+| Soft gate: Continue (max 20 letters) | Continue | आगे बढ़ें |
+| Package: pay message (above the pay button) | 10 sessions for {price}. Tap below to pay. After that, you book each session whenever you like, with no payment per session. Please don't pay twice. | 10 सेशन {price} में। भुगतान के लिए नीचे टैप करें। उसके बाद आप जब चाहें हर सेशन बुक कर सकते हैं, हर बार भुगतान नहीं करना होगा। कृपया दो बार भुगतान न करें। |
+| Package: pay button (max 20 letters) | Pay {price} | {price} भुगतान करें |
+| Package: a payment link is already open | A payment link for a package is already open. Please use the payment button above, or try again in a few minutes. | पैकेज का भुगतान लिंक पहले से खुला है। कृपया ऊपर दिए भुगतान बटन का इस्तेमाल करें, या कुछ मिनट बाद फिर कोशिश करें। |
+| Package paid: the credits are added (button below: Book a session) | Payment received. You have 10 sessions. Book your first one now? | भुगतान मिल गया। आपके पास 10 सेशन हैं। क्या अभी पहला सेशन बुक करें? |
+| Button under it (max 20 letters) | Book a session | सेशन बुक करें |
+| A session booked from a package credit | Your session is booked for {day} at {time} (India time). Shantha Rao will call you then. Sessions left: 9. | आपका सेशन {day} को {time} बजे (भारतीय समय) बुक हो गया है। शांता राव जी उसी समय कॉल करेंगी। बचे हुए सेशन: 9। |
+| Two sessions are already booked | You already have 2 upcoming sessions. You can book the next one after one of them. | आपके 2 सेशन पहले से बुक हैं। उनमें से एक होने के बाद आप अगला बुक कर सकते हैं। |
+| No sessions left in the package | You have no sessions left in your package. You can buy a single session or a new package from "Sessions & packages". | आपके पैकेज में कोई सेशन नहीं बचा है। आप "सेशन और पैकेज" से एक सेशन या नया पैकेज ले सकते हैं। |
+| Sessions left (added when there is nothing booked) | Sessions left in your package: 9. | पैकेज में बचे सेशन: 9। |
+| My bookings: the list and the sessions left, for someone with a package | Your bookings: {list}. Sessions left in your package: 9. | आपकी बुकिंग: {list}। पैकेज में बचे सेशन: 9। |
+| My bookings: the list, for someone without a package | Your bookings: {list}. | आपकी बुकिंग: {list}। |
+| My bookings: nothing booked | You have no upcoming bookings. | आपकी कोई आने वाली बुकिंग नहीं है। |
+| My bookings: one entry (the word is call or session) | {call or session} on {day} at {time} | {call or session}, {day} को {time} बजे |
+| My bookings: one session, with the buttons Move and Cancel (when there is more than one booking) | Your session on {day} at {time}. What would you like to do? | {day} को {time} बजे आपका सेशन। आप क्या करना चाहेंगे? |
+| Button (max 20 letters) | Move | समय बदलें |
+| Button (max 20 letters) | Cancel | रद्द करें |
+| A booking that no longer exists or has changed | Sorry, we couldn't find that booking. It may have changed. Please open My bookings again. | माफ़ कीजिए, वह बुकिंग नहीं मिली। शायद वह बदल गई है। कृपया "मेरी बुकिंग" फिर से खोलें। |
+| Less than 3 hours before: it can no longer be moved or cancelled | Sorry, sessions can only be moved or cancelled up to 3 hours before. | माफ़ कीजिए, सेशन का समय सिर्फ़ 3 घंटे पहले तक बदला या रद्द किया जा सकता है। |
+| A single session that was already moved once (button: Talk to a person) | This session has already been moved once, so it can't be moved again. If you need help, please talk to a person from our team. | इस सेशन का समय एक बार बदला जा चुका है, इसलिए इसे दोबारा नहीं बदला जा सकता। मदद चाहिए तो कृपया हमारी टीम के किसी व्यक्ति से बात करें। |
+| A session moved to a new time | Done. Your session is now on {day} at {time} (India time). | हो गया। आपका सेशन अब {day} को {time} बजे (भारतीय समय) है। |
+| A package session cancelled in time: the credit is back | Cancelled. The session is back in your package. Sessions left: 9. | रद्द हो गया। सेशन आपके पैकेज में वापस जुड़ गया है। बचे हुए सेशन: 9। |
+| A single session cancelled 24 hours or more before: refund | Cancelled. As it was 24 hours or more before, the full amount will be refunded to your original payment method. | रद्द हो गया। क्योंकि यह 24 घंटे या उससे पहले था, पूरी राशि आपके भुगतान के तरीके में वापस कर दी जाएगी। |
+| A single session cancelled 3 to 24 hours before: no refund, move instead (buttons: Move / Keep it) | Between 3 and 24 hours before, a single session can't be refunded, but you can move it once. Move it instead? | 3 से 24 घंटे पहले, एक सेशन का पैसा वापस नहीं होता, लेकिन आप एक बार समय बदल सकते हैं। क्या समय बदलें? |
+| "Not right fit" on a first session: the whole purchase is refunded | Thank you for speaking with Shantha Rao. She feels this isn't the right fit just now, so we've refunded your payment of {amount}. | शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी यह आपके लिए सही नहीं है, इसलिए आपके {amount} वापस कर दिए गए हैं। |
+| Unused package sessions refunded | We've refunded {amount} for the sessions you didn't use. It goes back to your original payment method. | आपके बिना इस्तेमाल हुए सेशन के {amount} वापस कर दिए गए हैं। यह राशि आपके भुगतान के तरीके में लौटेगी। |
+
+## 6. Reminders
 
 Sent the evening before a call or a session. The two words are the first value of the reminder template.
 
@@ -114,7 +160,7 @@ Sent the evening before a call or a session. The two words are the first value o
 | The word "call" (template value) | call | कॉल |
 | The word "session" (template value) | session | सेशन |
 
-## 6. Safety, noise and re-prompts
+## 7. Safety, noise and re-prompts
 
 Sent by code, never by the AI. The crisis and emergency messages go to everyone, whatever their state. When someone types while a booking step is open, the step is sent again with the re-prompt line and, on the day and time steps, the hint.
 
@@ -133,7 +179,7 @@ Sent by code, never by the AI. The crisis and emergency messages go to everyone,
 | Book tapped by someone who already has a call (with the buttons below) | You already have a call on {day} at {time}. Shantha Rao will call you then. | आपकी कॉल पहले से {day} को {time} बजे बुक है। शांता राव जी उसी समय कॉल करेंगी। |
 | Button under it (max 20 letters); the other button is Talk to a person | Keep it | ठीक है |
 
-## 7. Amma's page
+## 8. Amma's page
 
 English only. No chat text and no health details are ever shown here.
 
@@ -150,7 +196,7 @@ English only. No chat text and no health details are ever shown here.
 | protection | Energy cleansing |
 | healing | Healing |
 | kindCall | Call ₹99 |
-| kindSession | Session ₹700 |
+| kindSessionSingle | Session ₹799 · single |
 | btnCall | Call |
 | btnSession | Session |
 | btnNotFit | Not right fit |

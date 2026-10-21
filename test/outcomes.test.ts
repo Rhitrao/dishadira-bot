@@ -129,7 +129,7 @@ describe("applying outcomes", () => {
     expect(refundPosts()).toHaveLength(0);
   });
 
-  it("SESSION: intro CALLED_SESSION, session OFFERED, a 'Choose a time' button inside the 24h window", async () => {
+  it("SESSION: intro CALLED_SESSION, session OFFERED, the options list (single, 10, 20) inside the 24h window", async () => {
     const a = await seedPaid();
     await tap(a.introId, "SESSION");
     at(NOW + 11 * MIN);
@@ -137,8 +137,8 @@ describe("applying outcomes", () => {
     const ses = await db.prepare("SELECT id, state FROM sessions WHERE intro_id = ?1").bind(a.introId).first<{ id: number; state: string }>();
     expect(ses!.state).toBe("OFFERED");
     const msg = waSent()[0];
-    expect(msg.interactive.type).toBe("button");
-    expect(msg.interactive.action.buttons).toEqual([{ type: "reply", reply: { id: `sess_offer_${ses!.id}`, title: "Choose a time" } }]);
+    expect(msg.interactive.type).toBe("list"); // single session, 10 or 20
+    expect(msg.interactive.action.sections.flatMap((s: { rows: { id: string }[] }) => s.rows.map((r) => r.id))).toEqual([`sess_offer_${ses!.id}`, "go_p10", "go_p20"]);
     expect(await count("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'OUTCOME_APPLIED' AND target = 'intro:" + a.introId + "'")).toBe(1);
   });
 
@@ -273,7 +273,7 @@ describe("RUDE", () => {
   });
 });
 
-describe("₹700 session", () => {
+describe("₹799 session", () => {
   async function offered(o: { intro?: string; callIdx?: number } = {}) {
     const a = await seedPaid(call(o.callIdx ?? 0));
     await db.prepare("UPDATE intros SET state = ?2 WHERE id = ?1").bind(a.introId, o.intro ?? "CALLED_SESSION").run();
@@ -314,19 +314,19 @@ describe("₹700 session", () => {
     const start = rows[0].id.split("_")[2];
     expect(await db.prepare("SELECT state FROM sessions WHERE id = ?1").bind(a.sid).first()).toEqual({ state: "HELD" });
     const pay = (await db.prepare("SELECT id, provider_link_id AS link, amount_paise AS amt, state FROM payments WHERE purpose = 'SESSION'").first<{ id: number; link: string; amt: number; state: string }>())!;
-    expect(pay).toMatchObject({ amt: 70000, state: "PENDING" });
+    expect(pay).toMatchObject({ amt: 79900, state: "PENDING" });
     const body = fake.posts("/payment_links")[0].body as Record<string, unknown>;
-    expect(body).toMatchObject({ amount: 70000, accept_partial: false, reference_id: pay.link });
+    expect(body).toMatchObject({ amount: 79900, accept_partial: false, reference_id: pay.link });
     expect(body.expire_by).toBe(Date.parse("2026-10-05T06:20:00Z") / 1000); // now (11:30 IST) + 20-minute hold
-    expect(waSent().at(-1).interactive.action.parameters.display_text).toBe("Pay ₹700");
+    expect(waSent().at(-1).interactive.action.parameters.display_text).toBe("Pay ₹799");
 
-    expect((await hook(paidEvent(pay.link, "700.00"))).status).toBe(200);
+    expect((await hook(paidEvent(pay.link, "799.00"))).status).toBe(200);
     expect(await db.prepare("SELECT state FROM sessions WHERE id = ?1").bind(a.sid).first()).toEqual({ state: "CONFIRMED" });
     expect(await db.prepare("SELECT state FROM slots WHERE kind = 'SESSION' AND start_utc = ?1").bind(start).first()).toEqual({ state: "BOOKED" });
     const text: string = waSent().at(-1).text.body;
     expect(text).toContain("distance session");
     expect(text).toMatch(/confirmed for \w{3}, \d+ \w{3} at \d+:\d\d [ap]m/);
-    await hook(paidEvent(pay.link, "700.00", "2026-10-05T12:00:01+05:30")); // replay
+    await hook(paidEvent(pay.link, "799.00", "2026-10-05T12:00:01+05:30")); // replay
     expect(waSent().filter((m) => m.text?.body?.includes("distance session"))).toHaveLength(1);
   });
 
@@ -349,21 +349,21 @@ describe("₹700 session", () => {
     at(NOW + 21 * MIN); // hold lapsed
     const other = await person();
     expect((await holdSlot(db, { kind: "SESSION", startUtc: start, ownerId: other, nowMs: Date.now() })).ok).toBe(true);
-    await hook(paidEvent(link, "700.00"));
+    await hook(paidEvent(link, "799.00"));
     expect(await db.prepare("SELECT owner_id AS o, state FROM slots WHERE kind = 'SESSION' AND start_utc = ?1").bind(start).first()).toEqual({ o: other, state: "HELD" });
     expect(await db.prepare("SELECT state FROM sessions WHERE id = ?1").bind(a.sid).first()).toEqual({ state: "EXPIRED" });
     expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'LATE_PAYMENT_NO_SLOT'")).toBe(1);
     expect(waSent().filter((m) => m.text?.body?.includes("distance session"))).toHaveLength(0);
   });
 
-  it("a second ₹700 payment for the same session is refunded as a duplicate", async () => {
+  it("a second ₹799 payment for the same session is refunded as a duplicate", async () => {
     const a = await offered();
     await sessionChoice(env(), `sess_${a.sid}_${sessionSlot(3).startUtc}`, a.conv, "m1");
     const first = (await db.prepare("SELECT provider_link_id AS l FROM payments WHERE purpose = 'SESSION'").first<{ l: string }>())!.l;
-    await hook(paidEvent(first, "700.00"));
-    await db.prepare("INSERT INTO payments (provider,purpose,target_id,provider_link_id,amount_paise,state) VALUES ('razorpay','SESSION',?1,'di-session-dup',70000,'PENDING')").bind(a.sid).run();
-    await hook(paidEvent("di-session-dup", "700.00", "2026-10-05T12:05:00+05:30"));
-    expect(refundPosts()).toEqual([{ amount: 70000, speed: "normal", receipt: expect.stringMatching(/^refund-\d+$/), notes: { refund_id: expect.stringMatching(/^refund-\d+$/), reason: expect.any(String) } }]);
+    await hook(paidEvent(first, "799.00"));
+    await db.prepare("INSERT INTO payments (provider,purpose,target_id,provider_link_id,amount_paise,state) VALUES ('razorpay','SESSION',?1,'di-session-dup',79900,'PENDING')").bind(a.sid).run();
+    await hook(paidEvent("di-session-dup", "799.00", "2026-10-05T12:05:00+05:30"));
+    expect(refundPosts()).toEqual([{ amount: 79900, speed: "normal", receipt: expect.stringMatching(/^refund-\d+$/), notes: { refund_id: expect.stringMatching(/^refund-\d+$/), reason: expect.any(String) } }]);
     expect(await db.prepare("SELECT state FROM sessions WHERE id = ?1").bind(a.sid).first()).toEqual({ state: "CONFIRMED" });
   });
 });

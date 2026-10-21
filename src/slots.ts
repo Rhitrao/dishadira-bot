@@ -147,7 +147,7 @@ export async function availableSlots(db: D1Database, kind: SlotKind, ymd: string
 }
 
 // --- tiny named-parameter helper (D1 only supports ?N / ? placeholders) ---
-function bind(db: D1Database, sql: string, params: Record<string, string | number>) {
+export function bind(db: D1Database, sql: string, params: Record<string, string | number>) {
   const names: string[] = [];
   const text = sql.replace(/:(\w+)/g, (_, n: string) => {
     let i = names.indexOf(n);

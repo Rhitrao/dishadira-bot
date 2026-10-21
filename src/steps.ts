@@ -8,7 +8,7 @@ import type { Env } from "./env";
 import { sendMessage, type Out, type SendResult } from "./send";
 import { iso } from "./slots";
 
-export type StepName = "language" | "age" | "service" | "who" | "day" | "time" | "pay" | "gate" | "bookings";
+export type StepName = "language" | "age" | "service" | "who" | "day" | "time" | "pay" | "gate" | "bookings" | "packages";
 
 // Sends a step message and, if it went out, makes it the open step. `resend` is what to send again if it differs from the message itself
 // (the language step resends the short language question, not the whole greeting). `until` is when the step stops being open (a payment step: the hold).

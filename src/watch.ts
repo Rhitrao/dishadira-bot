@@ -34,7 +34,7 @@ export async function raiseAwayItems(env: Env, nowMs = Date.now()): Promise<numb
   const sessions = await env.DB
     .prepare(
       `SELECT se.id FROM sessions se JOIN slots s ON s.id = se.slot_id
-       WHERE se.state = 'CONFIRMED' AND s.kind = 'SESSION' AND s.start_utc > ?3 AND s.start_utc >= ?1 AND s.start_utc < ?2`,
+       WHERE se.state IN ('CONFIRMED','CREDIT_BOOKED') AND s.kind = 'SESSION' AND s.start_utc > ?3 AND s.start_utc >= ?1 AND s.start_utc < ?2`,
     )
     .bind(from, to, now)
     .all<{ id: number }>();

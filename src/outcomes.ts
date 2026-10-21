@@ -3,23 +3,24 @@
 // changes), so a failed attempt is released and simply tried again.
 import { config } from "./config";
 import { freeCallSlots } from "./booking";
-import { copyFor, langOf } from "./copy";
+import { copyFor, langOf, rupees } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
+import { sessionOfferOut } from "./packages";
 import { requestRefund } from "./pay/refund";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
 import { formatIstLang, holdSlot, iso } from "./slots";
 
 const nowIso = () => iso(Date.now());
-type Due = { id: number; introId: number; value: string };
+type Due = { id: number; introId: number | null; sessionId: number | null; value: string };
 type Intro = { id: number; state: string; rc: number; conv: number; service: string; slotId: number | null; locale: string };
 
 export async function applyDueOutcomes(env: Env, provider: PaymentProvider, nowMs = Date.now()): Promise<number> {
   const db = env.DB;
   const now = iso(nowMs);
   const { results } = await db
-    .prepare("SELECT id, intro_id AS introId, value FROM outcomes WHERE applied_at IS NULL AND undo_until <= ?1 ORDER BY id LIMIT 25")
+    .prepare("SELECT id, intro_id AS introId, session_id AS sessionId, value FROM outcomes WHERE applied_at IS NULL AND undo_until <= ?1 ORDER BY id LIMIT 25")
     .bind(now)
     .all<Due>();
   let applied = 0;
@@ -34,17 +35,78 @@ export async function applyDueOutcomes(env: Env, provider: PaymentProvider, nowM
       applied++;
     } catch {
       await db.prepare("UPDATE outcomes SET applied_at = NULL WHERE id = ?1 AND applied_at = ?2").bind(o.id, now).run(); // retry next run
-      await raiseAttention(db, "OUTCOME_FAILED", `intro:${o.introId}`);
+      await raiseAttention(db, "OUTCOME_FAILED", targetOf(o));
     }
   }
   return applied;
 }
 
+const targetOf = (o: Due) => (o.introId !== null ? `intro:${o.introId}` : `session:${o.sessionId}`);
 const audit = (env: Env, o: Due, detail: string) =>
-  env.DB.prepare("INSERT INTO audit_log (at, actor, action, target, detail) VALUES (?1, 'system', 'OUTCOME_APPLIED', ?2, ?3)").bind(nowIso(), `intro:${o.introId}`, `${o.value}: ${detail}`).run();
+  env.DB.prepare("INSERT INTO audit_log (at, actor, action, target, detail) VALUES (?1, 'system', 'OUTCOME_APPLIED', ?2, ?3)").bind(nowIso(), targetOf(o), `${o.value}: ${detail}`).run();
+
+// "Not right fit" on a buyer's very first session (no 99 call before it): the whole purchase is refunded, once per person (the same refund rules as the 99 call).
+// For a package the unused credits and the other upcoming sessions go too, and the package is closed.
+async function applySessionNotFit(env: Env, provider: PaymentProvider, o: Due): Promise<void> {
+  const db = env.DB;
+  const ses = await db
+    .prepare("SELECT se.id, se.state, se.conversation_id AS conv, se.origin, se.package_id AS pkg, c.locale FROM sessions se JOIN conversations c ON c.id = se.conversation_id WHERE se.id = ?1")
+    .bind(o.sessionId)
+    .first<{ id: number; state: string; conv: number; origin: string; pkg: number | null; locale: string }>();
+  if (!ses || !["CONFIRMED", "CREDIT_BOOKED"].includes(ses.state)) {
+    await raiseAttention(db, "OUTCOME_STALE", targetOf(o));
+    await audit(env, o, `skipped, session is ${ses?.state ?? "missing"}`);
+    return;
+  }
+  const paid = "('PAID','REFUND_PENDING','REFUNDED','REFUND_FAILED')";
+  const pay =
+    ses.origin === "CREDIT" && ses.pkg
+      ? await db.prepare(`SELECT p.id, p.amount_paise AS amount FROM packages k JOIN payments p ON p.id = k.payment_id WHERE k.id = ?1 AND p.state IN ${paid}`).bind(ses.pkg).first<{ id: number; amount: number }>()
+      : await db.prepare(`SELECT id, amount_paise AS amount FROM payments WHERE purpose = 'SESSION' AND target_id = ?1 AND state IN ${paid} ORDER BY id LIMIT 1`).bind(ses.id).first<{ id: number; amount: number }>();
+  await db.prepare("UPDATE sessions SET state = 'NOT_FIT', updated_at = ?2 WHERE id = ?1 AND state IN ('CONFIRMED','CREDIT_BOOKED')").bind(ses.id, nowIso()).run();
+  if (!pay) {
+    await raiseAttention(db, "NOT_FIT_NO_PAYMENT", targetOf(o));
+    await audit(env, o, "session NOT_FIT, no paid payment to refund");
+    return;
+  }
+  const why = await requestRefund(env, provider, pay.id, "NOT_FIT", "amma");
+  if (why === "PERSON_LIMIT" || why === "DAILY_LIMIT") {
+    await raiseAttention(db, "NOT_FIT_REFUND_REFUSED", `payment:${pay.id}`);
+    await audit(env, o, `session NOT_FIT, refund refused (${why})`);
+    return;
+  }
+  if (ses.origin === "CREDIT" && ses.pkg) {
+    // The package is refunded in full: its other upcoming sessions are cancelled and what is left on the ledger goes to zero.
+    const now = nowIso();
+    await db.batch([
+      db.prepare("UPDATE slots SET state = 'HELD', hold_until = ?2 WHERE state = 'BOOKED' AND id IN (SELECT slot_id FROM sessions WHERE package_id = ?1 AND state = 'CREDIT_BOOKED' AND id != ?3)").bind(ses.pkg, now, ses.id),
+      db.prepare("UPDATE sessions SET state = 'CANCELLED', updated_at = ?2 WHERE package_id = ?1 AND state = 'CREDIT_BOOKED' AND id != ?3").bind(ses.pkg, now, ses.id),
+      db
+        .prepare(
+          `INSERT INTO credits (package_id, delta, reason, at, by)
+           SELECT ?1, -SUM(delta), 'REFUND', ?2, 'system' FROM credits WHERE package_id = ?1 HAVING SUM(delta) > 0`,
+        )
+        .bind(ses.pkg, now),
+      db.prepare("UPDATE packages SET state = 'CLOSED', updated_at = ?2 WHERE id = ?1 AND state = 'PAID'").bind(ses.pkg, now),
+    ]);
+  }
+  const refund = await db.prepare("SELECT state FROM refunds WHERE payment_id = ?1").bind(pay.id).first<{ state: string }>();
+  if (refund?.state !== "FAILED") {
+    const amount = rupees(pay.amount);
+    await sendOrTemplate(
+      env,
+      ses.conv,
+      { type: "text", text: copyFor(ses.locale).notFitRefundSession(amount) },
+      { type: "template", name: "payment_update", params: [amount] },
+      `outcome:${o.id}:refund`,
+    );
+  }
+  await audit(env, o, `session NOT_FIT, refund ${why} for payment ${pay.id}`);
+}
 
 async function applyOne(env: Env, provider: PaymentProvider, o: Due): Promise<void> {
   const db = env.DB;
+  if (o.introId === null) return applySessionNotFit(env, provider, o);
   const intro = await db
     .prepare(
       `SELECT i.id, i.state, i.reschedule_count AS rc, i.conversation_id AS conv, i.service, i.slot_id AS slotId, c.locale
@@ -72,7 +134,7 @@ async function applyOne(env: Env, provider: PaymentProvider, o: Due): Promise<vo
     await sendOrTemplate(
       env,
       intro.conv,
-      { type: "buttons", body: cp.sessionOfferBody, buttons: [{ id: `sess_offer_${ses!.id}`, title: cp.btnChooseTime }] },
+      sessionOfferOut(cp, ses!.id), // the options: single, 10 or 20
       { type: "template", name: "session_offer", params: [] },
       key("offer"),
     );
@@ -104,7 +166,7 @@ async function applyOne(env: Env, provider: PaymentProvider, o: Due): Promise<vo
         env,
         intro.conv,
         { type: "text", text: cp.notFitRefund },
-        { type: "template", name: "payment_update", params: [`₹${config.prices.introPaise / 100}`] },
+        { type: "template", name: "payment_update", params: [rupees(config.prices.intro)] },
         key("refund"),
       );
     }

@@ -117,7 +117,7 @@ describe("page", () => {
     expect(page).toContain("Anita");
     expect(page).toContain("Healing");
     expect(page).toContain("Call ₹99");
-    expect(page).toContain("Session ₹700");
+    expect(page).toContain("Session ₹799 · single");
     expect(page).toContain('href="tel:+919000000001"');
     expect(page).not.toContain("Sharma");
     expect(page).not.toContain("Dayafter");
@@ -345,5 +345,86 @@ describe("after the outcome is applied", () => {
     expect(page).toContain("Done: Session");
     expect(page).not.toContain("Undo");
     expect(page).not.toContain("/amma/confirm");
+  });
+});
+
+// ---- sessions bought from the menu (ticket 13): single or package, and "Not right fit" on a buyer's very first session ----
+describe("sessions bought from the menu", () => {
+  async function bought(ymd: string, i: number, name: string, o: { origin: "SELF" | "CREDIT"; size?: number; booked?: number; intro?: boolean }) {
+    const conv = await addPerson(db, String(++wa));
+    await db.prepare("UPDATE conversations SET display_name = ?2 WHERE id = ?1").bind(conv, name).run();
+    const s = generateSlots(ymd, "SESSION")[i];
+    const slot = await db.prepare("INSERT INTO slots (kind,start_utc,end_utc,owner_id,state) VALUES ('SESSION',?1,?2,?3,'BOOKED')").bind(s.startUtc, s.endUtc, conv).run();
+    let pkg: number | null = null;
+    if (o.origin === "CREDIT") {
+      pkg = (await db.prepare("INSERT INTO packages (conversation_id, size, price_paise, state) VALUES (?1, ?2, 500000, 'PAID')").bind(conv, o.size ?? 10).run()).meta.last_row_id;
+      // earlier sessions of the same package, then this one: "package 3/10" when two came before
+      for (let k = 0; k < (o.booked ?? 0); k++) {
+        const e = await db.prepare("INSERT INTO sessions (conversation_id, service, state, origin, package_id) VALUES (?1,'HEALING','COMPLETED','CREDIT',?2)").bind(conv, pkg).run();
+        await db.prepare("INSERT INTO credits (package_id, delta, reason, session_id, at, by) VALUES (?1,-1,'BOOK',?2,'x','c')").bind(pkg, e.meta.last_row_id).run();
+      }
+    }
+    if (o.intro) await db.prepare("INSERT INTO intros (conversation_id, service, state) VALUES (?1,'HEALING','CALLED_SESSION')").bind(conv).run();
+    const ses = await db
+      .prepare("INSERT INTO sessions (conversation_id, slot_id, service, state, origin, package_id, for_whom, call_lang) VALUES (?1,?2,'HEALING',?3,?4,?5,'FAMILY','hi')")
+      .bind(conv, slot.meta.last_row_id, o.origin === "CREDIT" ? "CREDIT_BOOKED" : "CONFIRMED", o.origin, pkg)
+      .run();
+    if (pkg) await db.prepare("INSERT INTO credits (package_id, delta, reason, session_id, at, by) VALUES (?1,-1,'BOOK',?2,'x','c')").bind(pkg, ses.meta.last_row_id).run();
+    return { conv, sid: ses.meta.last_row_id as number };
+  }
+  const confirmSession = async (sid: number, v = "NOT_FIT") => {
+    const page = await (await get(`/amma/confirm?session=${sid}&v=${v}`)).text();
+    return post("/amma/outcome", { session: String(sid), v, csrf: hidden(page, "csrf") });
+  };
+
+  it("a package session shows 'package 3/10'; a single shows 'single'; the call language and who it is for come from the session", async () => {
+    await bought("2026-10-05", 4, "Pack Person", { origin: "CREDIT", size: 10, booked: 2, intro: true });
+    await bought("2026-10-05", 3, "Single Person", { origin: "SELF" });
+    const page = await (await get("/amma")).text();
+    expect(page).toContain("Session · package 3/10");
+    expect(page).toContain("Session ₹799 · single");
+    expect(page).toContain("Hindi · family");
+  });
+
+  it("a buyer's very first session (no 99 call before it) can be answered 'Not right fit' once it has started; nothing else is offered", async () => {
+    const { sid } = await bought("2026-10-05", 0, "First Buyer", { origin: "SELF" }); // 14:00 IST, started
+    const page = await (await get("/amma")).text();
+    expect(page).toContain(`/amma/confirm?session=${sid}&v=NOT_FIT`);
+    expect(page).not.toContain("v=SESSION");
+    expect(page).not.toContain("v=RUDE");
+    const res = await confirmSession(sid);
+    expect(res.status).toBe(200);
+    expect(await db.prepare("SELECT value, session_id AS sid, intro_id AS iid FROM outcomes").first()).toEqual({ value: "NOT_FIT", sid, iid: null });
+    expect(await db.prepare("SELECT target, detail FROM audit_log WHERE action = 'AMMA_OUTCOME'").first()).toEqual({ target: `session:${sid}`, detail: "NOT_FIT" });
+    expect((await confirmSession(sid)).status).toBe(409); // one answer
+    const after = await (await get("/amma")).text();
+    expect(after).toContain("Saved: Not right fit");
+    expect(after).toContain("Undo");
+  });
+
+  it("the undo window works for a session too: undone, never applied", async () => {
+    const { sid } = await bought("2026-10-05", 0, "First Buyer", { origin: "SELF" });
+    await confirmSession(sid);
+    const oid = (await db.prepare("SELECT id FROM outcomes").first<{ id: number }>())!.id;
+    const page = await (await get("/amma")).text();
+    const res = await post("/amma/undo", { outcome: String(oid), csrf: hidden(page, "csrf") });
+    expect(res.status).toBe(200);
+    expect(await outcomeCount()).toBe(0);
+    expect(await db.prepare("SELECT action, target FROM audit_log WHERE action = 'AMMA_UNDO'").first()).toEqual({ action: "AMMA_UNDO", target: `session:${sid}` });
+  });
+
+  it("no answer is offered for a session after a 99 call, one that has not started, or one Amma offered; a forged or missing token is refused", async () => {
+    const afterCall = await bought("2026-10-05", 0, "Had A Call", { origin: "CREDIT", intro: true });
+    const future = await bought("2026-10-06", 0, "Future Buyer", { origin: "SELF" });
+    await booking("2026-10-05", 1, "Offered Person", { kind: "SESSION" }); // origin AMMA: offered by Amma after a call
+    const page = await (await get("/amma")).text();
+    expect(page).not.toContain("v=NOT_FIT");
+    expect((await get(`/amma/confirm?session=${afterCall.sid}&v=NOT_FIT`)).status).toBe(404); // not a first session
+    expect((await get(`/amma/confirm?session=${future.sid}&v=NOT_FIT`)).status).toBe(409); // not started yet
+    const first = await bought("2026-10-05", 2, "Real First", { origin: "SELF" });
+    expect((await post("/amma/outcome", { session: String(first.sid), v: "NOT_FIT", csrf: "nope" })).status).toBe(403);
+    expect((await post("/amma/outcome", { session: String(first.sid), v: "SESSION", csrf: "nope" })).status).toBe(403);
+    expect((await app.request(ORIGIN + "/amma/outcome", { method: "POST", body: "session=1" }, env())).status).toBe(403);
+    expect(await outcomeCount()).toBe(0);
   });
 });

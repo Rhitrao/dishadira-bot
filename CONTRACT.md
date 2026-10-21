@@ -77,7 +77,7 @@ Verify raw-body signatures (Meta X-Hub-Signature-256, Razorpay X-Razorpay-Signat
 Before returning 200, commit the event and its business change plus any reply intent, or return a retriable error.
 Outbound sends: PENDING -> SENDING -> SENT | FAILED | UNKNOWN, claimed atomically. No blind resend after a timeout.
 Outside the 24-hour window only approved templates: call_booked, session_offer, session_confirmed, reminder,
-  payment_update. All UTILITY. If a needed template isn't approved, raise attention instead of sending.
+  payment_update, package_confirmed, session_booked. All UTILITY. If a needed template isn't approved, raise attention instead of sending.
 
 Amma's page (/amma)
 Behind Cloudflare Access (Amma's Google account) plus Worker JWT check. Big text, one column, phone-first.

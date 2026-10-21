@@ -139,12 +139,12 @@ describe("the whole booking, in both languages, within WhatsApp's limits", () =>
 
       await tapButton(from, `lang_${lang}`);
       expect(last().interactive.body.text).toBe(c.menuBody);
-      expect(buttonTitles(last())).toEqual([c.btnBook, c.btnHow, c.btnPerson]);
-      expect(buttonIds(last())).toEqual(["menu_book", "menu_how", "menu_person"]);
+      expect(buttonTitles(last())).toEqual([c.btnBook, c.btnPackages, c.btnHelp]);
+      expect(buttonIds(last())).toEqual(["menu_book", "menu_pack", "menu_how"]);
 
       await tapButton(from, "menu_how");
       const faq = rowsOf(last());
-      expect(faq.map((r) => r.id)).toEqual([...config.faqIds.map((id) => `faq_${id}`), "menu_lang"]);
+      expect(faq.map((r) => r.id)).toEqual([...config.faqIds.map((id) => `faq_${id}`), "menu_bookings", "menu_person", "menu_lang"]);
       expect(faq.at(-1).title).toBe(c.changeLanguageRow);
       expect(faq[0].title).toBe(c.faqTitles.what_is_this);
       await tapRow(from, "menu_lang");
@@ -152,7 +152,7 @@ describe("the whole booking, in both languages, within WhatsApp's limits", () =>
       expect(last().interactive.body.text).toBe(c.chooseLanguage);
       await tapRow(from, "faq_timings");
       expect(sent().at(-2).text.body).toBe(c.faqAnswers.timings);
-      expect(buttonIds(last())).toEqual(["menu_book", "menu_how", "menu_person"]); // the menu again
+      expect(buttonIds(last())).toEqual(["menu_book", "menu_pack", "menu_how"]); // the menu again
 
       await tapButton(from, "menu_book");
       expect(last().interactive.body.text).toBe(c.ageCheck);
@@ -445,7 +445,7 @@ describe("photos, voice notes and files", () => {
       await media(from, "audio");
       expect(sent()).toHaveLength(2);
       expect(sent()[0].text.body).toBe(allCopy[lang].mediaNotice);
-      expect(buttonTitles(sent()[1])).toEqual([allCopy[lang].btnBook, allCopy[lang].btnHow, allCopy[lang].btnPerson]);
+      expect(buttonTitles(sent()[1])).toEqual([allCopy[lang].btnBook, allCopy[lang].btnPackages, allCopy[lang].btnHelp]);
       for (const t of TYPES) await media(from, t);
       expect(sent()).toHaveLength(2);
       expect(await count("SELECT COUNT(*) AS n FROM attention")).toBe(0);
@@ -527,7 +527,7 @@ describe("menu words", () => {
         fetchMock.mockClear();
         await typed(from, w);
         expect(sent(), w).toHaveLength(1);
-        expect(buttonTitles(last()), w).toEqual([allCopy[lang].btnBook, allCopy[lang].btnHow, allCopy[lang].btnPerson]);
+        expect(buttonTitles(last()), w).toEqual([allCopy[lang].btnBook, allCopy[lang].btnPackages, allCopy[lang].btnHelp]);
       }
       expect(await count("SELECT COUNT(*) AS n FROM attention")).toBe(0);
       expect(await count("SELECT COUNT(*) AS n FROM messages WHERE dedupe_key LIKE '%:ack'")).toBe(0);
@@ -601,7 +601,7 @@ describe("talk to a person, and HUMAN mode", () => {
     await tapButton(from, "menu_person");
     fetchMock.mockClear();
     await post(wrap(from, { type: "button", button: { payload: "Choose a time", text: "Choose a time" } }));
-    expect(buttonIds(last())[0]).toMatch(/^sday_/);
+    expect(rowsOf(last()).map((r) => r.id)).toEqual([expect.stringMatching(/^sess_offer_\d+$/), "go_p10", "go_p20"]); // the options: single, 10 or 20
   });
 
   it("a blocked person gets nothing, button or not", async () => {
