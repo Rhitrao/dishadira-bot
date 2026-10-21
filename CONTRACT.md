@@ -1,9 +1,9 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-10-17 (v3.1: payment provider is Razorpay). Governs implementation; owner decisions govern live activation.
+Version: 2026-10-21 (v4: English + Hindi; gatekeeper and AI answers for typed questions, see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma) and never sees chats. Rohit = owner, sole operator.
 Goal: turn Click-to-WhatsApp ad enquiries into paid sessions; Amma only ever speaks to people who have paid.
-Scope: one practice, one practitioner, two services (PROTECTION, HEALING), INR, Asia/Kolkata, English + Kannada.
+Scope: one practice, one practitioner, two services (PROTECTION, HEALING), INR, Asia/Kolkata, English + Hindi.
 Journey: pick a call slot -> pay ₹99 -> Amma calls (15 min) -> Session | Not right fit | Missed | Rude ->
   Session: ₹700 session slot + payment -> confirmed -> day-before reminder.
 Defaults (owner may change in config, never in code): intro 9900 paise, session 70000 paise, both services;
@@ -14,7 +14,8 @@ Stack
 One TypeScript Worker (Hono) + D1 + Cron Triggers + Cloudflare Access + Cloudflare email (send to Rohit's verified
 address only). Static site is separate (Cloudflare Pages). Native fetch/Web Crypto. Runtime libs: hono, zod, jose.
 Vitest + wrangler in GitHub Actions. Pin versions, commit the lockfile.
-Not in v1: AI/LLM replies, voice, broadcasts, marketing templates, queues, Durable Objects, ORMs, React frameworks,
+AI: Anthropic API (Claude Haiku) answers typed questions only, behind the AI_REPLIES flag, grounded only in docs/KNOWLEDGE.md.
+Not in v1: voice, broadcasts, marketing templates, queues, Durable Objects, ORMs, React frameworks,
 vector DBs, third-party CRMs, Supabase, Next.js. Official Meta WhatsApp Cloud API only; no WhatsApp Web automation.
 Reference only: github.com/ArnasDon/wacrm (MIT) for webhook verification, dedupe, template-status and handoff patterns.
 Copy small pieces only, keep its MIT notice in a NOTICE file, never vendor the app.
@@ -23,7 +24,8 @@ Payments go through a PaymentProvider interface: createLink, getStatus, verifyWe
 Razorpay (Payment Links) is the one provider, behind that interface. Only one provider may be in the code at a time.
 
 States
-Conversation: BOT | HUMAN | BLOCKED. Free text that isn't a menu choice -> stays BOT, raises a "needs attention" item.
+Conversation: BOT | HUMAN | BLOCKED. Typed text goes through the gatekeeper (docs/AGENT.md §3.2) before any AI call; "Talk to a person" -> HUMAN
+  (buttons still work in HUMAN; free text waits for Rohit; resolving the attention item returns the chat to BOT).
 Intro (₹99): HELD -> PAID -> CALLED_SESSION | CALLED_NOT_FIT | MISSED | RUDE; HELD -> EXPIRED;
   MISSED -> RESCHEDULED (once) -> ...; PAID -> CANCELLED_BY_US.
 Session (₹700): OFFERED -> HELD -> CONFIRMED -> COMPLETED | NO_SHOW; HELD -> EXPIRED; CONFIRMED -> CANCELLED.
@@ -32,7 +34,8 @@ Payment: CREATING -> PENDING -> PAID | FAILED | UNKNOWN; PAID -> REFUND_PENDING 
 PAID and REFUNDED never move backwards. A verified later success supersedes FAILED/UNKNOWN.
 
 Data (D1)
-Tables: conversations, events, messages, slots, intros, sessions, payments, refunds, blocks, outcomes, attention, audit_log, settings.
+Tables: conversations, events, messages, slots, intros, sessions, payments, refunds, blocks, outcomes, attention, audit_log, settings,
+  person_state (strikes, quiet_until, AI reply counters, no_sell_until, opt-out).
 conversations: unique wa_id, display name, locale, mode, last_user_at, source_ad_id, consent_at.
 events: unique(provider, event_key); minimal payload; status; error. Receipt is not processing.
 slots: kind (CALL|SESSION), UNIQUE(kind, start_utc), owner id, hold_until. Availability by conditional SQL only.
@@ -45,7 +48,11 @@ outcomes: intro id, value, tapped_at, undo_until, applied_at. Effects run only a
 attention: kind, target, created_at, resolved_at. Feeds Rohit's queue and the 9pm digest.
 
 Flow invariants
-Bot is menu-driven: max 3 reply buttons, lists max 10 rows, CTA URL label max 20 chars.
+Bot is button-led: max 3 reply buttons, lists max 10 rows, CTA URL label max 20 chars. The AI may only choose a reply and one
+  `next` action from a fixed list; it never creates holds, links, refunds or bookings. Every AI reply passes the output check.
+Safety: crisis and medical-emergency detection runs in code before the AI and sends fixed messages (docs/KNOWLEDGE.md §9).
+Noise: strikes, quiet periods and blocks per docs/AGENT.md §4. Existing customers and safety messages are never filtered.
+Age: booking asks once whether the person is 18+; under-18s are asked to have a parent or guardian message.
 Greeting says it is Disha Dira's booking assistant and that Shantha Rao calls personally; first choice is language.
 Customer sees real call slots BEFORE paying. Holding a slot and creating a link happen in one guarded step.
 Payment links expire no later than the hold and no earlier than the provider minimum.
@@ -66,27 +73,34 @@ Outside the 24-hour window only approved templates: call_booked, session_offer, 
 
 Amma's page (/amma)
 Behind Cloudflare Access (Amma's Google account) plus Worker JWT check. Big text, one column, phone-first.
-Today's and tomorrow's calls and sessions: time, first name, service, big tap-to-call (tel:) button.
+Today's and tomorrow's calls and sessions: time, first name, service, call language, who it is for
+  (self/family/pet), big tap-to-call (tel:) button.
 Outcome buttons: Session / Not right fit / Missed; "Report rude" separate. Every tap: confirm, then undo for 10 min.
 No chat content, no free text, no health details on this page.
 
 Rohit (/admin) and alerts
 Behind Cloudflare Access + JWT check + CSRF/origin checks + output escaping.
 Needs-attention queue with reply box (sends within 24h window only), block/unblock, approve rude refunds,
-override offers, switches (NEW_BOOKINGS, AMMA_AWAY, SENDS). 9pm IST email digest. Health alert email if no webhook
+override offers, switches (NEW_BOOKINGS, AMMA_AWAY, SENDS, AI_REPLIES). 9pm IST email digest. Health alert email if no webhook
 or cron run seen for a set period, or any REFUND_FAILED / UNKNOWN payment.
 
 Privacy and safety
-Never store or send: home address, private phone numbers, medical advice, diagnoses, cure claims, "black magic"/"evil eye".
-Never ask for health details; do not download inbound media. First message states booking-only use.
+Never store or send: home address, private phone numbers, medical advice, diagnoses, cure claims, "black magic"/"evil eye" (full banned list: docs/KNOWLEDGE.md §8).
+Never send to the AI: phone numbers, names, payment ids, emails, links, digit runs of 6+. First message and privacy page
+  disclose the automated assistant and the AI provider.
+Never ask for health details; do not download inbound media. First message states booking-only use, that it is an
+  automated assistant, and that messages are processed by the AI provider (docs/KNOWLEDGE.md §10).
+Safety messages (crisis, medical emergency) are sent to everyone, including blocked, quiet and HUMAN chats, and even when
+  the SENDS switch is paused (never when the SENDS env flag is "false").
 Store only name, WhatsApp number, bookings, payments. Delete conversation text 30 days after last activity and
 personal fields 90 days after last booking; keep dedupe keys, payment, refund and audit rows.
-Secrets, real phone numbers and customer data stay out of git, PRs, logs, fixtures and prompts. Fixtures are synthetic.
+Secrets, real phone numbers and customer data stay out of git, PRs, logs, fixtures and coding prompts.
+  Live chat text may go to the AI provider only through src/ai.ts, redacted as above. Fixtures are synthetic.
 Test and live credentials and data never mix; going live switches the Worker to a fresh live D1.
 
 Release and process
 Release-test families: inventory/holds; money/refunds; replay/recovery; access; window/templates; switches/blocks.
-Runtime flags default safe: OWNER_APPROVED=false, NEW_BOOKINGS=false, SENDS=false, PAYMENT_MODE=test.
+Runtime flags default safe: OWNER_APPROVED=false, NEW_BOOKINGS=false, SENDS=false, AI_REPLIES=false, PAYMENT_MODE=test.
 Only Rohit changes flags, outside a coding session.
 One small PR per ticket; honest commits, no squash, no backdating; never merge or deploy without Rohit's direction.
 Each session: read CONTRACT.md, STATUS.md, the assigned ticket and only the files it needs. Stop at ticket scope.
