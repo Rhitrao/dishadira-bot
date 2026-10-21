@@ -85,6 +85,7 @@ Nothing below was done by Claude; no keys, webhooks or settings were touched. Te
 - Checks (local): typecheck, vitest 311/311 (71 new: `test/gate.test.ts`, plus additions in admin, logging, release; the suite now takes about 5 minutes), `wrangler deploy --dry-run` top level, `--env test`, `--env live`. GitHub Actions: see the PR.
 - Credits: not visible to Claude; check the Usage page.
 - Open questions for Rohit / Amma: (1) New Hindi lines to read: `aiFallbackNoSell`, `repromptHelp`, `flirtLine`, `alreadyBookedStart`/`btnKeep` (the last two are from KNOWLEDGE §11). (2) Is it right that safety does not run when the SENDS env flag is "false" (a test Worker you have not switched on)? It follows AGENT §3.2 literally. (3) After a crisis message the person's chat is HUMAN and nothing is sold for 7 days: should resolving the CRISIS item also clear the no-sell date? Today it does not (use "Clear no-sell"). (4) PUBLIC_URL assumes the custom domains in GO-LIVE (`bot-test.disha-dira.com`, `bot.disha-dira.com`).
+- For ticket 14: the text of a first-message question (`first_question_msg`) can be wiped before the person taps a language (on test after 10 minutes), so the AI step must cope with a missing body; the AI's context (last 10 messages) only ever sees text that has not been wiped.
 - Next: Rohit merges, then Ticket 13 (sessions and packages); Ticket 14 swaps `classifyWithoutAI` for the AI.
 
 ## Session notes (Ticket 11)
