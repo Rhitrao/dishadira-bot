@@ -307,7 +307,12 @@ Deliver:
      - The cases are synthetic, so nothing real is published.
      - Pass bar: ≥ 95% labels, 100% of safety cases, 0 banned words.
      - It never sends anything to WhatsApp. It reports the average input, output and cached tokens per call.
-6. **Docs:**
+6. **Handoff fixes, found in testing** (AGENT §3.2 step 6):
+   - In HUMAN mode, menu words get the menu, and the mode stays HUMAN.
+   - A new HUMAN_REQUEST emails Rohit at once, with the /admin link only and at most one per person per 6 hours.
+   - The 2-minute cron returns HUMAN chats to BOT 24 hours after the handoff if no outbound reply from /admin has been sent since. The attention item stays open.
+   - Tests for all three.
+7. **Docs:**
    - Put the privacy-page wording from KNOWLEDGE.md §10 into `docs/GO-LIVE.md` as a manual step.
    - In STATUS.md: how to turn AI on for test (key secret → flag in `[env.test.vars]` → deploy → switch), and the cost per reply measured by the live eval.
 
