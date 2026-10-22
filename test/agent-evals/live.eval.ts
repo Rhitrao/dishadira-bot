@@ -40,14 +40,17 @@ it("runs every non-code case against the real model and meets the pass bar", asy
     const { out, usage } = res;
     const labelOk = c.labels!.includes(out.label);
     const nextOk = c.next!.includes(out.next);
-    const checked = out.reply ? checkReply(out.reply, factNumbers(factsFor(c))) : ({ ok: true } as const);
+    // For crisis and medical_emergency the Worker drops the assistant's words and sends the fixed safety message, so its text is not judged.
+    const dropped = out.label === "crisis" || out.label === "medical_emergency";
+    const said = dropped ? "" : out.reply;
+    const checked = said ? checkReply(said, factNumbers(factsFor(c))) : ({ ok: true } as const);
     const problems: string[] = [];
     if (!labelOk) problems.push(`label ${out.label}`);
     if (!nextOk) problems.push(`next ${out.next}`);
     if (!checked.ok) problems.push(`output check: ${checked.reason}`);
-    for (const f of forbidden(c, out.reply)) problems.push(`contains "${f}"`);
-    if (missingRequired(c, out.reply)) problems.push("missing a required idea");
-    if (c.replyScript && out.reply && out.script !== c.replyScript) problems.push(`script ${out.script}`);
+    for (const f of forbidden(c, said)) problems.push(`contains "${f}"`);
+    if (!dropped && missingRequired(c, said)) problems.push("missing a required idea");
+    if (c.replyScript && said && out.script !== c.replyScript) problems.push(`script ${out.script}`);
     rows.push({ c, label: out.label, next: out.next, reply: out.reply, labelOk, nextOk, checkReason: checked.ok ? null : checked.reason, problems, pass: problems.length === 0, usage, error: null });
   }
 
@@ -78,6 +81,17 @@ it("runs every non-code case against the real model and meets the pass bar", asy
     "",
   ].join("\n");
   console.log(md);
+  // The job summary can't be read through GitHub's API, but annotations can: one notice with the totals and one with every failed case.
+  const esc = (t: string) => t.replace(/%/g, "%25").replace(/\r/g, "").replace(/\n/g, "%0A");
+  // The workflow's last step prints this file, so GitHub turns the lines into annotations.
+  if (env.GITHUB_ACTIONS) {
+    const failed = rows.filter((r) => !r.pass).map((r) => `${r.c.id} ${r.c.name}: ${r.problems.join("; ")} | label ${r.label}, next ${r.next} | ${r.reply.replace(/\s+/g, " ").slice(0, 300)}`);
+    const lines = [`::notice title=Eval totals::${esc(md.split("\n").slice(0, 10).join("\n"))}`];
+    if (failed.length) lines.push(`::notice title=Eval failures (${failed.length})::${esc(failed.join("\n"))}`);
+    const mod = "node:fs";
+    const fs = (await import(/* @vite-ignore */ mod)) as { writeFileSync(path: string, data: string): void };
+    fs.writeFileSync("eval-annotations.txt", lines.join("\n") + "\n");
+  }
   const summary = env.GITHUB_STEP_SUMMARY;
   if (summary) {
     const mod = "node:fs";
