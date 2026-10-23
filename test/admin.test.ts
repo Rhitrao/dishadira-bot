@@ -473,7 +473,7 @@ describe("a person's page: strikes, quiet period, no-sell, opt-out (ticket 12)",
     return fields;
   }
 
-  it("shows the state and no message text", async () => {
+  it("shows the state, and the conversation as a thread", async () => {
     const conv = await noisy();
     await db.prepare("INSERT INTO messages (conversation_id,direction,kind,body,status) VALUES (?1,'IN','text','a private sentence','RECEIVED')").bind(conv).run();
     const res = await get(`/admin/conv/${conv}`);
@@ -488,7 +488,7 @@ describe("a person's page: strikes, quiet period, no-sell, opt-out (ticket 12)",
     expect(page).toContain("Opted out of messages: yes, since Sat 3 Oct, 2:30pm");
     expect(page).toContain("Clear strikes / end quiet");
     expect(page).toContain("Clear no-sell");
-    expect(page).not.toContain("a private sentence");
+    expect(page).toContain("a private sentence"); // the thread: Rohit reads what was said, as in the Home items
     // a person with nothing set
     const calm = await person();
     const calmPage = await (await get(`/admin/conv/${calm}`)).text();
@@ -684,3 +684,87 @@ describe("packages in /admin (ticket 13)", () => {
     expect(await count("SELECT COUNT(*) AS n FROM credits WHERE reason = 'CANCEL_RETURN'")).toBe(0); // a no-show uses the credit
   });
 });
+
+describe("people, a person's page, and payments (ticket 17)", () => {
+  const PHONE_RE = /91\d{8,}/;
+  it("People lists everyone newest first, masked; search by name or last digits; filters", async () => {
+    const a = await person({ name: "Zoya Quillfeather", lastUserAt: "2026-10-05T09:00:00Z" });
+    const b = await person({ name: "Ravi", lastUserAt: "2026-10-05T09:30:00Z" });
+    await db.prepare("UPDATE conversations SET mode = 'HUMAN' WHERE id = ?1").bind(b).run();
+    const wa = (await db.prepare("SELECT wa_id FROM conversations WHERE id = ?1").bind(a).first<{ wa_id: string }>())!.wa_id;
+    const all = await (await get("/admin/people")).text();
+    expect(all.indexOf("Ravi")).toBeLessThan(all.indexOf("Zoya"));
+    expect(all).not.toMatch(PHONE_RE);
+    expect(all).not.toContain("Quillfeather");
+    expect(all).toContain(`…${wa.slice(-4)}`);
+    expect(await (await get("/admin/people?q=zoy")).text()).not.toContain("Ravi");
+    const byDigits = await (await get(`/admin/people?q=${wa.slice(-4)}`)).text();
+    expect(byDigits).toContain("Zoya");
+    expect(byDigits).not.toContain("Ravi");
+    const human = await (await get("/admin/people?f=human")).text();
+    expect(human).toContain("Ravi");
+    expect(human).not.toContain("Zoya");
+    expect(await (await get("/admin/people?q=nobody")).text()).toContain("Nobody matches that search.");
+  });
+
+  it("the number is shown only after a POST, which is recorded; a GET never shows it", async () => {
+    const id = await person({ lastUserAt: "2026-10-03T09:00:00Z" }); // window closed
+    const wa = (await db.prepare("SELECT wa_id FROM conversations WHERE id = ?1").bind(id).first<{ wa_id: string }>())!.wa_id;
+    const pageText = await (await get(`/admin/conv/${id}`)).text();
+    expect(pageText).not.toContain(wa);
+    expect(pageText).toContain("Show number to call");
+    const shown = await (await post("/admin/reveal", { conv: String(id), csrf: hidden(pageText.slice(pageText.indexOf('action="/admin/reveal"')), "csrf") })).text();
+    expect(shown).toContain(`href="tel:+${wa}"`);
+    expect((await auditRows()).at(-1)).toMatchObject({ actor: ROHIT, action: "ADMIN_REVEAL_NUMBER", target: `conv:${id}` });
+    expect((await post("/admin/reveal", { conv: String(id), csrf: "wrong" })).status).toBe(403);
+  });
+
+  it("a reply from the person's page goes inside the window, is recorded, and counts as Rohit's reply", async () => {
+    const id = await person(); // wrote an hour ago
+    const pageText = await (await get(`/admin/conv/${id}`)).text();
+    expect(pageText).toContain("Reply on WhatsApp");
+    const res = await post("/admin/say", { conv: String(id), text: "Hello from Rohit", csrf: hidden(pageText.slice(pageText.indexOf('action="/admin/say"')), "csrf") });
+    expect(res.headers.get("Location")).toBe(`/admin/conv/${id}?m=sent`);
+    const sent = await db.prepare("SELECT dedupe_key, body FROM messages WHERE conversation_id = ?1 AND direction = 'OUT'").bind(id).first<{ dedupe_key: string; body: string }>();
+    expect(sent!.dedupe_key).toMatch(/^admin-reply:conv:/);
+    expect((await auditRows()).at(-1)).toMatchObject({ action: "ADMIN_REPLY", target: `conv:${id}` });
+    const after = await (await get(`/admin/conv/${id}`)).text();
+    expect(after).toContain("You · ");
+    // window closed: refused, nothing sent
+    const old = await person({ lastUserAt: "2026-10-03T09:00:00Z" });
+    const r2 = await post("/admin/say", { conv: String(old), text: "hi", csrf: await csrfFor(`say:${old}`) });
+    expect(r2.headers.get("Location")).toBe(`/admin/conv/${old}?m=window`);
+  });
+
+  it("the thread marks the assistant's answer type and replaced answers", async () => {
+    const id = await person();
+    await db.prepare("INSERT INTO audit_log (at, actor, action, target, detail) VALUES ('2026-10-05T09:00:00Z','bot','AI_REPLY',?1,'objection'), ('2026-10-05T09:00:01Z','bot','AI_REJECTED',?1,'BANNED_WORD')").bind(`conv:${id}`).run();
+    await db.prepare("INSERT INTO messages (conversation_id,direction,kind,body,status,dedupe_key,created_at) VALUES (?1,'OUT','text','A fixed reply','SENT','wamid.X:ai','2026-10-05T09:00:02Z')").bind(id).run();
+    const t = await (await get(`/admin/conv/${id}`)).text();
+    expect(t).toContain("Assistant · ");
+    expect(t).toContain("Doubt or objection");
+    expect(t).toContain("Answer replaced by a fixed reply (banned word)");
+  });
+
+  it("Payments shows the last 30 days with problems first, linked to the person, masked", async () => {
+    const ok = await paidIntro({ name: "Meena" });
+    const bad = await paidIntro({ name: "Anil", i: 1, payState: "REFUND_FAILED" });
+    const t = await (await get("/admin/payments")).text();
+    expect(t.indexOf("Refund failed")).toBeLessThan(t.indexOf(">Paid<"));
+    expect(t).toContain(`href="/admin/conv/${ok.conv}"`);
+    expect(t).toContain(`href="/admin/conv/${bad.conv}"`);
+    expect(t).not.toMatch(PHONE_RE);
+    expect(t).toContain("Needs a look");
+  });
+
+  it("every page has the tab bar, and the pages escape what customers wrote", async () => {
+    const id = await person({ name: "<b>x</b>" });
+    for (const path of ["/admin", "/admin/people", "/admin/payments", `/admin/conv/${id}`]) {
+      const t = await (await get(path)).text();
+      expect(t).toContain('href="/admin/people"');
+      expect(t).toContain('href="/admin/payments"');
+      expect(t).not.toContain("<b>x</b>");
+    }
+  });
+});
+

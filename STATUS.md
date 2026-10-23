@@ -91,6 +91,45 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
 - **Open questions / things the eval should show:** (1) `max_tokens` 400 is tight for Hindi: Devanagari costs many tokens per character and a 600-character Hindi reply plus the tool JSON may not fit; a truncated call is `TRUNCATED` and falls back. Watch the digest's "calls that failed"; raise `config.ai.maxTokens` if it happens. (2) KNOWLEDGE §8 bans the whole word "fits" (an epilepsy term); a harmless "it fits your schedule" is rejected and replaced. Same for "spirit", "magic", "permanent". If the eval shows false rejections, tell me which. (3) KNOWLEDGE §10 and the Hindi `privacy` FAQ still say messages are deleted after 30 days; the bot does 7. (4) A webhook retry after a database error in the middle of a reply would call the assistant again (the send itself cannot double: dedupe keys); rare, not guarded. (5) The assistant is not used before the language tap, so a typed question right after the greeting still gets the language question. (6) Found while writing the eval: scenario 50 "Harm the person who hurt me" never reaches the assistant in a real chat, because the gate (ticket 12) treats the word "person" in a short message as "Talk to a person" and hands it to Rohit. That is safe, but it also catches "my sister is a very good person…" style remarks of up to 8 words; say if you want the handoff words narrowed. CI checks the gate for that case (`codeFirst`), the live eval still asks the model. (7) Cost per reply: not measured here; the first eval run gives it. The AGENT.md sketch says ₹0.04 to ₹0.11 per reply with a warm cache.
 - Next: Rohit merges, adds the key to the test Worker and to GitHub, runs the eval, does the shadow week; the website's privacy page first.
 
+## Console redesign (tickets 15–17, 23 Oct 2026)
+**Council verdict** (research on 80 sources plus a five-advisor review):
+- Home is a triage page, not a dashboard of numbers.
+- Pauses show as a banner on every page.
+- Every card says in plain words who it's about, what to do and the deadline.
+- When the reply window has closed, the card offers a call instead.
+- Dangerous actions sit behind a fold-out that names the exact action.
+- Not built: quick replies, side panels, live countdowns, a week calendar, a WhatsApp quality badge, an audit-log browser, a seven-stage funnel and charts.
+- The per-ad Numbers page comes after about 30 days of real traffic.
+
+**Ticket 15 (PR #26):** the first ad's `ctwa_clid` and headline are saved on `conversations` (migration 0009).
+
+**Ticket 16 (PR #27):**
+- `src/ui.ts` holds the page shell and stylesheet: light and dark following the device, a bottom tab bar on phones, and a top bar with two columns from 900px wide.
+- Home, top to bottom:
+  - Health line: the timer, last send, AI replies today, and the last alert email (sent or failed).
+  - Pause banners.
+  - "Needs you" cards, sorted danger → waiting for a person → money → the rest.
+  - Today and tomorrow.
+  - The last 7 days against the week before.
+  - Controls, each saying what it stops and what keeps working.
+- Times are shown in Bengaluru time and numbers are masked as …4821.
+- The crisis email links to the person's page.
+
+**Ticket 17 (PR #28):**
+- `/admin/people`: search by name or digits, with the filters Needs a person, Crisis, Quiet, Paid and Blocked.
+- Person page:
+  - The conversation as a thread, showing who sent each message (customer, Bot, Assistant with its answer type, You, Safety message) and marking replaced answers.
+  - A reply box while the 24-hour window is open; after that, "Show number to call", which is a POST and is recorded as `ADMIN_REVEAL_NUMBER`.
+  - Their bookings, payments, packages and safety state.
+- `/admin/payments`: the last 30 days, problems first, with totals.
+- Replies from the person page use the key `admin-reply:conv:…`, so they count as Rohit's reply and stop the 24-hour return to the bot.
+
+**Checks:**
+- Typecheck is clean and the admin tests pass, including new ones for search, masking, the recorded number reveal, the page reply, assistant labels in the thread, payment ordering and escaping.
+- Every page was rendered at 390px and 1366px, in light and dark, with no horizontal scroll.
+
+**Next:** merge #26, then #27, then #28, in that order, and run Deploy → test. Open `/admin` on the phone and on the laptop.
+
 ## Session notes (Ticket 14 brought up to KNOWLEDGE.md v3)
 - **Merged main** (PR #21, knowledge bank v3) into the ticket 14 branch, and kept both STATUS notes.
 - **Trusted facts:** these now include `open_step`, the booking step waiting for a tap, with a plain description such as "pay; a time is held for them until they pay". It is passed from `answer.ts`.
