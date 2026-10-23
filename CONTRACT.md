@@ -44,7 +44,7 @@ Data (D1)
 Tables: conversations, events, messages, slots, intros, sessions, payments, refunds, blocks, outcomes, attention, audit_log, settings,
   person_state (strikes, quiet_until, AI reply counters, no_sell_until, opt-out), packages (buyer, size, price, payment),
   credits (ledger: +N on purchase, -1 per booking, +1 on timely cancel, refunds).
-conversations: unique wa_id, display name, locale, mode, last_user_at, source_ad_id, consent_at.
+conversations: unique wa_id, display name, locale, mode, last_user_at, source_ad_id, ad_click_id, ad_headline (first ad only, ticket 15), consent_at.
 events: unique(provider, event_key); minimal payload; status; error. Receipt is not processing.
 slots: kind (CALL|SESSION), UNIQUE(kind, start_utc), owner id, hold_until. Availability by conditional SQL only.
   Amma has ONE calendar: a CALL and a SESSION must never overlap in time. An active booking or hold of either kind blocks

@@ -320,3 +320,25 @@ Deliver:
 
 Do not: set `AI_REPLIES` to "true" anywhere, call the real API from CI tests, store AI replies outside the existing `messages` table and 30-day deletion, change booking or payment logic, or deploy.
 Report: files changed, CI link, the system prompt header text, the tool schema, and any KNOWLEDGE.md line the eval showed was unclear.
+
+---
+
+## v3: Rohit's console redesign (council verdict, 23 Oct 2026)
+
+Design: the council verdict in STATUS.md ("Console redesign"). Built in this session; each ticket is one PR.
+
+### Ticket 15: save the ad click id and headline (cap $8)
+- Migration `0009_ad_click.sql`: `conversations.ad_click_id`, `conversations.ad_headline`.
+- The webhook keeps the first ad's `referral.ctwa_clid` (≤200 chars) and `referral.headline` (≤120 chars), like `source_ad_id`; a later ad never overwrites them.
+- Test in `test/whatsapp.test.ts`. CONTRACT updated.
+
+### Ticket 16: the console's look, and a new Home (cap $20)
+- One layout (`src/ui.ts`): shared CSS (type scale, spacing, status colours, tabular numbers, 44px buttons, dark mode from the phone's setting), a bottom tab bar (Home · People · Payments), IST times and "x min ago", masked numbers (…4821).
+- Home, top to bottom: a banner when anything is paused; a health line (cron, last send, AI replies today, last alert email); "Needs you" cards sorted crisis → human requests → money → the rest, each in plain words with who, what happened, what to do and the reply-window deadline; today and tomorrow; this week vs last in one line; the switches, each with a sentence on what stops and what still works.
+- Dangerous buttons (Refund, Block, the switches) open a fold-out that names the exact action. No scripts; the CSP is unchanged.
+- Email alert links open the exact item (`/admin#item-<id>`).
+
+### Ticket 17: People, Person and Payments (cap $20)
+- `/admin/people`: search by name, last 4 digits or booking id; filters All · Needs a person · Crisis · Quiet · Blocked.
+- `/admin/conv/<id>`: header (name, …4821, mode, language, ad), reply box with time left or, when the window is closed, "Show number to call" (audited reveal + `tel:` link), the message thread with the assistant's answer type and replaced answers marked, bookings, payments, packages, safety state.
+- `/admin/payments`: last 30 days, problems first, IST date, person, item, amount, status chip.

@@ -8,6 +8,7 @@ import hindiSql from "../migrations/0005_hindi_booking_steps.sql?raw";
 import gatekeeperSql from "../migrations/0006_gatekeeper.sql?raw";
 import packagesSql from "../migrations/0007_packages.sql?raw";
 import handoffSql from "../migrations/0008_handoff.sql?raw";
+import adClickSql from "../migrations/0009_ad_click.sql?raw";
 
 // D1 runs one statement per prepare(); split a migration file on ";" at line ends.
 export async function applySql(db: D1Database, sql: string): Promise<void> {
@@ -19,13 +20,13 @@ export async function applySql(db: D1Database, sql: string): Promise<void> {
   for (const s of statements) await db.prepare(s).run();
 }
 
-export const migrations = { initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql };
+export const migrations = { initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql, adClickSql };
 
-// A fresh local D1 (real workerd SQLite) with the migrations applied. `through` stops early (4 = before the Hindi/booking-steps migration, 5 = before the gatekeeper migration, 6 = before the packages migration, 7 = before the handoff migration).
-export async function newDb(through = 8): Promise<{ db: D1Database; close: () => Promise<void> }> {
+// A fresh local D1 (real workerd SQLite) with the migrations applied. `through` stops early (4 = before the Hindi/booking-steps migration, 5 = before the gatekeeper migration, 6 = before the packages migration, 7 = before the handoff migration, 8 = before the ad-click migration).
+export async function newDb(through = 9): Promise<{ db: D1Database; close: () => Promise<void> }> {
   const mf = new Miniflare({ modules: true, script: "export default {}", d1Databases: { DB: "test" } });
   const db = (await mf.getD1Database("DB")) as unknown as D1Database;
-  await applySql(db, [initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql].slice(0, through).join("\n"));
+  await applySql(db, [initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql, adClickSql].slice(0, through).join("\n"));
   return { db, close: () => mf.dispose() };
 }
 
