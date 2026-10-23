@@ -508,6 +508,8 @@ describe("booking a session with a credit", () => {
     expect(await count("SELECT COUNT(*) AS n FROM slots")).toBe(0);
     await tap(from, "menu_bookings");
     expect(last().text.body).toBe(`${allCopy.en.myBookingsNone} ${allCopy.en.creditsLeft(0)}`);
+    // Nothing to tap, so no step stays open: the next typed question is answered on its own.
+    expect((await one("SELECT pending_step FROM conversations WHERE wa_id = ?1", from)).pending_step).toBeNull();
   });
 
   it("someone with no package at all cannot book from credits", async () => {

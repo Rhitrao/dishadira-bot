@@ -71,7 +71,12 @@ async function sendBookings(env: Env, convId: number, msgId: string): Promise<vo
 
   if (!items.length) {
     const body = hasPack ? `${cp.myBookingsNone} ${cp.creditsLeft(left)}` : cp.myBookingsNone;
-    await sendStep(env, convId, "bookings", bookButton.length ? { type: "buttons", body, buttons: bookButton } : { type: "text", text: body }, key("none"));
+    if (bookButton.length) await sendStep(env, convId, "bookings", { type: "buttons", body, buttons: bookButton }, key("none"));
+    else {
+      // Nothing to tap, so no step stays open: a question typed next is answered on its own, not glued to "You have no upcoming bookings."
+      await clearStep(db, convId);
+      await sendMessage(env, convId, { type: "text", text: body }, key("none"));
+    }
     return;
   }
   const list = items.map((i) => i.text).join("; ");
