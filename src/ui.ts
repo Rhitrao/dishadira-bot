@@ -95,6 +95,24 @@ nav.tabs a .i{font-size:18px;line-height:1}
 nav.tabs a.on{color:var(--accent);background:var(--soft)}
 .badge{background:var(--red);color:#fff;border-radius:999px;font-size:11px;padding:0 6px;margin-left:4px}
 nav.tabs .brand{display:none}
+.search{display:flex;gap:8px;margin:0 0 12px}
+.search input{flex:1}
+.pills{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;padding-bottom:2px;scrollbar-width:none}
+.pill{flex:0 0 auto;border:1px solid var(--line);background:var(--card);color:var(--ink);text-decoration:none;border-radius:999px;padding:0 14px;min-height:36px;display:inline-flex;align-items:center;font-weight:600;font-size:14px}
+.pill.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+a.li:hover{background:var(--soft)}
+.thread{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.bubble{max-width:88%;border-radius:16px;padding:8px 12px;border:1px solid var(--line);background:var(--card);overflow-wrap:anywhere;font-size:15px}
+.bubble.in{align-self:flex-start;border-bottom-left-radius:6px}
+.bubble.out{align-self:flex-end;background:var(--soft);border-bottom-right-radius:6px}
+.bubble.out.green{background:var(--green-bg);border-color:var(--green-line)}
+.bubble.out.red{background:var(--red-bg);border-color:var(--red-line)}
+.bubble .meta{font-size:12px;color:var(--muted);margin-bottom:2px}
+.bubble .chips{margin-top:6px}
+.bubble .chips:empty{display:none}
+.callnum{margin:10px 0 4px}
+.nowrap{white-space:nowrap}
+.li .go{color:var(--muted);font-size:22px;line-height:1}
 .cols{display:block}
 .cols>*{min-width:0}
 /* Laptop and wider: navigation moves to the top, the page gets two columns (what needs you | the day, the numbers, the controls). */
@@ -110,13 +128,18 @@ header.top{margin-top:8px}
 header.top h1{font-size:26px}
 .cols{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr);gap:28px;align-items:start}
 .cols>aside>h2:first-child,.cols>section>h2:first-child{margin-top:4px}
-.week{grid-template-columns:repeat(2,minmax(0,1fr))}
+.week{grid-template-columns:repeat(4,minmax(0,1fr))}
+.cols aside .week{grid-template-columns:repeat(2,minmax(0,1fr))}
 .card{padding:16px 18px}
 }
 `;
 
 export type Tab = "home" | "people" | "payments";
-const TABS: { id: Tab; href: string; label: string; icon: string }[] = [{ id: "home", href: "/admin", label: "Home", icon: "⌂" }];
+const TABS: { id: Tab; href: string; label: string; icon: string }[] = [
+  { id: "home", href: "/admin", label: "Home", icon: "⌂" },
+  { id: "people", href: "/admin/people", label: "People", icon: "☺" },
+  { id: "payments", href: "/admin/payments", label: "Payments", icon: "₹" },
+];
 
 // One page: the shell, the stylesheet, the flash line and the tab bar. `body` is already-escaped html.
 export function page(opts: { title: string; tab: Tab | null; body: unknown; flash?: string | null; test?: boolean; badge?: number }) {

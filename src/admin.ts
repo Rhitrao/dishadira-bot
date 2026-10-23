@@ -478,8 +478,78 @@ admin.post("/unblock", (c) => blockAction(c, false));
 const when = (v: string | null, now = Date.now()) => (v ? ist(v, now) : "no");
 const MODE_WORDS: Record<string, [string, Tone]> = { BOT: ["Bot is answering", "green"], HUMAN: ["Waiting for a person", "amber"], BLOCKED: ["Blocked", "red"] };
 
-admin.get("/conv/:id", async (c) => {
-  const id = Number(c.req.param("id"));
+// How long chat text is kept, in words ("7 days" on live, "10 minutes" on the test copy).
+const keepWords = (env: Env) => {
+  const m = Number(env.CHAT_RETENTION_MINUTES);
+  if (!Number.isFinite(m) || m <= 0) return `${Math.round(config.retention.defaultMinutes / 1440)} days`;
+  return m >= 1440 ? `${Math.round(m / 1440)} days` : `${m} minutes`;
+};
+// The assistant's answer types (docs/AGENT.md section 4), in plain words.
+const LABEL_WORDS: Record<string, string> = {
+  relevant_question: "Question", personal_concern: "Personal concern", objection: "Doubt or objection", booking_intent: "Wants to book",
+  existing_booking: "About their booking", human_request: "Asked for a person", smalltalk: "Small talk", off_topic: "Off topic",
+  astrology_or_prediction: "Astrology or prediction", prohibited_request: "Not something we do", loop: "Repeating", spam_or_promo: "Spam",
+  flirt_or_sexual: "Flirting", abuse: "Abuse", crisis: "Crisis", medical_emergency: "Medical emergency",
+};
+type Line = { dir: string; body: string | null; wipedAt: string | null; at: string; key: string | null; status: string; kind: string };
+type AiRow = { at: string; action: string; detail: string };
+
+// Who wrote an outgoing message, from its key: Rohit's replies, the assistant, the safety messages, or the bot's fixed messages.
+function whoSent(key: string | null): [string, Tone] {
+  if (key?.startsWith("admin-reply:")) return ["You", "green"];
+  if (/:(crisis|emergency)$/.test(key ?? "")) return ["Safety message", "red"];
+  if (/:ai(-help)?$/.test(key ?? "")) return ["Assistant", ""];
+  return ["Bot", ""];
+}
+
+async function thread(env: Env, convId: number, now: number) {
+  const rows = (
+    await env.DB.prepare(
+      "SELECT direction AS dir, body, wiped_at AS wipedAt, created_at AS at, dedupe_key AS key, status, kind FROM messages WHERE conversation_id = ?1 ORDER BY id DESC LIMIT 40",
+    )
+      .bind(convId)
+      .all<Line>()
+  ).results.reverse();
+  const ai = (
+    await env.DB.prepare("SELECT at, action, detail FROM audit_log WHERE target = ?1 AND action IN ('AI_REPLY', 'AI_REJECTED', 'AI_FAILED') ORDER BY id DESC LIMIT 80")
+      .bind(`conv:${convId}`)
+      .all<AiRow>()
+  ).results;
+  // The assistant's label and any replacement are written just before its message goes: match each assistant message to the rows of the minute before it.
+  const near = (at: string, action: string) => ai.find((a) => a.action === action && a.at <= at && Date.parse(at) - Date.parse(a.at) < 60_000);
+  if (!rows.length) return html`<div class="card"><p class="empty">No messages yet.</p></div>`;
+  return html`<div class="thread">${rows.map((m) => {
+    const text = m.wipedAt ? html`<span class="muted">(message text removed)</span>` : m.body ?? html`<span class="muted">(${m.kind})</span>`;
+    if (m.dir === "IN") return html`<div class="bubble in"><div class="meta">${ist(m.at, now)}</div>${text}</div>`;
+    const [who, tone] = whoSent(m.key);
+    const label = who === "Assistant" ? near(m.at, "AI_REPLY") : undefined;
+    const replaced = who === "Assistant" ? near(m.at, "AI_REJECTED") : undefined;
+    const failed = who === "Assistant" ? near(m.at, "AI_FAILED") : undefined;
+    const st = m.status === "SENT" ? "" : m.status === "FAILED" ? chip("Not delivered", "red") : m.status === "SKIPPED" ? chip("Not sent (sends off)") : chip(m.status.toLowerCase());
+    return html`<div class="bubble out ${tone}"><div class="meta">${who} · ${ist(m.at, now)}</div>${text}
+<div class="chips">${label ? chip(LABEL_WORDS[label.detail] ?? label.detail) : ""}${replaced ? chip(`Answer replaced by a fixed reply (${replaced.detail.toLowerCase().replaceAll("_", " ")})`, "amber") : ""}${failed ? chip("AI could not answer", "amber") : ""}${st}</div></div>`;
+  })}</div>`;
+}
+
+const PAY_WORDS: Record<string, [string, Tone]> = {
+  PAID: ["Paid", "green"], CREATING: ["Link being made", ""], PENDING: ["Waiting to be paid", ""], FAILED: ["Failed", "red"], UNKNOWN: ["Unclear: check Razorpay", "amber"],
+  REFUND_PENDING: ["Refund started", "amber"], REFUNDED: ["Refunded", ""], REFUND_FAILED: ["Refund failed", "red"],
+};
+type PayRow = { id: number; purpose: string; amount: number; state: string; at: string; size: number | null; convId: number | null; name: string | null; waId: string | null };
+const PAY_SQL = `SELECT p.id, p.purpose, COALESCE(p.paid_paise, p.amount_paise) AS amount, p.state, p.created_at AS at, pk.size,
+  COALESCE(i.conversation_id, s.conversation_id, pk.conversation_id) AS convId, c.display_name AS name, c.wa_id AS waId
+  FROM payments p
+  LEFT JOIN intros i ON p.purpose = 'INTRO' AND i.id = p.target_id
+  LEFT JOIN sessions s ON p.purpose = 'SESSION' AND s.id = p.target_id
+  LEFT JOIN packages pk ON p.purpose = 'PACKAGE' AND pk.id = p.target_id
+  LEFT JOIN conversations c ON c.id = COALESCE(i.conversation_id, s.conversation_id, pk.conversation_id)`;
+const whatPaid = (r: PayRow) => (r.purpose === "INTRO" ? `${rupees(config.prices.intro)} call` : r.purpose === "PACKAGE" ? `${r.size ?? ""}-session package` : "Session");
+const payRow = (r: PayRow, now: number, withWho = true) => {
+  const [word, tone] = PAY_WORDS[r.state] ?? [r.state, ""];
+  return html`<div class="li"><div class="main"><b>${whatPaid(r)}</b> · ${rupees(r.amount)}<div class="muted">${ist(r.at, now)}${withWho && r.convId ? html` · <a href="/admin/conv/${r.convId}">${firstName(r.name)} ${mask(r.waId)}</a>` : ""}</div></div><div class="end">${chip(word, tone)}</div></div>`;
+};
+
+async function personPage(c: Ctx, id: number, reveal: boolean) {
   const conv = Number.isInteger(id)
     ? await c.env.DB.prepare(
         "SELECT id, wa_id AS waId, display_name AS name, mode, locale, last_user_at AS lastUserAt, human_since AS humanSince, source_ad_id AS sourceAd, ad_headline AS adHeadline, created_at AS createdAt FROM conversations WHERE id = ?1",
@@ -495,12 +565,11 @@ admin.get("/conv/:id", async (c) => {
   const m = c.req.query("m");
   const clearStrikes = await form(c, "clear-strikes", `clear-strikes:${id}`, { conv: id }, "Clear strikes / end quiet", "");
   const clearNoSell = await form(c, "clear-nosell", `clear-nosell:${id}`, { conv: id }, "Clear no-sell", "");
-  const open = await c.env.DB
-    .prepare("SELECT id, kind, target, created_at AS createdAt FROM attention WHERE resolved_at IS NULL ORDER BY id DESC LIMIT 100")
-    .all<Item>();
+  const open = await c.env.DB.prepare("SELECT id, kind, target, created_at AS createdAt FROM attention WHERE resolved_at IS NULL ORDER BY id DESC LIMIT 100").all<Item>();
   const mine: Item[] = [];
   for (const it of open.results) if ((await convOf(c.env, it.target))?.id === id) mine.push(it);
   const items = await Promise.all(sortItems(mine).map((i) => itemHtml(c, i, now, true)));
+  const replyInItem = mine.some((i) => REPLY_KINDS.includes(i.kind)); // an open item already has the reply box (or the "window closed" note)
   const packs = await c.env.DB.prepare("SELECT id FROM packages WHERE conversation_id = ?1 AND state IN ('PAID', 'CLOSED') ORDER BY id").bind(id).all<{ id: number }>();
   const packBlock = packs.results.length
     ? await Promise.all(
@@ -513,20 +582,144 @@ ${pk.state === "PAID" && pk.unused > 0 ? html`<div class="actions"><a class="btn
         }),
       )
     : html`<div class="list"><p class="empty">No packages.</p></div>`;
+  const bookings = (
+    await c.env.DB.prepare(
+      `SELECT 'CALL' AS kind, s.start_utc AS startUtc, i.state, i.service FROM intros i JOIN slots s ON s.id = i.slot_id WHERE i.conversation_id = ?1
+       UNION ALL SELECT 'SESSION', s.start_utc, se.state, se.service FROM sessions se JOIN slots s ON s.id = se.slot_id WHERE se.conversation_id = ?1
+       ORDER BY 2 DESC LIMIT 20`,
+    )
+      .bind(id)
+      .all<{ kind: string; startUtc: string; state: string; service: string }>()
+  ).results;
+  const pays = (await c.env.DB.prepare(`${PAY_SQL} WHERE COALESCE(i.conversation_id, s.conversation_id, pk.conversation_id) = ?1 ORDER BY p.id DESC LIMIT 20`).bind(id).all<PayRow>()).results;
   const [modeWord, modeTone] = MODE_WORDS[conv.mode] ?? [conv.mode, ""];
   const ad = conv.adHeadline ? `Came from the ad "${conv.adHeadline}"` : conv.sourceAd ? "Came from an ad" : "Did not come from an ad";
-  const body = html`${header(firstName(conv.name), `${mask(conv.waId)} · ${conv.locale === "hi" ? "Hindi" : "English"} · first message ${ist(conv.createdAt, now)}`, html`<a class="btn" href="/admin">Back</a>`)}
+  const windowEnd = conv.lastUserAt ? Date.parse(conv.lastUserAt) + config.windowHours * 3_600_000 : 0;
+  const winLeft = left(windowEnd, now);
+  // Talking to them: a reply while the 24-hour window is open; after that, the number to call (shown only on request, and the request is recorded).
+  const talk = winLeft
+    ? html`<div class="card"><div class="head"><h3>Reply on WhatsApp</h3>${chip(`Window: ${winLeft} left`, windowEnd - now < 2 * 3_600_000 ? "red" : "amber")}</div>
+${await form(c, "say", `say:${id}`, { conv: id }, "Send reply", "primary", html`<textarea name="text" rows="3" maxlength="1000" required placeholder="Write your reply…" aria-label="Reply"></textarea>`)}</div>`
+    : html`<div class="card"><div class="head"><h3>Call them</h3>${chip("WhatsApp window closed")}</div>
+<p class="small muted">A free-text WhatsApp message can't go after 24 hours. Calls are by phone anyway.</p>
+${reveal ? html`<p class="callnum"><a class="btn primary" href="tel:+${conv.waId}">Call +${conv.waId}</a></p><p class="small muted">Showing the number was recorded.</p>` : await form(c, "reveal", `reveal:${id}`, { conv: id }, `Show number to call ${mask(conv.waId)}`, "primary")}</div>`;
+  const svc = (s: string) => (s === "PROTECTION" ? "Energy cleansing" : "Healing");
+  const body = html`${header(firstName(conv.name), `${mask(conv.waId)} · ${conv.locale === "hi" ? "Hindi" : "English"} · first message ${ist(conv.createdAt, now)}`, html`<a class="btn" href="/admin/people">All people</a>`)}
 <div class="chips">${chip(modeWord, modeTone)}${quiet ? chip("Quiet period", "amber") : ""}${noSell ? chip("No selling", "amber") : ""}${st.optedOutAt ? chip("Opted out") : ""}</div>
 <p class="small muted">${ad}. Last message from them ${conv.lastUserAt ? ago(conv.lastUserAt, now) : "never"}.</p>
-<div class="cols"><section>${items.length ? html`<h2>Needs you <span class="count">${items.length}</span></h2>${items}` : html`<h2>Needs you</h2><div class="card"><p class="empty">Nothing open for this person.</p></div>`}</section><aside>
+<div class="cols"><section>${items.length ? html`<h2>Needs you <span class="count">${items.length}</span></h2>${items}` : ""}
+${replyInItem ? "" : html`<h2>Talk to them</h2>${talk}`}
+<h2>Conversation</h2>${await thread(c.env, id, now)}
+<p class="small muted">Message text is removed ${keepWords(c.env)} after their last message; who wrote what, and when, stays.</p></section><aside>
+<h2>Bookings</h2>${bookings.length ? html`<div class="list">${bookings.map((b) => {
+    const [w, t] = STATE_WORDS[b.state] ?? [b.state.replaceAll("_", " ").toLowerCase(), ""];
+    const p = formatIstParts(b.startUtc);
+    return html`<div class="li"><div class="main"><b>${b.kind === "CALL" ? `${rupees(config.prices.intro)} call` : "Session"}</b> · ${svc(b.service)}<div class="muted">${p.day}, ${p.time}</div></div><div class="end">${chip(w, t)}</div></div>`;
+  })}</div>` : html`<div class="list"><p class="empty">No bookings.</p></div>`}
+<h2>Payments</h2>${pays.length ? html`<div class="list">${pays.map((r) => payRow(r, now, false))}</div>` : html`<div class="list"><p class="empty">No payments.</p></div>`}
+<h2>Packages</h2>${packBlock}
 <h2>Safety and noise</h2>
 <div class="list"><div class="li"><div class="main">Strikes: ${st.strikes}${st.lastStrikeAt ? ` (last ${when(st.lastStrikeAt, now)})` : ""}</div>${chip(st.strikes ? "Has strikes" : "None", st.strikes ? "amber" : "green")}</div>
 <div class="li"><div class="main">${quiet ? `Quiet until: ${when(st.quietUntil, now)}` : "Quiet: not in a quiet period"}</div>${chip(quiet ? "Quiet" : "Normal", quiet ? "amber" : "green")}</div>
 <div class="li"><div class="main">${noSell ? `No selling until: ${when(st.noSellUntil, now)}` : "Selling: selling is allowed"}</div>${chip(noSell ? "No selling" : "Allowed", noSell ? "amber" : "green")}</div>
 <div class="li"><div class="main">Opted out of messages: ${st.optedOutAt ? `yes, since ${when(st.optedOutAt, now)}` : "no"}</div></div></div>
-<div class="actions">${clearStrikes}${clearNoSell}</div>
-<h2>Packages</h2>${packBlock}</aside></div>`;
-  return c.html(page({ title: firstName(conv.name), tab: null, body, flash: m && MSG[m] ? MSG[m] : null }));
+<div class="actions">${clearStrikes}${clearNoSell}${conv.mode === "BLOCKED" ? await form(c, "unblock", `unblock:${id}`, { conv: id }, "Unblock") : await confirmForm(c, "block", `block:${id}`, { conv: id }, "Block…", `Block ${mask(conv.waId)}`, "They get no more replies from the bot. You can unblock them here.")}</div>
+</aside></div>`;
+  return c.html(page({ title: firstName(conv.name), tab: "people", body, flash: m && MSG[m] ? MSG[m] : null }));
+}
+
+admin.get("/conv/:id", (c) => personPage(c, Number(c.req.param("id")), false));
+
+// Showing a full number is a POST (CSRF-checked) and is recorded, so it never happens by a stray tap or a shared link.
+admin.post("/reveal", async (c) => {
+  const f = await c.req.parseBody();
+  const id = Number(f.conv);
+  if (!Number.isInteger(id) || f.csrf !== (await csrf(c.get("jwt"), `reveal:${id}`))) return bad(c);
+  await audit(c, "ADMIN_REVEAL_NUMBER", `conv:${id}`, "");
+  return personPage(c, id, true);
+});
+
+// A reply from the person's page (inside the 24-hour window), the same rules as a reply from an item.
+admin.post("/say", async (c) => {
+  const f = await c.req.parseBody();
+  const id = Number(f.conv);
+  if (!Number.isInteger(id) || f.csrf !== (await csrf(c.get("jwt"), `say:${id}`))) return bad(c);
+  const conv = await convOf(c.env, `conv:${id}`);
+  const to = (code: string) => c.redirect(`/admin/conv/${id}?m=${code}`, 303);
+  if (!conv) return c.redirect("/admin?m=gone", 303);
+  const text = String(f.text ?? "").trim().slice(0, 1000);
+  if (!text) return to("empty");
+  if (!inWindow(conv)) return to("window");
+  const res = await sendMessage(c.env, conv.id, { type: "text", text }, `admin-reply:conv:${conv.id}:${await sha(text)}`);
+  await audit(c, "ADMIN_REPLY", `conv:${conv.id}`, `page: ${res}`);
+  return to(res === "SENT" ? "sent" : res === "SKIPPED" ? "skipped" : res === "BLOCKED" ? "blocked" : res === "DUPLICATE" ? "dup" : res === "WINDOW_CLOSED" ? "window" : "failed");
+});
+
+// ---- People: everyone who has written, newest first, with search and filters ----
+const FILTERS: { id: string; label: string; where: string }[] = [
+  { id: "all", label: "All", where: "1 = 1" },
+  { id: "human", label: "Needs a person", where: "c.mode = 'HUMAN'" },
+  { id: "crisis", label: "Crisis", where: "EXISTS (SELECT 1 FROM attention a WHERE a.kind = 'CRISIS' AND a.target = 'conv:' || c.id AND a.resolved_at IS NULL)" },
+  { id: "quiet", label: "Quiet", where: "ps.quiet_until > ?3" },
+  { id: "paid", label: "Paid", where: `EXISTS (${PAY_SQL.replace(/^SELECT[\s\S]*?FROM payments p/, "SELECT 1 FROM payments p")} WHERE COALESCE(i.conversation_id, s.conversation_id, pk.conversation_id) = c.id AND p.state IN ${PAID_STATES})` },
+  { id: "blocked", label: "Blocked", where: "c.mode = 'BLOCKED'" },
+];
+
+admin.get("/people", async (c) => {
+  const now = Date.now();
+  const q = (c.req.query("q") ?? "").trim().slice(0, 40);
+  const f = FILTERS.find((x) => x.id === c.req.query("f")) ?? FILTERS[0];
+  const digits = q.replace(/[\s+-]/g, "");
+  // Search by name, or by digits of the number (the last 4 are enough). Results still show only the last 4.
+  const search = !q ? "?1 = ?1" : /^\d{3,}$/.test(digits) ? "c.wa_id LIKE '%' || ?1 || '%'" : "c.display_name LIKE '%' || ?1 || '%'";
+  const rows = (
+    await c.env.DB.prepare(
+      `SELECT c.id, c.wa_id AS waId, c.display_name AS name, c.mode, c.last_user_at AS lastUserAt, c.source_ad_id AS sourceAd, c.ad_headline AS adHeadline,
+         ps.quiet_until AS quietUntil, ps.no_sell_until AS noSellUntil,
+         (SELECT MIN(s.start_utc) FROM slots s WHERE s.owner_id = c.id AND s.state = 'BOOKED' AND s.start_utc >= ?3) AS nextAt
+       FROM conversations c LEFT JOIN person_state ps ON ps.conversation_id = c.id
+       WHERE (${search}) AND (${f.where}) ORDER BY COALESCE(c.last_user_at, c.created_at) DESC LIMIT ?2`,
+    )
+      .bind(/^\d{3,}$/.test(digits) ? digits : q, 60, iso(now))
+      .all<{ id: number; waId: string; name: string | null; mode: string; lastUserAt: string | null; sourceAd: string | null; adHeadline: string | null; quietUntil: string | null; noSellUntil: string | null; nextAt: string | null }>()
+  ).results;
+  const tabs = FILTERS.map((x) => html`<a class="pill ${x.id === f.id ? "on" : ""}" href="/admin/people?f=${x.id}${q ? `&q=${encodeURIComponent(q)}` : ""}">${x.label}</a>`);
+  const list = rows.map((r) => {
+    const [w, t] = MODE_WORDS[r.mode] ?? [r.mode, ""];
+    const next = r.nextAt ? formatIstParts(r.nextAt) : null;
+    const chips = [r.mode !== "BOT" ? chip(w, t) : "", r.quietUntil && r.quietUntil > iso(now) ? chip("Quiet", "amber") : "", r.noSellUntil && r.noSellUntil > iso(now) ? chip("No selling", "amber") : "", r.adHeadline || r.sourceAd ? chip("From an ad") : ""].filter(Boolean);
+    return html`<a class="li" href="/admin/conv/${r.id}"><div class="main"><b>${firstName(r.name)}</b> <span class="muted nowrap">${mask(r.waId)}</span>
+<div class="muted">${r.lastUserAt ? `Last message ${ago(r.lastUserAt, now)}` : "No message yet"}${next ? ` · next booking ${next.day}, ${next.time}` : ""}</div>${chips.length ? html`<div class="chips">${chips}</div>` : ""}</div><span class="go" aria-hidden="true">›</span></a>`;
+  });
+  const body = html`${header("People", "Everyone who has written, newest first")}
+<form class="search" method="get" action="/admin/people" role="search"><input type="hidden" name="f" value="${f.id}"><input type="search" name="q" value="${q}" placeholder="Name or last 4 digits" aria-label="Search people"><button type="submit">Search</button></form>
+<div class="pills">${tabs}</div>
+${rows.length ? html`<div class="list">${list}</div>` : html`<div class="list"><p class="empty">${q ? "Nobody matches that search." : "Nobody here."}</p></div>`}
+${rows.length === 60 ? html`<p class="small muted">Showing the 60 most recent. Search to find someone older.</p>` : ""}`;
+  return c.html(page({ title: "People", tab: "people", body }));
+});
+
+// ---- Payments: the last 30 days, problems first ----
+admin.get("/payments", async (c) => {
+  const now = Date.now();
+  const since = iso(now - 30 * 86_400_000);
+  const rows = (await c.env.DB.prepare(`${PAY_SQL} WHERE p.created_at >= ?1 AND p.state != 'CREATING' ORDER BY p.id DESC LIMIT 200`).bind(since).all<PayRow>()).results;
+  const PROBLEM = ["FAILED", "UNKNOWN", "REFUND_FAILED", "REFUND_PENDING"];
+  const problems = rows.filter((r) => PROBLEM.includes(r.state));
+  const rest = rows.filter((r) => !PROBLEM.includes(r.state));
+  const paidLike = ["PAID", "REFUND_PENDING", "REFUNDED", "REFUND_FAILED"];
+  const inSum = rows.filter((r) => paidLike.includes(r.state)).reduce((s, r) => s + r.amount, 0);
+  const refunded = rows.filter((r) => r.state === "REFUNDED").reduce((s, r) => s + r.amount, 0);
+  const waiting = rows.filter((r) => r.state === "PENDING").length;
+  const body = html`${header("Payments", "The last 30 days, from Razorpay's notices")}
+<div class="week">${kpi("Money in", rupees(inSum), `${rows.filter((r) => paidLike.includes(r.state)).length} payments`)}${kpi("Refunded", rupees(refunded), `${rows.filter((r) => r.state === "REFUNDED").length} refunds`)}${kpi(
+    "Links not paid yet",
+    String(waiting),
+    "they expire on their own",
+  )}${kpi("Problems", String(problems.length), problems.length ? "listed first" : "none")}</div>
+${problems.length ? html`<h2>Needs a look <span class="count">${problems.length}</span></h2><div class="list">${problems.map((r) => payRow(r, now))}</div>` : ""}
+<h2>All payments</h2>${rest.length ? html`<div class="list">${rest.map((r) => payRow(r, now))}</div>` : html`<div class="list"><p class="empty">No payments in the last 30 days.</p></div>`}`;
+  return c.html(page({ title: "Payments", tab: "payments", body }));
 });
 
 // ---- packages: "Refund unused sessions" shows unused × rate and asks again before anything happens ----
