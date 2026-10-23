@@ -70,7 +70,7 @@ export async function runCrisis(env: Env, conv: SafetyConv, msgId: string, text:
   // One open item per person; the email goes out with a new one, and says where to look, never what was written.
   const open = await db.prepare("SELECT 1 FROM attention WHERE kind = 'CRISIS' AND target = ?1 AND resolved_at IS NULL").bind(`conv:${conv.id}`).first();
   if (!open) {
-    await sendEmail(env, "Urgent: crisis message", `A crisis message arrived. Open ${env.PUBLIC_URL ?? ""}/admin now.`);
+    await sendEmail(env, "Urgent: crisis message", `A crisis message arrived. Open ${env.PUBLIC_URL ?? ""}/admin/conv/${conv.id} now.`);
     await db.prepare("INSERT INTO attention (kind, target) VALUES ('CRISIS', ?1)").bind(`conv:${conv.id}`).run();
   }
 }

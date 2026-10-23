@@ -158,7 +158,7 @@ describe("talk to a person (HUMAN_REQUEST)", () => {
     const { conv } = await humanChat();
     await db.prepare("INSERT INTO messages (conversation_id,direction,kind,body,status) VALUES (?1,'IN','text','please call me back','RECEIVED')").bind(conv).run();
     const page = await (await get("/admin")).text();
-    expect(page).toContain("HUMAN REQUEST");
+    expect(page).toContain("Wants to talk to a person");
     expect(page).toContain("please call me back");
     expect(page).toContain("<textarea");
     expect(page).toContain("hands the chat back to the bot");
@@ -289,10 +289,10 @@ describe("switches", () => {
   it("AI_REPLIES follows the SENDS rules: the env flag is the master, the switch can only pause it, and a paused SENDS means no AI either", async () => {
     const on = env({ AI_REPLIES: "true" });
     expect(await aiOn(on)).toBe(true);
-    expect(await (await get("/admin", on)).text()).toContain("AI answers: ON");
+    expect(await (await get("/admin", on)).text()).toMatch(/AI answers<\/h3><span class="chip green">On</);
     await press("switch", {}, on, 'value="AI_REPLIES"');
     expect(await aiOn(on)).toBe(false);
-    expect(await (await get("/admin", on)).text()).toContain("AI answers: PAUSED");
+    expect(await (await get("/admin", on)).text()).toMatch(/AI answers<\/h3><span class="chip red">Paused</);
     expect((await auditRows()).at(-1)).toMatchObject({ actor: ROHIT, action: "ADMIN_SWITCH", target: "AI_REPLIES", detail: "off" });
     await press("switch", {}, on, 'value="AI_REPLIES"');
     expect(await aiOn(on)).toBe(true);
@@ -300,7 +300,7 @@ describe("switches", () => {
     const off = env({ AI_REPLIES: "false" });
     expect(await aiOn(off)).toBe(false);
     const page = await (await get("/admin", off)).text();
-    expect(page).toContain("AI answers: PAUSED");
+    expect(page).toMatch(/AI answers<\/h3><span class="chip red">Paused</);
     expect(page).not.toMatch(/Resume ai answers|Pause ai answers/);
     const forced = await post("/admin/switch", { name: "AI_REPLIES", v: "on", csrf: await csrfFor("switch:AI_REPLIES:on") }, { e: off });
     expect(forced.headers.get("Location")).toBe("/admin?m=envoff");
@@ -323,7 +323,7 @@ describe("switches", () => {
     const past = await paidIntro({ i: 0 }); // already started
     await press("switch", {}, env(), 'value="AMMA_AWAY"');
     const page = await (await get("/admin")).text();
-    expect(page).toContain("Amma away: AWAY");
+    expect(page).toMatch(/Amma away<\/h3><span class="chip amber">Away</);
     expect(await bookingsOpen(env())).toBe(false);
     const kinds = (await db.prepare("SELECT kind, target FROM attention ORDER BY id").all<{ kind: string; target: string }>()).results;
     expect(kinds).toEqual(expect.arrayContaining([
@@ -389,9 +389,9 @@ describe("page actions and audit", () => {
     await db.prepare("UPDATE conversations SET created_at = '2026-10-04T00:00:00Z'").run();
     await db.prepare("UPDATE payments SET created_at = '2026-10-04T00:00:00Z'").run();
     const page = await (await get("/admin")).text();
-    expect(page).toContain("New chats: 1");
-    expect(page).toContain("₹99 paid: 1");
-    expect(page).toContain("Refunds: 1 (₹99)");
+    expect(page).toMatch(/New chats<\/div><div class="v">1</);
+    expect(page).toMatch(/₹99 calls paid<\/div><div class="v">1</);
+    expect(page).toContain("refunds ₹99");
   });
 });
 
@@ -483,9 +483,9 @@ describe("a person's page: strikes, quiet period, no-sell, opt-out (ticket 12)",
     expect(page).toContain("Zoya");
     expect(page).not.toContain("Quillfeather");
     expect(page).toContain("Strikes: 2");
-    expect(page).toContain("Quiet until: 2026-10-12 09:00 UTC");
-    expect(page).toContain("No selling until: 2026-10-11 09:00 UTC");
-    expect(page).toContain("Opted out of messages: yes, since 2026-10-03 09:00 UTC");
+    expect(page).toContain("Quiet until: Mon 12 Oct, 2:30pm");
+    expect(page).toContain("No selling until: Sun 11 Oct, 2:30pm");
+    expect(page).toContain("Opted out of messages: yes, since Sat 3 Oct, 2:30pm");
     expect(page).toContain("Clear strikes / end quiet");
     expect(page).toContain("Clear no-sell");
     expect(page).not.toContain("a private sentence");
@@ -548,16 +548,18 @@ describe("a person's page: strikes, quiet period, no-sell, opt-out (ticket 12)",
     await attention("CRISIS", `conv:${conv}`);
     await attention("EMERGENCY", `conv:${conv}`);
     const page = await (await get("/admin")).text();
-    expect(page).toContain("CRISIS");
+    expect(page).toContain("Crisis message");
     expect(page).toContain("thinking of ending their life");
-    expect(page).toContain("EMERGENCY");
+    expect(page).toContain("Possible medical emergency");
     expect(page).toContain(`href="/admin/conv/${conv}"`);
     expect(page).toContain("<textarea");
+    // Danger first, oldest first: the crisis item is the first card, so its Done hands the chat back; the emergency item stays.
+    expect(page.indexOf("Crisis message")).toBeLessThan(page.indexOf("Possible medical emergency"));
     expect((await press("resolve", {}, env(), "")).headers.get("Location")).toBe("/admin?m=resolved");
-    // the newest item (EMERGENCY) comes first; the crisis item is the second
-    expect(await db.prepare("SELECT mode FROM conversations WHERE id = ?1").bind(conv).first()).toEqual({ mode: "HUMAN" });
-    await press("resolve");
     expect(await db.prepare("SELECT mode FROM conversations WHERE id = ?1").bind(conv).first()).toEqual({ mode: "BOT" });
+    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'EMERGENCY' AND resolved_at IS NULL")).toBe(1);
+    await press("resolve");
+    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE resolved_at IS NULL")).toBe(0);
     expect(await db.prepare("SELECT no_sell_until FROM person_state WHERE conversation_id = ?1").bind(conv).first()).toEqual({ no_sell_until: "2026-10-12T09:00:00Z" });
   });
 
@@ -657,7 +659,7 @@ describe("packages in /admin (ticket 13)", () => {
     expect(await balance(pk)).toBe(0);
     expect(await db.prepare("SELECT kind, target FROM attention WHERE resolved_at IS NULL").all().then((r) => r.results)).toEqual([{ kind: "MANUAL_REFUND", target: `package:${pk}` }]);
     const page = await (await get("/admin")).text();
-    expect(page).toContain("MANUAL REFUND");
+    expect(page).toContain("Refund to pay by hand");
     expect(page).toContain("Pay 6 unused × ₹500 = ₹3,000");
     const done = await press("manual-paid", {}, env(), "");
     expect(done.headers.get("Location")).toBe("/admin?m=manualdone");
@@ -675,7 +677,7 @@ describe("packages in /admin (ticket 13)", () => {
     const slot = await db.prepare("INSERT INTO slots (kind,start_utc,end_utc,owner_id,state) VALUES ('SESSION',?1,?2,?3,'BOOKED')").bind(s.startUtc, s.endUtc, conv).run();
     const ses = await db.prepare("INSERT INTO sessions (conversation_id, slot_id, service, state, origin) VALUES (?1,?2,'HEALING','CREDIT_BOOKED','CREDIT')").bind(conv, slot.meta.last_row_id).run();
     const page = await (await get("/admin")).text();
-    expect(page).toContain("credit booked");
+    expect(page).toContain("Booked from package");
     const res = await press("session", {}, env(), "NO_SHOW");
     expect(res.headers.get("Location")).toBe("/admin?m=done");
     expect(await db.prepare("SELECT state FROM sessions WHERE id = ?1").bind(ses.meta.last_row_id).first()).toEqual({ state: "NO_SHOW" });

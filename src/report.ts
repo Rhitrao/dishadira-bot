@@ -37,13 +37,13 @@ export const scoreLines = (s: Scoreboard) => [
   `Refunds: ${s.refunds} (${rupees(s.refundPaise)})`,
 ];
 
-export type DayItem = { startUtc: string; name: string | null; service: string; kind: "CALL" | "SESSION"; id: number; state: string };
+export type DayItem = { startUtc: string; name: string | null; service: string; kind: "CALL" | "SESSION"; id: number; state: string; convId: number };
 
 // All calls and sessions with a slot between two instants (any status; "Today and tomorrow" and the digest both use this).
 export async function bookingsBetween(env: Env, fromUtc: string, toUtc: string): Promise<DayItem[]> {
   const calls = await env.DB
     .prepare(
-      `SELECT s.start_utc AS startUtc, c.display_name AS name, i.service, i.id, i.state FROM intros i JOIN slots s ON s.id = i.slot_id
+      `SELECT s.start_utc AS startUtc, c.display_name AS name, i.service, i.id, i.state, c.id AS convId FROM intros i JOIN slots s ON s.id = i.slot_id
        JOIN conversations c ON c.id = i.conversation_id
        WHERE s.kind = 'CALL' AND i.state IN ('PAID','RESCHEDULED','CALLED_SESSION','CALLED_NOT_FIT','MISSED','RUDE','CANCELLED_BY_US') AND s.start_utc >= ?1 AND s.start_utc < ?2`,
     )
@@ -51,7 +51,7 @@ export async function bookingsBetween(env: Env, fromUtc: string, toUtc: string):
     .all<Omit<DayItem, "kind">>();
   const sessions = await env.DB
     .prepare(
-      `SELECT s.start_utc AS startUtc, c.display_name AS name, se.service, se.id, se.state FROM sessions se JOIN slots s ON s.id = se.slot_id
+      `SELECT s.start_utc AS startUtc, c.display_name AS name, se.service, se.id, se.state, c.id AS convId FROM sessions se JOIN slots s ON s.id = se.slot_id
        JOIN conversations c ON c.id = se.conversation_id
        WHERE s.kind = 'SESSION' AND se.state IN ('CONFIRMED','CREDIT_BOOKED','COMPLETED','NO_SHOW','CANCELLED','NOT_FIT') AND s.start_utc >= ?1 AND s.start_utc < ?2`,
     )
