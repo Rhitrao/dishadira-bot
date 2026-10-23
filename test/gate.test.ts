@@ -323,7 +323,7 @@ describe("safety: crisis and emergency", () => {
       expect(await db.prepare("SELECT kind, target FROM attention").all()).toMatchObject({ results: [{ kind: "CRISIS", target: `conv:${c.id}` }] });
       expect(emails).toHaveLength(1);
       expect(emails[0].subject).toBe("Urgent: crisis message");
-      expect(emails[0].text).toBe("A crisis message arrived. Open https://bot.example.test/admin now.");
+      expect(emails[0].text).toBe(`A crisis message arrived. Open https://bot.example.test/admin/conv/${c.id} now.`);
       expect(emails[0].text).not.toContain(text);
       // The same person writing again while the item is open: the message goes, there is no second item and no second email.
       await typed(from, text);

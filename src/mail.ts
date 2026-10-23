@@ -2,12 +2,13 @@
 // If the binding or DIGEST_TO is missing, we log and skip: email never makes a job fail.
 import { config } from "./config";
 import type { Env } from "./env";
-import { getSetting } from "./switches";
+import { getSetting, setSetting } from "./switches";
 import { iso, istDay } from "./slots";
 
 export const ALERT_KINDS = ["REFUND_FAILED", "REFUND_STUCK", "PAYMENT_MISMATCH", "UNKNOWN_PAYMENT_LINK", "OUTCOME_FAILED"] as const;
 export const HEARTBEAT_KEY = "HEARTBEAT";
 export const HEARTBEAT_STALE_MIN = 15;
+export const MAIL_LAST_KEY = "MAIL_LAST"; // "SENT|<time>" or "FAILED|<time>": /admin shows whether the last alert email went
 
 export const mailConfigured = (env: Env) => Boolean(env.EMAIL && env.DIGEST_TO);
 
@@ -18,12 +19,16 @@ export async function sendEmail(env: Env, subject: string, text: string): Promis
   }
   try {
     await env.EMAIL!.send({ to: env.DIGEST_TO, from: config.mail.from, subject, text });
+    await noteMail(env, "SENT");
     return "SENT";
   } catch (e) {
     console.log("email failed", (e as { code?: string }).code ?? "error");
+    await noteMail(env, "FAILED");
     return "FAILED";
   }
 }
+
+const noteMail = (env: Env, state: string) => setSetting(env.DB, MAIL_LAST_KEY, `${state}|${iso(Date.now())}`).catch(() => undefined);
 
 const plural = (n: number) => (n === 1 ? "item" : "items");
 
