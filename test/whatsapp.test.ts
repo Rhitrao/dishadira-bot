@@ -128,6 +128,15 @@ describe("POST /wa/webhook", () => {
     expect(c!.last_user_at).toBeTruthy();
   });
 
+  it("keeps the first ad's click id and headline, and a later ad never overwrites them", async () => {
+    const other = "919999999997";
+    const msg = (id: string, referral: Record<string, string>) => wrap({ messages: [{ id, from: other, timestamp: now(), type: "text", text: { body: "hi" }, referral }] });
+    await post(msg("wamid.E1", { source_id: "AD_1", ctwa_clid: "CLID_FIRST", headline: "Feel calmer: book a 15-minute call" }));
+    await post(msg("wamid.E2", { source_id: "AD_2", ctwa_clid: "CLID_SECOND", headline: "Another ad" }));
+    const c = await db.prepare("SELECT source_ad_id, ad_click_id, ad_headline FROM conversations WHERE wa_id = ?1").bind(other).first<Record<string, string>>();
+    expect(c).toEqual({ source_ad_id: "AD_1", ad_click_id: "CLID_FIRST", ad_headline: "Feel calmer: book a 15-minute call" });
+  });
+
   it("button replies route: language -> menu, menu -> booking / list / ask, list row -> answer", async () => {
     await post(text("wamid.E0")); // greeting
     fetchMock.mockClear();

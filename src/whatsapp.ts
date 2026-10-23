@@ -39,7 +39,7 @@ const message = z.object({
     })
     .optional(),
   button: z.object({ payload: z.string().optional(), text: z.string().optional() }).optional(), // template quick-reply tap
-  referral: z.object({ source_id: z.string().optional() }).optional(),
+  referral: z.object({ source_id: z.string().optional(), ctwa_clid: z.string().optional(), headline: z.string().optional() }).optional(),
 });
 const status = z.object({ id: z.string().min(1), status: z.string() });
 const contact = z.object({ wa_id: z.string().optional(), profile: z.object({ name: z.string().optional() }).optional() });
@@ -226,13 +226,15 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
 
   await db
     .prepare(
-      `INSERT INTO conversations (wa_id, display_name, last_user_at, source_ad_id) VALUES (?1, ?2, ?3, ?4)
+      `INSERT INTO conversations (wa_id, display_name, last_user_at, source_ad_id, ad_click_id, ad_headline) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
        ON CONFLICT (wa_id) DO UPDATE SET
          display_name = COALESCE(excluded.display_name, display_name),
          source_ad_id = COALESCE(source_ad_id, excluded.source_ad_id),
+         ad_click_id = COALESCE(ad_click_id, excluded.ad_click_id),
+         ad_headline = COALESCE(ad_headline, excluded.ad_headline),
          last_user_at = CASE WHEN last_user_at IS NULL OR last_user_at < excluded.last_user_at THEN excluded.last_user_at ELSE last_user_at END`,
     )
-    .bind(from, name ?? null, at, m.referral?.source_id ?? null)
+    .bind(from, name ?? null, at, m.referral?.source_id ?? null, m.referral?.ctwa_clid?.slice(0, 200) ?? null, m.referral?.headline?.slice(0, 120) ?? null)
     .run();
   await db
     .prepare("UPDATE conversations SET mode = 'BLOCKED' WHERE wa_id = ?1 AND mode != 'BLOCKED' AND EXISTS (SELECT 1 FROM blocks WHERE wa_id = ?1)")
