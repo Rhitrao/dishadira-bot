@@ -1016,6 +1016,7 @@ Each example shows the customer's message, the trusted facts that matter, and a 
 
 **Choosing `next`, in short:**
 - `show_booking`: they're interested and nothing in this reply is about illness, grief, danger or a supernatural worry.
+- When the trusted facts say `no_sell: true`, code shows **no** booking button, whatever `next` you choose. Never write "tap the button" or "see the call times" then. If they ask to book, say they can type *book*.
 - `show_menu`: they need Sessions & packages, My bookings or the menu, or the message was off-topic.
 - `ask_more`: you answered, and the next move is theirs.
 - `handoff`: a person from the team must act (payment trouble, refunds, complaints, safety, anything you can't answer).
