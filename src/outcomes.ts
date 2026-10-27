@@ -1,6 +1,7 @@
 // Applies Amma's outcomes once the undo window has passed, from the 2-minute cron. Each outcome is claimed with a conditional UPDATE
 // on applied_at, so two cron runs apply it once. Every effect is also idempotent (unique refunds row, dedupe keys, guarded state
 // changes), so a failed attempt is released and simply tried again.
+import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import { config } from "./config";
 import { freeCallSlots } from "./booking";
 import { copyFor, langOf, rupees } from "./copy";
@@ -13,7 +14,41 @@ import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
 import { formatIstLang, holdSlot, iso } from "./slots";
 
 const nowIso = () => iso(Date.now());
-type Due = { id: number; introId: number | null; sessionId: number | null; value: string };
+
+// ---- the tap itself, shared by /amma and the console's Today (/app) so both behave the same ----
+export type OutcomeValue = "SESSION" | "NOT_FIT" | "MISSED" | "RUDE";
+export const OUTCOME_VALUES: readonly OutcomeValue[] = ["SESSION", "NOT_FIT", "MISSED", "RUDE"];
+export const isOutcomeValue = (v: unknown): v is OutcomeValue => typeof v === "string" && (OUTCOME_VALUES as readonly string[]).includes(v);
+
+// One atomic write: refused if this call (intro + slot) or this session already has an answer. Effects are applied later by the
+// cron (applyDueOutcomes below), once undo_until has passed. `after` (e.g. an audit row guarded by changes()) joins the same batch.
+// Returns the new outcome's id, or null when it already had one.
+export async function recordOutcome(
+  db: D1Database,
+  o: { introId?: number; sessionId?: number; slotId: number; value: OutcomeValue; nowMs: number },
+  after: D1PreparedStatement[] = [],
+): Promise<number | null> {
+  const tapped = iso(o.nowMs);
+  const until = iso(o.nowMs + config.undoMinutes * 60_000);
+  const insert =
+    o.sessionId !== undefined
+      ? db
+          .prepare("INSERT INTO outcomes (session_id, value, tapped_at, undo_until, slot_id) SELECT ?1, ?2, ?3, ?4, ?5 WHERE NOT EXISTS (SELECT 1 FROM outcomes WHERE session_id = ?1)")
+          .bind(o.sessionId, o.value, tapped, until, o.slotId)
+      : db
+          .prepare("INSERT INTO outcomes (intro_id, value, tapped_at, undo_until, slot_id) SELECT ?1, ?2, ?3, ?4, ?5 WHERE NOT EXISTS (SELECT 1 FROM outcomes WHERE intro_id = ?1 AND slot_id = ?5)")
+          .bind(o.introId, o.value, tapped, until, o.slotId);
+  const [res] = await db.batch([insert, ...after]);
+  return res.meta.changes ? res.meta.last_row_id : null;
+}
+
+// Undo: only inside the undo window and before the cron applied it. `after` joins the same batch. False when it was too late.
+export async function undoOutcome(db: D1Database, outcomeId: number, nowMs: number, after: D1PreparedStatement[] = []): Promise<boolean> {
+  const [res] = await db.batch([db.prepare("DELETE FROM outcomes WHERE id = ?1 AND undo_until > ?2 AND applied_at IS NULL").bind(outcomeId, iso(nowMs)), ...after]);
+  return res.meta.changes > 0;
+}
+
+type Due ={ id: number; introId: number | null; sessionId: number | null; value: string };
 type Intro = { id: number; state: string; rc: number; conv: number; service: string; slotId: number | null; locale: string };
 
 export async function applyDueOutcomes(env: Env, provider: PaymentProvider, nowMs = Date.now()): Promise<number> {
