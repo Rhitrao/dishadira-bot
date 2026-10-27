@@ -39,6 +39,8 @@ describe("wrangler environments", () => {
   it("CONSOLE_V2 is \"false\" at the top level and in live; test may be either", () => {
     for (const name of ["vars", "env.live.vars"]) expect(value(section(name), "CONSOLE_V2"), name).toBe("false");
     expect(["true", "false"]).toContain(value(section("env.test.vars"), "CONSOLE_V2"));
+    // Exactly the three sections set it (no fourth environment, no second line that could win).
+    expect(wrangler.match(/^CONSOLE_V2\s*=/gm)?.length).toBe(3);
   });
   it("chat text is wiped after 7 days on live and at the top level, after 10 minutes on test", () => {
     expect(value(section("vars"), "CHAT_RETENTION_MINUTES")).toBe("10080");

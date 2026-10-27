@@ -9,6 +9,7 @@ import { recipients } from "./business";
 import { sendEmailToEach } from "./mail";
 import { sendMessage } from "./send";
 import { iso } from "./slots";
+import { consoleLink } from "./switchover";
 
 // Lower case, NFC, no nukta (़), ँ read as ं, punctuation and emoji gone, one space between words.
 export function normalize(text: string): string {
@@ -74,7 +75,7 @@ export async function runCrisis(env: Env, conv: SafetyConv, msgId: string, text:
   // look, never what was written.
   const open = await db.prepare("SELECT 1 FROM attention WHERE kind = 'CRISIS' AND target = ?1 AND resolved_at IS NULL").bind(`conv:${conv.id}`).first();
   if (!open) {
-    await sendEmailToEach(env, await recipients(env, "safety"), "Urgent: crisis message", `A crisis message arrived. Open ${env.PUBLIC_URL ?? ""}/admin/conv/${conv.id} now.`);
+    await sendEmailToEach(env, await recipients(env, "safety"), "Urgent: crisis message", `A crisis message arrived. Open ${consoleLink(env, `/admin/conv/${conv.id}`)} now.`);
     await db.prepare("INSERT INTO attention (kind, target) VALUES ('CRISIS', ?1)").bind(`conv:${conv.id}`).run();
   }
 }
