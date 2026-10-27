@@ -356,7 +356,7 @@ export function paymentsCsv(list: PayRow[], locale: string): string {
   const statusWord = (s: string) => words[s] ?? "";
   const ist = (utc: string) => new Date(Date.parse(utc) + IST_MS).toISOString().slice(0, 16).replace("T", " ");
   const lines = [w.csvHead, ...list.map((r) => [ist(r.at), forText(r, w), String(r.amount / 100), statusWord(r.state), firstName(r.name, w.noName), last4(r.waId)])];
-  return "﻿" + lines.map((l) => l.map(csvCell).join(",")).join("\r\n") + "\r\n";
+  return "\uFEFF" + lines.map((l) => l.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
 
 payments.post("/export", async (c) => {
