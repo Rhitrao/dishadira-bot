@@ -9,7 +9,9 @@ import { activeMember, canAny, csrf, memberCsrf, ROLES, seedMembers, sha256Hex, 
 import type { Env } from "./env";
 import { iso } from "./slots";
 import { inbox } from "./inbox";
+import { people } from "./people";
 import { team } from "./team";
+import { today } from "./today";
 import { CONSOLE_CSS, header } from "./ui";
 
 export type ConsoleVars = { jwt: string; email: string; member: Member };
@@ -64,7 +66,7 @@ export const tabsFor = (m: Member) => TABS.filter((t) => canAny(m, t.action));
 // "Visible to: Owner, Staff", from the same permission table.
 export const visibleTo = (action: Action) => `${S.visibleTo}: ${ROLES.filter((r) => canAny({ id: 0, workspaceId: 0, email: "", displayName: null, role: r, locale: "en", status: "active" }, action)).map((r) => S.roles[r]).join(", ")}`;
 
-const CSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'";
+const CSP = "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; form-action 'self'; frame-ancestors 'none'";
 const secure = (res: Response) => {
   res.headers.set("Cache-Control", "no-store");
   res.headers.set("Content-Security-Policy", CSP);
@@ -136,10 +138,10 @@ const placeholder = (id: TabId) => async (c: ConsoleCtx) => {
   const flash = id === "today" ? (({ joined: S.invite.joined, transferred: S.transferred }) as Record<string, string>)[c.req.query("m") ?? ""] ?? null : null;
   return c.html(frame({ title: S.tabs[id], member: m, tab: id, flash, body: html`${header(S.tabs[id], S.questions[id])}<p class="small muted">${visibleTo(tab.action)}</p>${extra}` }));
 };
-consoleApp.get("/", placeholder("today"));
+consoleApp.route("/", today); // Today (ticket 21, src/today.ts): GET /app and its POSTs under /app/today/*
 consoleApp.route("/inbox", inbox); // ticket 22: src/inbox.ts
 consoleApp.get("/calendar", placeholder("calendar"));
-consoleApp.get("/people", placeholder("people"));
+consoleApp.route("/people", people); // ticket 23: the list and /app/people/<id> (src/people.ts)
 consoleApp.get("/payments", placeholder("payments"));
 consoleApp.get("/settings", placeholder("settings"));
 consoleApp.route("/settings/team", team);

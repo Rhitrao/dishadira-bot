@@ -35,3 +35,11 @@ export async function removeOldNames(env: Env, nowMs = Date.now()): Promise<numb
     .run();
   return res.meta.changes;
 }
+
+// One person's data, now, when the owner removes it (People → Remove their data): every message text and their name, by the same rule
+// as the timed wipe above (and the first-message question kept for the bot's reply). Bookings, payments, refunds, credits, blocks, dedupe
+// keys and the audit log stay, as the law requires. Returned unrun, so the caller batches them with the audit row.
+export const wipePersonStmts = (db: Env["DB"], convId: number, nowIso: string) => [
+  db.prepare("UPDATE messages SET body = NULL, wiped_at = ?2 WHERE conversation_id = ?1 AND body IS NOT NULL").bind(convId, nowIso),
+  db.prepare("UPDATE conversations SET display_name = NULL, first_question_msg = NULL WHERE id = ?1").bind(convId),
+];
