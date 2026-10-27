@@ -1,5 +1,6 @@
 // A paid session (₹799): "Choose a time" -> next free SESSION slots -> guarded hold -> sessions row HELD + payment -> link that expires with the hold.
 // Payment success is applied by src/pay/apply.ts (bookSession). A session can only be offered after CALLED_SESSION (see outcomes.ts).
+import { prices } from "./business";
 import { config } from "./config";
 import { copyFor, langOf } from "./copy";
 import type { Env } from "./env";
@@ -125,15 +126,16 @@ export async function startSession(env: Env, provider: PaymentProvider, conv: Co
   }
 
   const linkId = `di-session-${ses.id}-${nowMs}`; // unique per attempt, <= 40 chars (Razorpay reference_id limit)
+  const amount = prices().single; // the price in force (src/business.ts), read once for the row and the link
   const pay = await db
     .prepare("INSERT INTO payments (provider, purpose, target_id, provider_link_id, amount_paise) VALUES ('razorpay', 'SESSION', ?1, ?2, ?3)")
-    .bind(ses.id, linkId, config.prices.single)
+    .bind(ses.id, linkId, amount)
     .run();
   const payId = pay.meta.last_row_id;
   try {
     const link = await provider.createLink({
       linkId,
-      amountPaise: config.prices.single,
+      amountPaise: amount,
       purpose: "Disha Dira session booking",
       customerName: conv.display_name ?? "Customer",
       customerPhone: conv.wa_id.replace(/\D/g, "").slice(-10),

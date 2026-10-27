@@ -1,4 +1,5 @@
 // Numbers and the 9pm digest. Everything comes from the database.
+import { prices } from "./business";
 import { config } from "./config";
 import type { Env } from "./env";
 import { sendAlerts, sendEmail } from "./mail";
@@ -30,10 +31,10 @@ export async function scoreboard(env: Env, nowMs = Date.now()): Promise<Scoreboa
 
 export const scoreLines = (s: Scoreboard) => [
   `New chats: ${s.newChats}`,
-  `${rupees(config.prices.intro)} paid: ${s.introPaid}`,
+  `${rupees(prices().intro)} paid: ${s.introPaid}`,
   `Calls done: ${s.callsDone}`,
   `Sessions suggested: ${s.sessionsSuggested}`,
-  `${rupees(config.prices.single)} paid: ${s.sessionPaid}`,
+  `${rupees(prices().single)} paid: ${s.sessionPaid}`,
   `Refunds: ${s.refunds} (${rupees(s.refundPaise)})`,
 ];
 

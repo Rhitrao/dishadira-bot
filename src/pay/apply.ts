@@ -1,5 +1,6 @@
 // Applies a payment fact (verified webhook or provider status read) to our rows.
 // Every step is idempotent, so a replay, or a webhook racing the cron, can never double-book, double-refund or double-send.
+import { DEFAULT_PRICES, priceAt } from "../business";
 import { config } from "../config";
 import { copyFor, langOf } from "../copy";
 import type { Env } from "../env";
@@ -10,7 +11,7 @@ import { formatIstLang, iso } from "../slots";
 import type { PayStatus, PaymentProvider } from "./provider";
 import { requestRefund } from "./refund";
 
-type Payment = { id: number; purpose: string; target_id: number; state: string; amount_paise: number };
+type Payment = { id: number; purpose: string; target_id: number; state: string; amount_paise: number; created_at: string };
 type Intro = { id: number; state: string; slot_id: number | null; conversation_id: number };
 type SlotRow = { start_utc: string; state: string; owner_id: number };
 export type Applied = "BOOKED" | "LATE_NO_SLOT" | "DUPLICATE_REFUNDED" | "MISMATCH" | "CLOSED" | "NOOP" | "UNKNOWN_LINK";
@@ -22,7 +23,7 @@ const nowIso = () => iso(Date.now());
 export async function applyStatus(env: Env, provider: PaymentProvider, ev: PayStatus): Promise<Applied> {
   const db = env.DB;
   const pay = await db
-    .prepare("SELECT id, purpose, target_id, state, amount_paise FROM payments WHERE provider = 'razorpay' AND provider_link_id = ?1")
+    .prepare("SELECT id, purpose, target_id, state, amount_paise, created_at FROM payments WHERE provider = 'razorpay' AND provider_link_id = ?1")
     .bind(ev.linkId)
     .first<Payment>();
   if (!pay) {
@@ -84,14 +85,16 @@ async function mismatch(env: Env, pay: Payment, kind: string, paidPaise?: number
   return "MISMATCH";
 }
 
-// What a payment must be for, in paise: the 99 call and the single session from config; a package from the package row (its price when it was created).
+// What a payment must be for, in paise: the price of the call, session or package when its link was made (src/business.ts priceAt),
+// so a link sent just before the owner changed a price is still the right amount. A package must be one of the two sizes we sell.
 async function priceFor(db: Env["DB"], pay: Payment): Promise<number | null> {
-  if (pay.purpose === "INTRO") return config.prices.intro;
-  if (pay.purpose === "SESSION") return config.prices.single;
+  if (pay.purpose === "INTRO") return priceAt(db, "intro", pay.created_at);
+  if (pay.purpose === "SESSION") return priceAt(db, "single", pay.created_at);
   if (pay.purpose === "PACKAGE") {
-    const pk = await db.prepare("SELECT size, price_paise AS price FROM packages WHERE id = ?1").bind(pay.target_id).first<{ size: number; price: number }>();
-    const known = [config.prices.pack10, config.prices.pack20].find((p) => p.sessions === pk?.size && p.paise === pk?.price);
-    return known ? known.paise : null;
+    const pk = await db.prepare("SELECT size, price_paise AS price, created_at AS at FROM packages WHERE id = ?1").bind(pay.target_id).first<{ size: number; price: number; at: string }>();
+    const name = (["pack10", "pack20"] as const).find((n) => DEFAULT_PRICES[n].sessions === pk?.size);
+    if (!pk || !name) return null;
+    return (await priceAt(db, name, pk.at)) === pk.price ? pk.price : null;
   }
   return null;
 }

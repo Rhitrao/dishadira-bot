@@ -9,6 +9,7 @@
 // (one transaction): the slot, the session row and the -1 ledger row are each written only if the balance is above zero and the buyer has
 // fewer than config.sessionRules.maxUpcoming upcoming sessions. Two taps, or a replay, can never use two credits or book two slots.
 import type { D1Database } from "@cloudflare/workers-types";
+import { prices } from "./business";
 import { config } from "./config";
 import { ageButtons, serviceButtons, SERVICES, whoButtons, WHO, bookingChoice, loadConv, sendDays, sendTimes, type Conv } from "./booking";
 import { copyFor, langOf, packPrice, rupees, type Copy, type ForWhom } from "./copy";
@@ -26,8 +27,9 @@ const nowIso = () => iso(Date.now());
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
-export const FLOWS = { p10: config.prices.pack10, p20: config.prices.pack20 } as const;
-type PackFlow = keyof typeof FLOWS;
+// The two packages at the prices in force (src/business.ts). Sizes are fixed; only the prices change in Settings.
+export const flows = () => ({ p10: prices().pack10, p20: prices().pack20 });
+type PackFlow = "p10" | "p20";
 type Flow = "s" | PackFlow;
 const isFlow = (f: string | undefined): f is Flow => f === "s" || f === "p10" || f === "p20";
 
@@ -268,7 +270,7 @@ export async function packChoice(env: Env, choice: string | null, convId: number
 async function startPackage(env: Env, provider: PaymentProvider, conv: Conv, f: PackFlow, msgId: string): Promise<void> {
   const db = env.DB;
   const cp = copyFor(conv.locale);
-  const pack = FLOWS[f];
+  const pack = flows()[f];
   const send = (out: Out, step: string) => sendMessage(env, conv.id, out, `${msgId}:${step}`);
   const nowMs = Date.now();
 

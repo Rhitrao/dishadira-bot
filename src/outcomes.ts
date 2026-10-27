@@ -1,6 +1,7 @@
 // Applies Amma's outcomes once the undo window has passed, from the 2-minute cron. Each outcome is claimed with a conditional UPDATE
 // on applied_at, so two cron runs apply it once. Every effect is also idempotent (unique refunds row, dedupe keys, guarded state
 // changes), so a failed attempt is released and simply tried again.
+import { prices } from "./business";
 import { config } from "./config";
 import { freeCallSlots } from "./booking";
 import { copyFor, langOf, rupees } from "./copy";
@@ -166,7 +167,7 @@ async function applyOne(env: Env, provider: PaymentProvider, o: Due): Promise<vo
         env,
         intro.conv,
         { type: "text", text: cp.notFitRefund },
-        { type: "template", name: "payment_update", params: [rupees(config.prices.intro)] },
+        { type: "template", name: "payment_update", params: [rupees(prices().intro)] },
         key("refund"),
       );
     }

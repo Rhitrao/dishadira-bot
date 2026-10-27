@@ -4,6 +4,7 @@
 //   age_yes | age_no, svc_<SERVICE>, who_<SERVICE>_<WHO>, day_<SERVICE>_<WHO>_<ymd>, more_<SERVICE>_<WHO>, time_<SERVICE>_<WHO>_<startUtc>.
 // The old list rows slot_<SERVICE>_<startUtc> (before who-for and day steps existed) are still understood; see below.
 import type { D1Database } from "@cloudflare/workers-types";
+import { prices } from "./business";
 import { config } from "./config";
 import { copyFor, langOf, type Copy, type ForWhom, type Lang } from "./copy";
 import type { Env } from "./env";
@@ -271,9 +272,10 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
     .run();
   const introId = intro.meta.last_row_id;
   const linkId = `di-intro-${introId}`; // unique, tied to the intro; <= 40 chars (Razorpay reference_id limit)
+  const amount = prices().intro; // the price in force (src/business.ts), read once for the row and the link
   const pay = await db
     .prepare("INSERT INTO payments (provider, purpose, target_id, provider_link_id, amount_paise) VALUES ('razorpay', 'INTRO', ?1, ?2, ?3)")
-    .bind(introId, linkId, config.prices.intro)
+    .bind(introId, linkId, amount)
     .run();
   const payId = pay.meta.last_row_id;
 
@@ -281,7 +283,7 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
     // Expiry = the hold, which is no earlier than the provider minimum (checked in config.test.ts).
     const link = await provider.createLink({
       linkId,
-      amountPaise: config.prices.intro,
+      amountPaise: amount,
       purpose: "Disha Dira call booking",
       customerName: conv.display_name ?? "Customer",
       customerPhone: conv.wa_id.replace(/\D/g, "").slice(-10),

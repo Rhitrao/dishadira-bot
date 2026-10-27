@@ -6,6 +6,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { z } from "zod";
 import { EMAIL_RE, redactDigits, URL_RE } from "./aicheck";
+import { prices } from "./business";
 import { config } from "./config";
 import { langOf, type Lang } from "./copy";
 import { KNOWLEDGE } from "./knowledge";
@@ -83,7 +84,7 @@ export function factsText(f: Facts): string {
     `- Today in India: ${f.today}`,
     `- Chat language: ${f.language === "hi" ? "Hindi" : "English"}`,
     `- no_sell: ${f.noSell}`,
-    `- Has had a ${config.prices.intro / 100}-rupee first call: ${f.hadIntroCall ? "yes" : "no"}`,
+    `- Has had a ${prices().intro / 100}-rupee first call: ${f.hadIntroCall ? "yes" : "no"}`,
     `- Package sessions left: ${f.creditsLeft}`,
     n ? `- Next booking: ${n.kind} on ${n.day} at ${n.time} (India time), status ${n.status}, call in ${n.callLanguage}` : "- Next booking: none",
     f.openStep ? `- open_step: ${f.openStep} (${STEP_WORDS[f.openStep] ?? "a booking step"})` : "- open_step: none",
