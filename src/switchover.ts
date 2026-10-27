@@ -6,7 +6,7 @@ import type { Context, Next } from "hono";
 import { html } from "hono/html";
 import type { Env } from "./env";
 
-export const consoleV2 = (env: { CONSOLE_V2?: string }) => env.CONSOLE_V2 === "true";
+export const consoleV2 = (env: { CONSOLE_V2?: string } | undefined) => env?.CONSOLE_V2 === "true";
 
 // The old People filters that have a match in /app/people (src/people.ts); "crisis", "quiet" and "paid" have none and are dropped.
 const PEOPLE_FILTERS: Record<string, string> = { all: "all", human: "waiting", blocked: "blocked" };

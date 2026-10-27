@@ -107,7 +107,7 @@ Steps 3–6 are **by hand**: Claude never changes Cloudflare settings or deploys
 - Email links (`consoleLink`): crisis → /app/people/<id>; "asked for a person" → /app/inbox/<id>; daily summary follow-ups → /app/people/<id>; health alerts → /app/payments (an outcome that didn't apply → /app), and each `payment:<id>` line now carries a link (/app/payments/<id>, or /admin/payments when off). Off, they are the old pages; the health alert's "Open /admin" is now a full link with PUBLIC_URL.
 - wrangler.toml: `CONSOLE_V2 = "true"` under `[env.test.vars]` only; the release test still requires "false" at the top level and in live, and now also that exactly three sections set it.
 - The old pages are not removed (a later release). src/today.ts, inbox.ts, people.ts, payments.ts, settings.ts, team.ts, requests.ts, ai.ts and docs/KNOWLEDGE.md untouched.
-- Checks: `npx tsc --noEmit` clean; every test file run one at a time (counts in the PR).
+- Checks: `npx tsc --noEmit` clean; all 27 test files run one at a time: 1,002 passed, 0 failed (13 new in test/switchover.test.ts). test/members.test.ts now expects /admin to redirect while the flag is on, and to be unchanged while it is off.
 - Open: the heartbeat alert has no link (it says to check the cron triggers); /app Today has the "bot not run for 15 minutes" banner instead of /admin's on-open check.
 - Next: merge after 19–24, then the checklist above.
 
