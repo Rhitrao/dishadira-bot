@@ -54,6 +54,8 @@ refunds: unique(payment_id); reason; requested_by; state; provider refund id. Ne
 blocks: wa_id and/or UPI handle/payer ref; reason; by. Checked before any link is created.
 outcomes: intro id, value, tapped_at, undo_until, applied_at. Effects run only after undo_until.
 attention: kind, target, created_at, resolved_at. Feeds Rohit's queue and the 9pm digest.
+Console v4 (ticket 19, docs/CONSOLE-PRD.md): workspaces, members (one role each: OWNER | PRACTITIONER | STAFF, exactly one owner),
+  invites (one-time, 7 days, token hash only), requests (ask owner); practitioner_id on slots, intros, sessions; audit_log member_id.
 
 Flow invariants
 Bot is button-led: max 3 reply buttons, lists max 10 rows, CTA URL label max 20 chars. The AI may only choose a reply and one

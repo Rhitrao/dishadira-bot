@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-27 (Ticket 18: flow fixes from the test chat)
+Updated: 2026-10-27 (Ticket 19: members, roles and the permission check)
 
 ## Payment provider
 Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
@@ -42,12 +42,14 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [x] 15–17 Console redesign (PRs #26, #27, #28, merged and deployed to test 23 Oct)
 - [ ] 18 Flow fixes from the test chat (PR: see the branch `t18-flow-fixes`)
 - [ ] 20 Design system, fonts and strings (PR https://github.com/Rhitrao/dishadira-bot/pull/31)
+- [ ] 19 Members, roles and the permission check (PR https://github.com/Rhitrao/dishadira-bot/pull/32; merges after #29, #30 and #31)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
 
 ## Blocked
-(none)
+- **Ticket 19 vs CONTRACT (Stack: "Cloudflare email (send to Rohit's verified address only)").** The ticket and the PRD email an invite link to the invited person. Built as the ticket says (`sendEmailTo` in src/mail.ts, used only by the team page), behind `CONSOLE_V2` (off everywhere); if the email doesn't go, the owner sees the one-time link on the page to send by hand. **Question for Rohit:** may the CONTRACT's Stack line become "send to Rohit's verified address, plus one-time invite links to invited members"? (Cloudflare's Email Service must also allow sending to unverified addresses for the email to arrive.)
+- Ticket 19 vs PRD (the ticket wins, noted as the v4 rules ask): the PRD says migrations "0011 and on" and that the migration creates the two members; the ticket says `0010_members.sql` and a one-time seed on the first request (the emails are secrets, so they can't be in a migration). The PRD's `members.roles` is one `role`.
 
 ## Open question for Rohit (Ticket 09): WhatsApp usernames and BSUID
 Meta now sends a business-scoped user id (BSUID) in `user_id` / `from_user_id` on every message webhook, and `from` (the phone number) is left out when the person has a username and Meta cannot share the number. Today the bot identifies a person by phone number (`conversations.wa_id` is UNIQUE and is also the address we send to). Right now such a message is skipped (events row `skip:<message id>`, error `NO_PHONE`) and the person gets no reply, no booking and no "needs attention" item. Decision needed before real ads run:
@@ -91,6 +93,18 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
   - The language switch posts to `/app/language` (fields `csrf`, `locale`, `back`); that route belongs with the /app shell (ticket 19 or 21).
   - The Access application must cover `/app/*`, fonts included (a Cloudflare setting, by hand, ticket 25).
 - Next: merge #29 and #30, then this PR (after or alongside ticket 19), then tickets 21–24 use `consoleFrame` and the components.
+## Session notes (Ticket 19: members, roles and the permission check)
+- What changed:
+  - `migrations/0010_members.sql`: `workspaces` (workspace 1 seeded, named "My business" until Settings renames it), `members` (one role, `invited|active|removed`, `locale`, `last_seen_at`; a partial unique index allows one owner per workspace), `invites` (token hash, 7-day expiry, `used_at`), `requests` (ask owner), `practitioner_id` on `slots`, `intros`, `sessions`, and `workspace_id`, `member_id`, `reason` on `audit_log`. Only adds; nothing to undo.
+  - `src/auth.ts`: the Access JWT check (shared with /admin and /amma, which still allow only their two emails), `can(member, action, target)` → `yes | no | ask` from one table (`PERMISSIONS`, the PRD rows plus `view_people`), `canAny()` for tabs and screens, member CSRF tokens that name the member and role, and the one-time seed (ROHIT_EMAIL → owner, AMMA_EMAIL → practitioner, existing slots/intros/sessions → that practitioner).
+  - New bookings carry `practitioner_id` (one SQL fragment, `PRACTITIONER_SQL` in src/slots.ts, at the 7 insert sites in slots, booking, packages, mybookings, outcomes). No triggers: D1 counts trigger writes in `meta.changes`.
+  - `src/console.ts`: `/app` behind `CONSOLE_V2` (a plain 404 while off), "No access" for any verified email without an active membership, role-filtered tabs (owner 6, practitioner 3, staff 4) with placeholder screens, each saying who can see it; invite accept (`/app/invite/<token>`: GET shows a button, POST accepts). `src/team.ts`: `/app/settings/team` (owner only): invite by email, change role, remove, hand over ownership (the old owner becomes Staff). Every change is one batch with its audit row (written only if the change happened).
+  - `CONSOLE_V2 = "false"` at the top level, test and live in wrangler.toml; the release test insists on "false" at the top level and in live (test may be either), like AI_REPLIES.
+  - The console pages use today's stylesheet (`CONSOLE_CSS`) and a small frame in src/console.ts; ticket 21 moves them to ticket 20's frame. Ticket 19's words are in `S` (console.ts) and `T` (team.ts), English only, ready to move to the string catalogue.
+  - `POST /app/language` (for ticket 20's language switch, PR #31): `locale` en | hi for the signed-in member, Origin + CSRF (`languageCsrf`), audited as `MEMBER_LOCALE`, then back to the form's `back` path or the Referer, only inside /app.
+- Checks: `npx tsc --noEmit` passed; vitest file by file (the full run stalls on this 2-CPU box): 823/823 passed across 20 files (82 new in test/members.test.ts, 1 new in test/release.test.ts). health.test.ts caught a regression (/admin with no env gave 500) that is fixed; amma and admin re-run after it.
+- Open questions: the email question under "Blocked". After a hand-over the old owner becomes Staff (Phase 1 has no "owner who is also bookable"); say if Practitioner should be offered instead. Invited people also need to pass the Cloudflare Access policy (today two fixed emails) until ticket 25's hand step changes it to "any verified email".
+- Next: Rohit reviews; merge after #29 and #30, and after or alongside #31 (ticket 20, whose language switch posts to /app/language). Then tickets 21–24.
 
 ## Session notes (console v4 tickets: 19–25)
 - Added: tickets 19–25 in tickets.md ("v4: the role-based console, Phase 1") and the spec `docs/CONSOLE-PRD.md` (a copy of the PRD doc, no names). No code changed.

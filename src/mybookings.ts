@@ -16,7 +16,7 @@ import { requestRefund } from "./pay/refund";
 import { creditBalance, hasPackage } from "./packages";
 import { raiseAttention, sendMessage, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
-import { bind, formatIstLang, generateSlots, iso, istDay } from "./slots";
+import { bind, formatIstLang, generateSlots, iso, istDay, PRACTITIONER_SQL } from "./slots";
 
 const HOUR = 3_600_000;
 const nowIso = () => iso(Date.now());
@@ -252,8 +252,8 @@ export async function moveSession(db: D1Database, convId: number, ses: SessionRo
     // The new slot, only if it is free and the session may be moved right now.
     bind(
       db,
-      `INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until)
-       SELECT 'SESSION', :start, :end, :conv, 'BOOKED', NULL
+      `INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until, practitioner_id)
+       SELECT 'SESSION', :start, :end, :conv, 'BOOKED', NULL, ${PRACTITIONER_SQL}
        WHERE NOT EXISTS (SELECT 1 FROM slots WHERE (state = 'BOOKED' OR hold_until > :now) AND start_utc < :end AND end_utc > :start)
          AND EXISTS (SELECT 1 FROM sessions se JOIN slots o ON o.id = se.slot_id
                      WHERE se.id = :sid AND se.conversation_id = :conv AND se.state IN ('CREDIT_BOOKED', 'CONFIRMED') AND se.slot_id = :old

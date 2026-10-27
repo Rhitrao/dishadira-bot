@@ -36,6 +36,10 @@ describe("wrangler environments", () => {
     for (const name of ["vars", "env.live.vars"]) expect(value(section(name), "AI_REPLIES"), name).toBe("false");
     expect(["true", "false"]).toContain(value(section("env.test.vars"), "AI_REPLIES"));
   });
+  it("CONSOLE_V2 is \"false\" at the top level and in live; test may be either", () => {
+    for (const name of ["vars", "env.live.vars"]) expect(value(section(name), "CONSOLE_V2"), name).toBe("false");
+    expect(["true", "false"]).toContain(value(section("env.test.vars"), "CONSOLE_V2"));
+  });
   it("chat text is wiped after 7 days on live and at the top level, after 10 minutes on test", () => {
     expect(value(section("vars"), "CHAT_RETENTION_MINUTES")).toBe("10080");
     expect(value(section("env.live.vars"), "CHAT_RETENTION_MINUTES")).toBe("10080");

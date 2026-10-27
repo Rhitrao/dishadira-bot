@@ -9,6 +9,10 @@ export type Slot = { kind: SlotKind; startUtc: string; endUtc: string };
 const IST_OFFSET_MINUTES = 330;
 
 export const iso = (ms: number) => new Date(ms).toISOString().slice(0, 19) + "Z";
+
+// Whose calendar a new call or session is on (practitioner_id on slots, intros and sessions; migration 0010). Phase 1 has one
+// practitioner: the workspace's first active one, or NULL before the console's one-time seed (which then fills the NULLs).
+export const PRACTITIONER_SQL = "(SELECT id FROM members WHERE workspace_id = 1 AND role = 'PRACTITIONER' AND status = 'active' ORDER BY id LIMIT 1)";
 const hhmm = (s: string) => {
   const [h, m] = s.split(":").map(Number);
   return h * 60 + m;
@@ -112,8 +116,8 @@ export async function holdSlot(
   const now = iso(nowMs);
   const holdUntil = iso(nowMs + config.holdMinutes * 60_000);
   const sql = `
-    INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until)
-    SELECT :kind, :start, :end, :owner, 'HELD', :until
+    INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until, practitioner_id)
+    SELECT :kind, :start, :end, :owner, 'HELD', :until, ${PRACTITIONER_SQL}
     WHERE NOT EXISTS (SELECT 1 FROM slots WHERE ${ACTIVE} AND start_utc < :end AND end_utc > :start)
       AND NOT EXISTS (SELECT 1 FROM slots WHERE ${HELD} AND owner_id = :owner)
     ON CONFLICT (kind, start_utc) DO UPDATE

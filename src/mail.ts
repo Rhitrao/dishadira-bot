@@ -13,17 +13,23 @@ export const MAIL_LAST_KEY = "MAIL_LAST"; // "SENT|<time>" or "FAILED|<time>": /
 export const mailConfigured = (env: Env) => Boolean(env.EMAIL && env.DIGEST_TO);
 
 export async function sendEmail(env: Env, subject: string, text: string): Promise<"SENT" | "SKIPPED" | "FAILED"> {
-  if (!mailConfigured(env)) {
+  if (!mailConfigured(env)) return sendEmailTo(env, "", subject, text); // logs the skip
+  const r = await sendEmailTo(env, env.DIGEST_TO, subject, text);
+  await noteMail(env, r);
+  return r;
+}
+
+// One email to one address: Rohit's (above), or a console invite with its one-time link (src/team.ts).
+export async function sendEmailTo(env: Env, to: string, subject: string, text: string): Promise<"SENT" | "SKIPPED" | "FAILED"> {
+  if (!env.EMAIL || !to) {
     console.log("email skipped: not configured");
     return "SKIPPED";
   }
   try {
-    await env.EMAIL!.send({ to: env.DIGEST_TO, from: config.mail.from, subject, text });
-    await noteMail(env, "SENT");
+    await env.EMAIL.send({ to, from: config.mail.from, subject, text });
     return "SENT";
   } catch (e) {
     console.log("email failed", (e as { code?: string }).code ?? "error");
-    await noteMail(env, "FAILED");
     return "FAILED";
   }
 }
