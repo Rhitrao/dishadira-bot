@@ -4,6 +4,7 @@ import { admin } from "./admin";
 import { amma } from "./amma";
 import { serveFont } from "./fonts";
 import { consoleApp } from "./console";
+import { nudgeWaitingChats } from "./inbox";
 import { sendAlerts } from "./mail";
 import { applyDueOutcomes } from "./outcomes";
 import { reconcile } from "./pay/apply";
@@ -52,7 +53,7 @@ const scheduled = async (event: { cron: string }, env: Env) => {
   await recordHeartbeat(env).catch(() => 0);
   // One failing job must not stop the others; each is safe to run again.
   for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);
-  for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats]) await job(env).catch(() => 0);
+  for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats]) await job(env).catch(() => 0);
 };
 
 export default Object.assign(app, { scheduled });
