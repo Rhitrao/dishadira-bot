@@ -41,7 +41,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [x] 14 AI assistant (behind AI_REPLIES, default off) (PR: see the branch `claude/loving-fermat-2xaan4`)
 - [x] 15–17 Console redesign (PRs #26, #27, #28, merged and deployed to test 23 Oct)
 - [ ] 18 Flow fixes from the test chat (PR: see the branch `t18-flow-fixes`)
-- [ ] 20 Design system, fonts and strings (PR: see the branch `t20-design-system`)
+- [ ] 20 Design system, fonts and strings (PR https://github.com/Rhitrao/dishadira-bot/pull/31)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
