@@ -116,6 +116,8 @@ const PEOPLE_CSS = `
 .safety p{margin:12px 0}
 .safety p+p{border-top:1px solid var(--line);padding-top:12px}
 .callnum{margin:0 0 12px}
+details.confirm.calm>summary{color:var(--accent);border-color:var(--accent)}
+details.confirm.calm .panel{background:var(--accent-tint)}
 @media (min-width:900px){.people-find{display:none}}
 `;
 
@@ -234,7 +236,7 @@ const token = (c: ConsoleCtx, scope: string) => memberCsrf(c.get("jwt"), c.get("
 
 // A confirm step with fields: the details panel opens in place, names the effect, and the red button sends it with its token.
 function confirmWith(o: { label: string; effect: string; confirm: string; action: string; csrf: string; fields?: unknown; danger?: boolean }) {
-  return html`<details class="confirm"><summary>${o.label}</summary><div class="panel"><p class="effect">${o.effect}</p><form method="post" action="${o.action}"><input type="hidden" name="csrf" value="${o.csrf}">${o.fields ?? ""}<button class="btn ${o.danger === false ? "primary" : "danger"}" type="submit">${o.confirm}</button></form></div></details>`;
+  return html`<details class="confirm${o.danger === false ? " calm" : ""}"><summary>${o.label}</summary><div class="panel"><p class="effect">${o.effect}</p><form method="post" action="${o.action}"><input type="hidden" name="csrf" value="${o.csrf}">${o.fields ?? ""}<button class="btn ${o.danger === false ? "primary" : "danger"}" type="submit">${o.confirm}</button></form></div></details>`;
 }
 const reasonField = (p: PeopleCopy, id: string, value = "") =>
   html`<label for="${id}">${p.reason}</label><input type="text" id="${id}" name="reason" maxlength="200" required value="${value}" autocomplete="off">`;
@@ -446,7 +448,7 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
     more.push(
       opts.reveal
         ? html`<p class="callnum"><a class="btn primary" href="tel:+${person.waId}">${p.callNumber(`+${person.waId}`)}</a></p><p class="muted">${p.numberShown}</p>`
-        : confirmWith({ label: p.showNumber, effect: p.showNumberEffect, confirm: p.showNumberYes, action: `${base}/reveal`, csrf: await token(c, `people-reveal:${id}`), danger: false, fields: reasonField(p, "reveal-reason", draft.form === "reveal" ? draft.reason : "") }),
+        : confirmWith({ label: p.showNumber, effect: p.showNumberEffect, confirm: p.showNumberYes, action: `${base}/reveal`, csrf: await token(c, `people-reveal:${id}`), fields: reasonField(p, "reveal-reason", draft.form === "reveal" ? draft.reason : "") }),
     );
   }
   const blk = can(m, "block");
