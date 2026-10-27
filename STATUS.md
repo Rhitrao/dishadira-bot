@@ -43,7 +43,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 18 Flow fixes from the test chat (PR: see the branch `t18-flow-fixes`)
 - [ ] 20 Design system, fonts and strings (PR https://github.com/Rhitrao/dishadira-bot/pull/31)
 - [ ] 19 Members, roles and the permission check (PR https://github.com/Rhitrao/dishadira-bot/pull/32; merges after #29, #30 and #31)
-- [ ] 23 People and the person page (PR: see the branch `t23-people`)
+- [ ] 23 People and the person page (PR https://github.com/Rhitrao/dishadira-bot/pull/34)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
