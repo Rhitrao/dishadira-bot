@@ -435,3 +435,21 @@ Spec: `docs/CONSOLE-PRD.md` (the PRD). Read it before any of these tickets; wher
 - STATUS.md gets the owner's hand steps: test on the test bot, then change the Access policy to "any verified email" by hand (a Cloudflare setting, never a deploy), then switch on in live.
 - The old pages are removed in a later release, not in this ticket.
 - Tests: redirects with the flag on and off; an old email link lands on the right `/app` page.
+
+### Ticket 26: console follow-ups and contract decisions (cap $20)
+The owner decided every open v4 question in the session of 27 Oct 2026 ("yes to all"). One session, one branch, one PR.
+1. CONTRACT.md updates, then clear the matching "Blocked" entries in STATUS.md:
+   - a. Money received outside Razorpay: the owner may record it (or approve a staff request), and that confirms the booking, audited with a reason.
+   - b. Prices: config holds the defaults; the owner's changes from Settings live in the settings table.
+   - c. Practitioners may read (read-only) the chats of customers booked with them; never others'; staff never see safety-message text.
+   - d. Templates: add `follow_up` (UTILITY, no variables) and `follow_up_hi` to the list; they stay `approved: false` until Meta approves them (a hand step in STATUS: submit the docs/TEMPLATES.md §8 draft in Meta, then flip the flag by PR).
+   - e. Email: only to verified addresses (DIGEST_TO, and member addresses the owner has verified in Cloudflare Email Routing; say so next to the Settings recipient choice). Invites are not emailed: the team page shows the one-time link with a "Send on WhatsApp" link (`https://wa.me/?text=` + the encoded message and link) and a copy-able field.
+2. Ticket 21's `decideRequest()` MARK_PAID approval runs ticket 23's `applyMoneyReceived()`, so approving confirms the booking (one shared path, in src/requests.ts). The Inbox staff cash booking whose 20-minute hold has lapsed follows the existing late-payment rule on approval (the same time if it is still free, otherwise the owner is told); never a double booking.
+3. People: practitioners see their own customers' chats, read-only (`PRACTITIONER_CHAT`); staff safety masking unchanged.
+4. Team page hand-over: the outgoing owner chooses Practitioner or Staff on the form (default Practitioner).
+5. Settings apply everywhere: the workspace accent colour in `consoleFrame` on every /app page, and `privacy.staff_read_chat` (off: staff see "Chat text is hidden by the owner" instead of message text) in Today, Inbox and People.
+6. The assistant and prices: the current prices (settings, config fallback) go into the AI trusted facts and the output-check number allowlist; the rules header and docs/KNOWLEDGE.md say prices come from the trusted facts; src/knowledge.ts regenerated the repo's way. The ai, aicheck and agent-evals tests keep passing.
+7. Inbox: "Book or move for them" can also move a paid ₹99 call, on the existing call-reschedule code path (as for a missed call: one free move, same rules), audited.
+8. The PRD's bundled "ask owner" email: one email to the owner at most every 30 minutes listing open `requests` rows (cron, claimed in settings like the other alerts), in plain words.
+- Rules: keep edits to src/admin.ts, src/amma.ts, src/index.ts, src/report.ts, src/safety.ts and src/watch.ts minimal (ticket 25 changes redirects and email links there at the same time); no URL or link strings change. STATUS.md edits are additive (the session note and the Blocked clean-up).
+- Tests for every item.
