@@ -396,7 +396,7 @@ describe("page actions and audit", () => {
 });
 
 describe("digest and alerts", () => {
-  it("digest lists open items by kind, tomorrow's bookings, the scoreboard and switches that are off", async () => {
+  it("the daily summary lists open items in words, tomorrow's bookings, the scoreboard and switches that are off", async () => {
     const t = await paidIntro({ ymd: "2026-10-06", i: 0, name: "Tomorrow Caller" });
     await attention("FREE_TEXT", "conv:1");
     await attention("FREE_TEXT", "conv:2");
@@ -404,14 +404,16 @@ describe("digest and alerts", () => {
     await confirmedSession("2026-10-06", 2, "Sess Person");
     await db.prepare("INSERT INTO settings (key,value) VALUES ('SENDS','false')").run();
     await runDigest(env(), NOW);
-    const mail = emails.find((m) => m.subject === "Disha Dira daily digest")!;
+    const mail = emails.find((m) => m.subject.startsWith("Daily summary"))!;
     expect(mail.to).toBe("ops@example.test");
-    expect(mail.text).toContain("- FREE_TEXT: 2");
-    expect(mail.text).toContain("- REFUND_FAILED: 1");
-    expect(mail.text).toMatch(/call · Tomorrow/);
-    expect(mail.text).toMatch(/session · Sess/);
+    expect(mail.text).toContain("Needs you (3)");
+    expect(mail.text).toContain("- Wrote something the bot couldn't answer: 2");
+    expect(mail.text).toContain("- Refunds that didn't go through: 1");
+    expect(mail.text).toMatch(/Call · Tomorrow/);
+    expect(mail.text).toMatch(/Session · Sess/);
     expect(mail.text).toContain("New chats:");
-    expect(mail.text).toContain("SENDS is OFF");
+    expect(mail.text).toContain("Messages to customers are paused");
+    expect(mail.text).not.toMatch(/FREE_TEXT|REFUND_FAILED|SENDS|AMMA/); // no internal codes
     expect(mail.text).not.toMatch(/91\d{8}/); // no phone numbers
     expect(await digestText(env(), NOW)).toContain("Last 7 days");
   });

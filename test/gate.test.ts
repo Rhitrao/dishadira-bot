@@ -1103,13 +1103,13 @@ describe("the 9pm digest: counts and warm leads, never message text", () => {
     const f = await greeted();
     await typed(f, "stop");
     const text = await digestText(env(), NOW);
-    expect(text).toContain("Safety and noise (last 24 hours)");
+    expect(text).toContain("Safety (last 24 hours)");
     expect(text).toContain("- Crisis messages: 1");
     expect(text).toContain("- Medical emergencies: 1");
-    expect(text).toContain("- Blocks: NOISE_SEXUAL 1");
-    expect(text).toContain("- Quiet periods: 1");
-    expect(text).toContain("- Budget fallbacks: 1");
-    expect(text).toContain("- Opt-outs: 1");
+    expect(text).toContain("- Numbers blocked: sexual messages 1");
+    expect(text).toContain("- Paused for a week after nuisance messages: 1");
+    expect(text).toContain("- Reached the assistant's daily limit: 1");
+    expect(text).toContain("- Asked to stop messages: 1");
     expect(text).not.toContain(SECRET_TEXT);
     expect(text).not.toContain("want to die");
     expect(await digestText(env(), NOW + 2 * DAY)).toContain("- Crisis messages: 0"); // only the last 24 hours
@@ -1153,9 +1153,9 @@ describe("the 9pm digest: counts and warm leads, never message text", () => {
 
     expect((await warmLeads(env(), NOW)).map((l) => l.name)).toEqual(["Priya Sharma", "Anil Kumar", "Meera Rao", "Kiran Das"]);
     const text = await digestText(env(), NOW);
-    expect(text).toContain("Warm leads (last 24 hours, not paid yet)");
+    expect(text).toContain("Worth a follow-up (last 24 hours, not paid yet)");
     expect(text).toContain(`- Priya · https://bot.example.test/admin/conv/${expiredId}`);
     expect(text).not.toContain("Sharma");
-    expect(text.slice(text.indexOf("Warm leads"))).not.toContain("Q"); // none of the people who must not be listed
+    expect(text.slice(text.indexOf("Worth a follow-up"))).not.toContain("Q"); // none of the people who must not be listed
   });
 });

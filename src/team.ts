@@ -126,7 +126,8 @@ team.post("/invite", async (c) => {
   // The member row is new, or a removed or still-invited one coming back; an active member is never touched.
   const res = await c.env.DB.batch([
     c.env.DB.prepare(
-      `INSERT INTO members (workspace_id, email, display_name, role, status) VALUES (?1, ?2, ?3, ?4, 'invited')
+      `INSERT INTO members (workspace_id, email, display_name, role, status, locale)
+       VALUES (?1, ?2, ?3, ?4, 'invited', COALESCE((SELECT value FROM settings WHERE key = 'business.default_locale' AND value IN ('en', 'hi')), 'en'))
        ON CONFLICT (workspace_id, email) DO UPDATE SET role = excluded.role, status = 'invited', display_name = COALESCE(excluded.display_name, members.display_name)
        WHERE members.status != 'active'`,
     ).bind(WORKSPACE_ID, email, name, role),

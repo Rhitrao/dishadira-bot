@@ -1,8 +1,9 @@
-// Numbers and the 9pm digest. Everything comes from the database.
-import { prices } from "./business";
+// Numbers and the 9pm summary email, in the console's words (no codes). Everything comes from the database.
+import { prices, recipients } from "./business";
+import { serviceName } from "./copy";
 import { config } from "./config";
 import type { Env } from "./env";
-import { sendAlerts, sendEmail } from "./mail";
+import { sendAlerts, sendEmailToEach } from "./mail";
 import { formatIstParts, iso, istDay } from "./slots";
 import { switchStates } from "./switches";
 
@@ -31,10 +32,10 @@ export async function scoreboard(env: Env, nowMs = Date.now()): Promise<Scoreboa
 
 export const scoreLines = (s: Scoreboard) => [
   `New chats: ${s.newChats}`,
-  `${rupees(prices().intro)} paid: ${s.introPaid}`,
+  `${rupees(prices().intro)} calls paid: ${s.introPaid}`,
   `Calls done: ${s.callsDone}`,
-  `Sessions suggested: ${s.sessionsSuggested}`,
-  `${rupees(prices().single)} paid: ${s.sessionPaid}`,
+  `Sessions offered after a call: ${s.sessionsSuggested}`,
+  `${rupees(prices().single)} sessions paid: ${s.sessionPaid}`,
   `Refunds: ${s.refunds} (${rupees(s.refundPaise)})`,
 ];
 
@@ -66,6 +67,11 @@ export async function bookingsBetween(env: Env, fromUtc: string, toUtc: string):
 export const dayRange = (ymd: string, days = 1) => [iso(Date.parse(`${ymd}T00:00:00+05:30`)), iso(Date.parse(`${ymd}T00:00:00+05:30`) + days * 86_400_000)] as const;
 export const firstName = (n: string | null) => n?.trim().split(/\s+/)[0] || "(no name)";
 
+// Why a number was blocked, in the console's words.
+const BLOCK_WORDS: Record<string, string> = {
+  NOISE_SEXUAL: "sexual messages", NOISE_ABUSE: "abuse", NOISE_REPEAT: "nuisance messages again after a pause", RUDE: "a rude call", ADMIN: "by the team",
+};
+
 // Counts for the last 24 hours, from the bot's own audit rows and the blocks table. Never any message text.
 export async function noiseLines(env: Env, nowMs = Date.now()): Promise<string[]> {
   const since = iso(nowMs - 86_400_000);
@@ -75,25 +81,32 @@ export async function noiseLines(env: Env, nowMs = Date.now()): Promise<string[]
   return [
     `- Crisis messages: ${n("CRISIS")}`,
     `- Medical emergencies: ${n("EMERGENCY")}`,
-    `- Blocks: ${blocks.results.length ? blocks.results.map((b) => `${b.reason} ${b.n}`).join(", ") : "none"}`,
-    `- Quiet periods: ${n("QUIET")}`,
-    `- Budget fallbacks: ${n("BUDGET_FALLBACK")}`,
-    `- Opt-outs: ${n("OPT_OUT")}`,
+    `- Numbers blocked: ${blocks.results.length ? blocks.results.map((b) => `${BLOCK_WORDS[b.reason] ?? "other"} ${b.n}`).join(", ") : "none"}`,
+    `- Paused for a week after nuisance messages: ${n("QUIET")}`,
+    `- Reached the assistant's daily limit: ${n("BUDGET_FALLBACK")}`,
+    `- Asked to stop messages: ${n("OPT_OUT")}`,
   ];
 }
 
-// The assistant over the last 24 hours: answers it wrote, answers the output check replaced (by reason code), calls that failed (by code). Counts only.
+// Why the output check replaced an answer, in the console's words.
+const REJECT_WORDS: Record<string, string> = {
+  TOO_LONG: "too long", SCRIPT: "unexpected characters", META: "talked about itself", LINK: "had a link", EMAIL: "had an email address",
+  PHONE: "had a phone number", BANNED_WORD: "a word we never use", NUMBER: "a number we don't quote",
+};
+
+// The assistant over the last 24 hours: answers it wrote, answers the output check replaced (and why), times it couldn't answer. Counts only.
 export async function aiLines(env: Env, nowMs = Date.now()): Promise<string[]> {
   const rows = await env.DB
     .prepare("SELECT action, detail, COUNT(*) AS n FROM audit_log WHERE actor = 'bot' AND action IN ('AI_REPLY', 'AI_REJECTED', 'AI_FAILED') AND at >= ?1 GROUP BY action, detail ORDER BY action, detail")
     .bind(iso(nowMs - 86_400_000))
     .all<{ action: string; detail: string; n: number }>();
   const total = (a: string) => rows.results.filter((r) => r.action === a).reduce((s, r) => s + r.n, 0);
-  const by = (a: string) => {
-    const hit = rows.results.filter((r) => r.action === a);
-    return hit.length ? hit.map((r) => `${r.detail} ${r.n}`).join(", ") : "none";
-  };
-  return [`- Answers written: ${total("AI_REPLY")}`, `- Replaced by the output check: ${total("AI_REJECTED")} (${by("AI_REJECTED")})`, `- Calls that failed: ${total("AI_FAILED")} (${by("AI_FAILED")})`];
+  const why = rows.results.filter((r) => r.action === "AI_REJECTED").map((r) => `${REJECT_WORDS[r.detail] ?? "other"} ${r.n}`);
+  return [
+    `- Answers written: ${total("AI_REPLY")}`,
+    `- Answers replaced by a fixed reply: ${total("AI_REJECTED")}${why.length ? ` (${why.join(", ")})` : ""}`,
+    `- Times it couldn't answer: ${total("AI_FAILED")}`,
+  ];
 }
 
 // People who showed interest in the last 24 hours (an expired hold, or a tap on Book) and have never paid. First name and a link only, so Rohit
@@ -131,49 +144,93 @@ export async function packageLines(env: Env, nowMs = Date.now()): Promise<string
   const left = await env.DB.prepare("SELECT COALESCE(SUM(delta), 0) AS n FROM credits").first<{ n: number }>();
   const manual = await env.DB.prepare("SELECT COUNT(*) AS n FROM attention WHERE kind = 'MANUAL_REFUND' AND resolved_at IS NULL").first<{ n: number }>();
   return [
-    `- Packages sold: ${sold.results.length ? sold.results.map((r) => `${r.size}-pack ${r.n}`).join(", ") : "none"}`,
-    `- Credits used today: ${used?.n ?? 0}`,
-    `- Credits outstanding: ${left?.n ?? 0}`,
-    `- Manual refunds pending: ${manual?.n ?? 0}`,
+    `- Packages sold: ${sold.results.length ? sold.results.map((r) => `${r.size} sessions ${r.n}`).join(", ") : "none"}`,
+    `- Package sessions booked today: ${used?.n ?? 0}`,
+    `- Package sessions still owed: ${left?.n ?? 0}`,
+    `- Refunds to pay by hand: ${manual?.n ?? 0}`,
   ];
 }
 
+// What each kind of open item means, in the console's words (no codes, no names). Kinds not listed count as "Other things to look at".
+const NEEDS_WORDS: Record<string, string> = {
+  CRISIS: "Crisis messages to follow up", EMERGENCY: "Possible medical emergencies to check", HUMAN_REQUEST: "Asked for a person",
+  FREE_TEXT: "Wrote something the bot couldn't answer", MEDIA_FROM_CUSTOMER: "Sent a photo, voice note or file",
+  OUTSIDE_WINDOW: "Couldn't be messaged after WhatsApp's 24 hours", TEMPLATE_UNAPPROVED: "A WhatsApp follow-up message isn't approved yet",
+  RUDE_REFUND_APPROVAL: "Refunds waiting for your decision", LATE_PAYMENT_NO_SLOT: "Paid after their held time ran out",
+  PAYMENT_MISMATCH: "Paid a different amount", PARTIAL_PAYMENT: "Paid only part", UNSUPPORTED_PAYMENT: "Paid for something we don't sell",
+  DUPLICATE_PAYMENT: "Paid twice", REFUND_FAILED: "Refunds that didn't go through", REFUND_STUCK: "Refunds not confirmed yet",
+  UNKNOWN_REFUND: "Refunds Razorpay reported that we can't match", UNKNOWN_PAYMENT_LINK: "Payments for a link we don't know",
+  OUTCOME_FAILED: "Call outcomes that didn't apply", OUTCOME_STALE: "Call outcomes that didn't apply",
+  NOT_FIT_REFUND_REFUSED: "Not-a-fit refunds held back by the daily limit", NOT_FIT_NO_PAYMENT: "Not a fit, but no payment found",
+  AMMA_NO_TAP: "Calls with no outcome marked", AMMA_AWAY_CALL: "Calls to move while the practitioner is away", AMMA_AWAY_SESSION: "Sessions to move while the practitioner is away",
+  MANUAL_REFUND: "Refunds to pay by hand", CANCEL_REFUND_FAILED: "Cancelled sessions whose refund didn't start", CANCEL_NO_PAYMENT: "Cancelled sessions with no payment found",
+  PAID_NO_PACKAGE: "Paid, but the booking can't be found", PAID_NO_INTRO: "Paid, but the booking can't be found", PAID_NO_SESSION: "Paid, but the booking can't be found",
+  PAID_PACKAGE_NOT_BOOKABLE: "Paid for a booking that's closed", PAID_INTRO_NOT_BOOKABLE: "Paid for a booking that's closed", PAID_SESSION_NOT_BOOKABLE: "Paid for a booking that's closed",
+  LINK_CREATE_FAILED: "Payment links that couldn't be made", SESSION_NOT_OFFERABLE: "Sessions that couldn't be offered", NO_SESSION_SLOTS: "No free session times to offer",
+};
+
+// The switches that are off, in the words of Settings.
+const SWITCH_OFF_WORDS: Record<string, string> = {
+  NEW_BOOKINGS: "Bookings are paused: nobody can book.",
+  AMMA_AWAY: "The practitioner is marked away: bookings are paused.",
+  SENDS: "Messages to customers are paused (safety messages still go).",
+  AI_REPLIES: "The assistant is paused: typed questions get a fixed reply.",
+};
+
 export async function digestText(env: Env, nowMs = Date.now()): Promise<string> {
   const attention = await env.DB.prepare("SELECT kind, COUNT(*) AS n FROM attention WHERE resolved_at IS NULL GROUP BY kind ORDER BY kind").all<{ kind: string; n: number }>();
-  const tomorrow = istDay(nowMs + 86_400_000);
-  const items = await bookingsBetween(env, ...dayRange(tomorrow));
-  const off = (await switchStates(env)).filter((s) => (s.name === "AMMA_AWAY" ? s.on : !s.on)).map((s) => (s.name === "AMMA_AWAY" ? "AMMA_AWAY is ON (new bookings paused)" : `${s.name} is OFF${s.envOn ? "" : " (env flag)"}`));
+  const needs = new Map<string, number>();
+  for (const a of attention.results) {
+    const w = NEEDS_WORDS[a.kind] ?? "Other things to look at";
+    needs.set(w, (needs.get(w) ?? 0) + a.n);
+  }
+  const tomorrowMs = nowMs + 86_400_000;
+  const items = await bookingsBetween(env, ...dayRange(istDay(tomorrowMs)));
+  const off = (await switchStates(env))
+    .filter((s) => (s.name === "AMMA_AWAY" ? s.on : !s.on))
+    .map((s) => `${SWITCH_OFF_WORDS[s.name]}${s.name !== "AMMA_AWAY" && !s.envOn ? " It's off for this copy of the bot; only a deploy turns it on." : ""}`);
   const leads = await warmLeads(env, nowMs);
+  const total = attention.results.reduce((t, a) => t + a.n, 0);
   const lines = [
-    "Open attention items",
-    ...(attention.results.length ? attention.results.map((a) => `- ${a.kind}: ${a.n}`) : ["- none"]),
+    `Needs you (${total})`,
+    ...(needs.size ? [...needs].map(([w, n]) => `- ${w}: ${n}`) : ["- Nothing needs you."]),
     "",
-    `Tomorrow (${tomorrow})`,
-    ...(items.length ? items.map((i) => `- ${formatIstParts(i.startUtc).time} ${i.kind === "CALL" ? "call" : "session"} · ${firstName(i.name)} · ${i.service}`) : ["- nothing booked"]),
+    `Tomorrow, ${formatIstParts(iso(tomorrowMs)).day}`,
+    ...(items.length ? items.map((i) => `- ${formatIstParts(i.startUtc).time} · ${i.kind === "CALL" ? "Call" : "Session"} · ${firstName(i.name)} · ${serviceName(i.service, "en")}`) : ["- Nothing booked."]),
     "",
     "Last 7 days",
     ...scoreLines(await scoreboard(env, nowMs)).map((l) => `- ${l}`),
     "",
-    "Safety and noise (last 24 hours)",
+    "Safety (last 24 hours)",
     ...(await noiseLines(env, nowMs)),
     "",
     "Assistant (last 24 hours)",
     ...(await aiLines(env, nowMs)),
     "",
-    "Sessions and packages",
+    "Packages",
     ...(await packageLines(env, nowMs)),
     "",
-    "Warm leads (last 24 hours, not paid yet)",
-    ...(leads.length ? leads.map((l) => `- ${firstName(l.name)} · ${env.PUBLIC_URL ?? ""}/admin/conv/${l.id}`) : ["- none"]),
+    "Worth a follow-up (last 24 hours, not paid yet)",
+    ...(leads.length ? leads.map((l) => `- ${firstName(l.name)} · ${env.PUBLIC_URL ?? ""}/admin/conv/${l.id}`) : ["- Nobody."]),
     "",
-    "Switches that are off",
-    ...(off.length ? off.map((o) => `- ${o}`) : ["- none"]),
+    "What's switched off",
+    ...(off.length ? off.map((o) => `- ${o}`) : ["- Nothing: the bot is taking bookings and answering."]),
   ];
   return lines.join("\n");
 }
 
-// 9pm IST cron: the digest, then any alert that is due (including a missing heartbeat).
+// The business's name for the subject line (Settings → Business); empty before the console has run.
+async function businessName(env: Env): Promise<string> {
+  try {
+    return (await env.DB.prepare("SELECT name FROM workspaces WHERE id = 1").first<{ name: string }>())?.name ?? "";
+  } catch {
+    return "";
+  }
+}
+
+// 9pm IST cron: the summary to the members chosen in Settings (the owner by default), then any alert that is due (including a missing heartbeat).
 export async function runDigest(env: Env, nowMs = Date.now()): Promise<void> {
-  await sendEmail(env, "Disha Dira daily digest", await digestText(env, nowMs));
+  const name = await businessName(env);
+  await sendEmailToEach(env, await recipients(env, "digest"), `Daily summary${name ? `: ${name}` : ""}`, await digestText(env, nowMs));
   await sendAlerts(env, nowMs, { heartbeat: true });
 }

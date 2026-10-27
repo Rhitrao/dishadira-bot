@@ -8,6 +8,8 @@ import { html, raw } from "hono/html";
 import { activeMember, canAny, csrf, memberCsrf, ROLES, seedMembers, sha256Hex, touchMember, verifiedEmail, WORKSPACE_ID, type Action, type Member, type Role } from "./auth";
 import type { Env } from "./env";
 import { iso } from "./slots";
+import { payments } from "./payments";
+import { settings } from "./settings";
 import { team } from "./team";
 import { CONSOLE_CSS, header } from "./ui";
 
@@ -139,9 +141,9 @@ consoleApp.get("/", placeholder("today"));
 consoleApp.get("/inbox", placeholder("inbox"));
 consoleApp.get("/calendar", placeholder("calendar"));
 consoleApp.get("/people", placeholder("people"));
-consoleApp.get("/payments", placeholder("payments"));
-consoleApp.get("/settings", placeholder("settings"));
+consoleApp.route("/payments", payments); // ticket 24 (src/payments.ts)
 consoleApp.route("/settings/team", team);
+consoleApp.route("/settings", settings); // ticket 24 (src/settings.ts)
 
 // ---- the language switch in the page frame (ticket 20): every member may choose English or Hindi for their own console ----
 // The frame's form sends csrf (languageCsrf below), locale (the language to switch to) and back (the page it was on).

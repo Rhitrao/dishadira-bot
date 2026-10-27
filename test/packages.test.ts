@@ -865,7 +865,7 @@ describe("stopping a package: unused sessions x the package rate", () => {
     expect(await creditBalance(db, conv)).toBe(0);
     expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'MANUAL_REFUND' AND target = 'package:1' AND resolved_at IS NULL")).toBe(1);
     expect(sent()).toHaveLength(0); // the customer is told when the money has really gone
-    expect((await packageLines(env(), NOW)).join("\n")).toContain("Manual refunds pending: 1");
+    expect((await packageLines(env(), NOW)).join("\n")).toContain("Refunds to pay by hand: 1");
 
     expect(await markManualRefund(env(), id, "rohit@example.test")).toBe(true);
     expect(await markManualRefund(env(), id, "rohit@example.test")).toBe(false);
@@ -891,8 +891,8 @@ describe("the digest", () => {
     await seedPackage(bc, 20);
     await creditBook(ac, WED_2PM);
     const lines = await packageLines(env(), NOW);
-    expect(lines).toEqual(["- Packages sold: 10-pack 1, 20-pack 2", "- Credits used today: 1", "- Credits outstanding: 49", "- Manual refunds pending: 0"]);
-    expect(await digestText(env(), NOW)).toContain("Sessions and packages\n- Packages sold: 10-pack 1, 20-pack 2");
+    expect(lines).toEqual(["- Packages sold: 10 sessions 1, 20 sessions 2", "- Package sessions booked today: 1", "- Package sessions still owed: 49", "- Refunds to pay by hand: 0"]);
+    expect(await digestText(env(), NOW)).toContain("Packages\n- Packages sold: 10 sessions 1, 20 sessions 2");
   });
 });
 
