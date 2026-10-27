@@ -12,7 +12,7 @@ import { razorpay } from "./pay/razorpay";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, type ListSection, type Out } from "./send";
 import { clearStep, sendStep, type StepName } from "./steps";
-import { availableSlots, dayLabelFor, formatIstLang, holdSlot, iso, istDay, istMinutes, nextWorkingDays, spreadTimes, type Slot, type SlotKind } from "./slots";
+import { availableSlots, dayLabelFor, formatIstLang, holdSlot, iso, istDay, istMinutes, nextWorkingDays, PRACTITIONER_SQL, spreadTimes, type Slot, type SlotKind } from "./slots";
 
 export const SERVICES = config.services as readonly string[];
 export const WHO: readonly ForWhom[] = ["SELF", "FAMILY", "PET"];
@@ -266,7 +266,7 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
 
   // 3. Intro (HELD) and payment (CREATING), then the link. The call is in the language of this chat.
   const intro = await db
-    .prepare("INSERT INTO intros (conversation_id, slot_id, service, for_whom, call_lang) VALUES (?1, ?2, ?3, ?4, ?5)")
+    .prepare(`INSERT INTO intros (conversation_id, slot_id, service, for_whom, call_lang, practitioner_id) VALUES (?1, ?2, ?3, ?4, ?5, ${PRACTITIONER_SQL})`)
     .bind(conv.id, slot?.id ?? null, service, forWhom, lang)
     .run();
   const introId = intro.meta.last_row_id;

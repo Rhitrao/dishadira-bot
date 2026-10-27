@@ -27,6 +27,8 @@ export type Env = {
   // "true" lets the assistant (src/ai.ts) answer typed questions; "false" everywhere until Rohit switches it on. /admin can pause it, never enable it.
   AI_REPLIES: string;
   PAYMENT_MODE: string;
+  // "true" opens the role-based console under /app (src/console.ts); "false" at the top level and in live: /app is then a plain 404.
+  CONSOLE_V2?: string;
   // Minutes after a person's last message that their chat text is wiped: live "10080" (7 days), test "10".
   CHAT_RETENTION_MINUTES: string;
   // The Worker's public address, for links in emails to Rohit (https://bot.disha-dira.com); unset: a relative /admin link.
