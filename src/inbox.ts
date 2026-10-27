@@ -110,6 +110,9 @@ const INBOX_CSS = `
 .views a.on{background:var(--ink);border-color:var(--ink);color:var(--paper)}
 .views .n{margin-left:8px;color:inherit;opacity:.85}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}
+.ibx .chip{white-space:normal}
+.ibx .row{display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
+.ibx .row .chips{margin:4px 0 0}
 .who-h{font-size:20px;font-weight:600;margin:0}
 .field{display:block;font-weight:500;margin:0 0 8px}
 .ibx textarea,.ibx input[type=text]{display:block;width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:12px}
@@ -128,6 +131,8 @@ details.done .panel .btn{width:100%;margin-top:12px}
 .opts input{width:20px;height:20px;margin:0;accent-color:var(--accent);flex:none}
 .opts label:has(input:checked){border-color:var(--accent);background:var(--accent-tint)}
 .pick .btn{width:100%}
+.wide-only{display:none}
+@media (min-width:900px){.wide-only{display:inline-flex}}
 `;
 
 type Flash = { text: string } | null;
@@ -143,7 +148,7 @@ async function postButton(c: ConsoleCtx, m: Member, id: number, action: string, 
   return html`<form method="post" action="/app/inbox/${id}/${action}">${hidden("csrf", await token(c, m, action, id))}${Object.entries(fields).map(([k, v]) => hidden(k, v))}<button class="btn ${kind}" type="submit">${label}</button></form>`;
 }
 
-async function renderScreen(c: ConsoleCtx, o: { view: View; openId?: number; detail?: unknown; flash?: Flash; status?: 200 | 400 | 409 | 503 }) {
+async function renderScreen(c: ConsoleCtx, o: { view: View; openId?: number; detail?: unknown; flash?: Flash; status?: 200 | 400 | 409 | 503; backHref?: string }) {
   const m = c.get("member");
   const now = Date.now();
   const locale = m.locale;
@@ -168,8 +173,8 @@ async function renderScreen(c: ConsoleCtx, o: { view: View; openId?: number; det
     return listRow({
       href: `/app/inbox/${ch.id}${o.view === "all" ? "" : `?v=${o.view}`}`,
       title: customerName(ch, locale),
-      sub: [why(ch, ic), ic.waited(ago(now - Date.parse(since(ch)), ic)), replyLine(ch, locale, now)].join(" · "),
-      end: claim,
+      sub: `${why(ch, ic)} · ${ic.waited(ago(now - Date.parse(since(ch)), ic))}`,
+      end: html`<div class="chips">${statusChip(replyLine(ch, locale, now), inWindow(ch, now) ? "plain" : "danger")}${claim}</div>`,
       on: ch.id === o.openId,
     });
   });
@@ -177,7 +182,7 @@ async function renderScreen(c: ConsoleCtx, o: { view: View; openId?: number; det
   const list = section(ic.secWaiting, html`${views}${shown.length ? rows(items) : emptyState(empty, o.view === "all" ? { label: ic.backToToday, href: "/app" } : { label: ic.seeAll, href: "/app/inbox" })}`, shown.length);
   const business = (await c.env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>())?.name ?? "";
   const back = o.openId ? `/app/inbox/${o.openId}` : "/app/inbox";
-  const body = html`<style>${raw(INBOX_CSS)}</style>${screenHead("inbox", locale)}<div class="ibx">${listDetail({ list, detail: o.detail, backHref: `/app/inbox${o.view === "all" ? "" : `?v=${o.view}`}`, locale })}</div>`;
+  const body = html`<style>${raw(INBOX_CSS)}</style>${screenHead("inbox", locale)}<div class="ibx">${listDetail({ list, detail: o.detail, backHref: o.backHref ?? `/app/inbox${o.view === "all" ? "" : `?v=${o.view}`}`, locale })}</div>`;
   return c.html(
     consoleFrame({
       role: m.role, locale, active: "inbox", title: consoleCopy(locale).tabInbox, body, business, member: m.displayName ?? undefined,
@@ -285,8 +290,8 @@ async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: st
     );
   }
 
+  if (r.act && !live) notes.push(html`<div class="acts">${await postButton(c, m, ch.id, "assign", ic.assignToMe, "primary")}</div>`);
   const acts: unknown[] = [];
-  if (r.act && !live) acts.push(await postButton(c, m, ch.id, "assign", ic.assignToMe, "primary"));
   if (r.book) acts.push(html`<a class="btn" href="/app/inbox/${ch.id}/book">${ic.bookOrMove}</a>`);
   if (r.act && ch.mode === "HUMAN") acts.push(await postButton(c, m, ch.id, "hand-back", ic.handBack));
   if (r.act)
@@ -332,7 +337,7 @@ async function bookHtml(c: ConsoleCtx, ch: Chat) {
   const lang = consoleLang(locale);
   const ic = inboxCopy(locale);
   const r = rights(m, ch);
-  const parts: unknown[] = [html`<p><a class="ld-back" href="/app/inbox/${ch.id}">← ${ic.backToChat}</a></p><h2 class="who-h">${customerName(ch, locale)}</h2>`];
+  const parts: unknown[] = [html`<p class="wide-only"><a href="/app/inbox/${ch.id}">← ${ic.backToChat}</a></p><h2 class="who-h">${customerName(ch, locale)}</h2>`];
   const st = await personState(c.env.DB, ch.id);
   if (noSellActiveFor(st, now)) parts.push(html`<p class="card attention">${ic.noSell(dayName(st.noSellUntil!, locale))}</p>`);
   else {
@@ -416,7 +421,7 @@ inbox.get("/:id{[0-9]+}", async (c) => {
 inbox.get("/:id{[0-9]+}/book", async (c) => {
   const ch = await chatById(c.env, Number(c.req.param("id")));
   if (!ch || !rights(c.get("member"), ch).book) return refused(c);
-  return renderScreen(c, { view: "all", openId: ch.id, detail: await bookHtml(c, ch) });
+  return renderScreen(c, { view: "all", openId: ch.id, detail: await bookHtml(c, ch), backHref: `/app/inbox/${ch.id}` });
 });
 
 type Form = Record<string, string | undefined>;
@@ -542,7 +547,7 @@ inbox.post("/:id{[0-9]+}/book", async (c) => {
   const who = (f.who ?? "") as ForWhom;
   const startUtc = f.time ?? "";
   const pay = f.pay === "cash" ? "cash" : "link";
-  const answer = async (text: string, status: 200 | 400 | 409 = 200) => renderScreen(c, { view: "all", openId: ch.id, detail: await bookHtml(c, ch), flash: { text }, status });
+  const answer = async (text: string, status: 200 | 400 | 409 = 200) => renderScreen(c, { view: "all", openId: ch.id, detail: await bookHtml(c, ch), flash: { text }, status, backHref: `/app/inbox/${ch.id}` });
   if (!SERVICES.includes(service) || !WHO.includes(who) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(startUtc) || !/^[\w-]{1,40}$/.test(f.n ?? "")) return answer(ic.pickAll, 400);
   if (pay === "cash" && !r.cashAsk) return refused(c);
   if (Date.parse(startUtc) <= now + config.booking.leadMinutes * MIN) return answer(ic.taken, 409);
@@ -618,7 +623,7 @@ inbox.post("/:id{[0-9]+}/move", async (c) => {
   const sid = Number(f.session);
   const startUtc = f.time ?? "";
   const ses = (await upcomingSessions(c.env, ch.id, now)).find((s) => s.id === sid);
-  const answer = async (text: string, status: 200 | 400 | 409 = 200) => renderScreen(c, { view: "all", openId: ch.id, detail: await bookHtml(c, ch), flash: { text }, status });
+  const answer = async (text: string, status: 200 | 400 | 409 = 200) => renderScreen(c, { view: "all", openId: ch.id, detail: await bookHtml(c, ch), flash: { text }, status, backHref: `/app/inbox/${ch.id}` });
   if (!ses || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(startUtc)) return answer(ic.pickAll, 400);
   if (can(m, "move_booking", { practitionerId: ses.practitionerId }) !== "yes") return refused(c);
   if (!(await moveSession(c.env.DB, ch.id, ses, startUtc, now))) return answer(ic.moveRefused, 409);

@@ -36,7 +36,7 @@ const en = {
   // The thread
   secChat: "Chat",
   secReply: "Reply",
-  secMore: "When you're finished",
+  secMore: "Next steps",
   textRemoved: "(message text removed)",
   noMessages: "No messages yet.",
   templateBubble: "A message from an approved WhatsApp template",
@@ -174,7 +174,7 @@ const hi: InboxCopy = {
 
   secChat: "चैट",
   secReply: "जवाब",
-  secMore: "काम पूरा होने पर",
+  secMore: "आगे के कदम",
   textRemoved: "(संदेश का टेक्स्ट हटा दिया गया)",
   noMessages: "अभी कोई संदेश नहीं।",
   templateBubble: "WhatsApp से मंज़ूर टेम्पलेट वाला संदेश",
