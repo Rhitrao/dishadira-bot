@@ -18,8 +18,9 @@ const isOutcome = (v: unknown): v is Outcome => typeof v === "string" && v in OU
 // The Worker verifies the Access JWT itself (src/auth.ts: signature, audience, issuer, expiry) and then the e-mail.
 export async function allowedJwt(env: Env, token: string | undefined, rohitOnly = false): Promise<{ jwt: string; email: string } | null> {
   const email = await verifiedEmail(env, token);
+  if (!token || !email) return null;
   const allowed = (rohitOnly ? [env.ROHIT_EMAIL] : [env.AMMA_EMAIL, env.ROHIT_EMAIL]).filter(Boolean).map((e) => e.toLowerCase());
-  return token && email && allowed.includes(email) ? { jwt: token, email } : null;
+  return allowed.includes(email) ? { jwt: token, email } : null;
 }
 
 // CSRF token per form (src/auth.ts): SHA-256 of the form's scope + the visitor's own Access JWT. No extra secret.
