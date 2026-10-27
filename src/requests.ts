@@ -9,12 +9,15 @@
 import type { D1PreparedStatement } from "@cloudflare/workers-types";
 import { can, WORKSPACE_ID, type Action, type Member } from "./auth";
 import { priceAt } from "./business";
+import { rupees } from "./copy";
 import type { Env } from "./env";
+import { mailConfigured, sendEmail } from "./mail";
 import { applyReceived, type Applied } from "./pay/apply";
 import type { PaymentProvider } from "./pay/provider";
 import { razorpay } from "./pay/razorpay";
 import { approveRefund, declineRefund, requestRefund } from "./pay/refund";
 import { iso } from "./slots";
+import { getSetting } from "./switches";
 
 export type RequestKind = "REFUND" | "MARK_PAID" | "BLOCK";
 export const REQUEST_KINDS: readonly RequestKind[] = ["REFUND", "MARK_PAID", "BLOCK"];
@@ -179,4 +182,66 @@ async function releaseCashHold(env: Env, introId: number): Promise<boolean> {
     ).bind(introId, now),
   ]);
   return res.meta.changes > 0;
+}
+
+// ---------- the bundled "ask owner" email (docs/CONSOLE-PRD.md, Notifications: "one email bundling the requests, within 30 minutes") ----------
+// Every 2 minutes (the cron): when a request has come in since the last email, one email to the owner's alert address (DIGEST_TO, the
+// verified one) lists every open request in plain words, at most once every MAIL_EVERY_MIN. The send time is claimed first in one
+// settings row, like the other alerts, and put back if the email didn't go, so two cron runs never send twice. No customer names.
+export const REQUESTS_MAIL_KEY = "alert:REQUESTS";
+const MAIL_EVERY_MIN = 30;
+
+function requestLine(r: RequestRow & { asker: string | null; last4: string | null }, nowMs: number): string {
+  const amount = r.amountPaise ? rupees(r.amountPaise) : "";
+  const whom = r.last4 ? ` for the customer whose number ends ${r.last4}` : "";
+  const what =
+    r.kind === "REFUND" ? `A refund${amount ? ` of ${amount}` : ""}${whom}` : r.kind === "BLOCK" ? `Block a number${r.last4 ? ` ending ${r.last4}` : ""}` : `Money received outside Razorpay${amount ? `: ${amount}` : ""}${whom}`;
+  const min = Math.max(0, Math.round((nowMs - Date.parse(r.createdAt)) / 60_000));
+  const ago = min < 1 ? "just now" : min < 60 ? `${min} min ago` : min < 48 * 60 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} days ago`;
+  return `- ${what}. Asked by ${r.asker || "a team member"}, ${ago}.`;
+}
+
+export async function mailOpenRequests(env: Env, nowMs = Date.now()): Promise<boolean> {
+  if (env.CONSOLE_V2 !== "true" || !mailConfigured(env)) return false;
+  const db = env.DB;
+  const { results } = await db
+    .prepare(
+      `SELECT r.id, r.kind, r.target, r.amount_paise AS amountPaise, r.asked_by AS askedBy, r.reason, r.created_at AS createdAt, NULL AS decidedBy, NULL AS decision, NULL AS decidedAt,
+         NULLIF(m.display_name, '') AS asker,
+         substr((SELECT c.wa_id FROM conversations c WHERE c.id = CASE
+           WHEN r.target LIKE 'conv:%' THEN CAST(substr(r.target, 6) AS INTEGER)
+           WHEN r.target LIKE 'intro:%' THEN (SELECT conversation_id FROM intros WHERE id = CAST(substr(r.target, 7) AS INTEGER))
+           ELSE (SELECT CASE p.purpose WHEN 'INTRO' THEN (SELECT conversation_id FROM intros WHERE id = p.target_id)
+                   WHEN 'SESSION' THEN (SELECT conversation_id FROM sessions WHERE id = p.target_id)
+                   ELSE (SELECT conversation_id FROM packages WHERE id = p.target_id) END FROM payments p WHERE p.id = CAST(substr(r.target, 9) AS INTEGER)) END), -4) AS last4
+       FROM requests r LEFT JOIN members m ON m.id = r.asked_by WHERE r.workspace_id = ?1 AND r.decided_at IS NULL ORDER BY r.id`,
+    )
+    .bind(WORKSPACE_ID)
+    .all<RequestRow & { asker: string | null; last4: string | null }>();
+  if (!results.length) return false;
+  const last = await getSetting(db, REQUESTS_MAIL_KEY);
+  if (last && !results.some((r) => r.createdAt > last)) return false; // every open request was in an earlier email
+  const now = iso(nowMs);
+  const claim = await db
+    .prepare(
+      "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?2) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at WHERE settings.value <= ?3",
+    )
+    .bind(REQUESTS_MAIL_KEY, now, iso(nowMs - MAIL_EVERY_MIN * 60_000))
+    .run();
+  if (!claim.meta.changes) return false;
+  const n = results.length;
+  const body = [
+    `${n === 1 ? "1 request is" : `${n} requests are`} waiting for your approval:`,
+    "",
+    ...results.map((r) => requestLine(r, nowMs)),
+    "",
+    "Nothing happens until you approve or decline. Each one is on Today, with Approve and Decline.",
+    `Open ${env.PUBLIC_URL ?? ""}/app`,
+  ].join("\n");
+  const sent = await sendEmail(env, n === 1 ? "Waiting for your approval: 1 request" : `Waiting for your approval: ${n} requests`, body);
+  if (sent === "SENT") return true;
+  // Not sent: the claim is put back, so the next run tries again.
+  if (last) await db.prepare("UPDATE settings SET value = ?2 WHERE key = ?1 AND value = ?3").bind(REQUESTS_MAIL_KEY, last, now).run();
+  else await db.prepare("DELETE FROM settings WHERE key = ?1 AND value = ?2").bind(REQUESTS_MAIL_KEY, now).run();
+  return false;
 }

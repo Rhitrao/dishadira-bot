@@ -6,7 +6,7 @@
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { can, listMembers, memberCsrf, WORKSPACE_ID, type Member } from "./auth";
-import { ACCENTS, accentCss, accentOf, chosenIds, DEFAULT_PRICES, isAccent, KEYS, loadPrices, PRICE_NAMES, pricePaise, readPrices, staffReadsChat, validPrice, type AccentName, type PriceName, type Prices } from "./business";
+import { ACCENTS, accentOf, chosenIds, DEFAULT_PRICES, isAccent, KEYS, loadPrices, PRICE_NAMES, pricePaise, readPrices, staffReadsChat, validPrice, type AccentName, type PriceName, type Prices } from "./business";
 import { config } from "./config";
 import { auditStmt, languageCsrf, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleLang } from "./console-copy";
@@ -82,6 +82,7 @@ const en = {
   digestWho: "Who gets the daily summary (9 pm)",
   safetyWho: "Safety contact: who is emailed at once about a crisis message",
   ownerNote: "The owner is emailed at the alert address set for the bot.",
+  verifiedNote: "Email only reaches verified addresses: the owner's alert address, and a member's sign-in address once you have verified it in Cloudflare Email Routing. Choose a member here only after that.",
   ownerDefault: "(the owner, by default)",
   saveEmails: "Save who gets emails",
   pickOne: "Choose at least one person for the daily summary.",
@@ -207,6 +208,7 @@ const hi: Words = {
   digestWho: "रोज़ की रिपोर्ट (रात 9 बजे) किसे जाए",
   safetyWho: "सुरक्षा संपर्क: संकट वाले संदेश पर तुरंत किसे ईमेल जाए",
   ownerNote: "मालिक को बॉट के लिए तय अलर्ट वाले पते पर ईमेल जाता है।",
+  verifiedNote: "ईमेल सिर्फ़ पक्के (verified) पतों पर पहुँचता है: मालिक का अलर्ट वाला पता, और किसी सदस्य का साइन-इन पता तभी, जब आपने उसे Cloudflare Email Routing में verify कर दिया हो। उसके बाद ही यहाँ उस सदस्य को चुनें।",
   ownerDefault: "(पहले से मालिक)",
   saveEmails: "ईमेल पाने वाले सेव करें",
   pickOne: "रोज़ की रिपोर्ट के लिए कम से कम एक व्यक्ति चुनें।",
@@ -353,12 +355,12 @@ export async function businessName(env: Env): Promise<string> {
 
 export async function ownerPage(c: ConsoleCtx, o: { active: TabId; title: string; body: unknown; flash?: string | null; status?: 200 | 400; back: string }) {
   const m = c.get("member");
-  const [name, accent] = await Promise.all([businessName(c.env), accentOf(c.env.DB)]);
+  const [name, accent] = await Promise.all([businessName(c.env), accentOf(c.env.DB)]); // read here too: the page after a change shows the new one
   const res = await c.html(
     consoleFrame({
       role: m.role, locale: m.locale, active: o.active, title: o.title, business: name, member: m.displayName || m.email, flash: o.flash ?? null,
-      language: { csrf: await languageCsrf(c.get("jwt"), m), back: o.back },
-      body: html`${raw(accentCss(accent))}${raw(EXTRA_CSS)}${o.body}`,
+      language: { csrf: await languageCsrf(c.get("jwt"), m), back: o.back }, accent,
+      body: html`${raw(EXTRA_CSS)}${o.body}`,
     }),
     o.status ?? 200,
   );
@@ -503,7 +505,7 @@ ${bForm?.bad ? html`<span class="err">${w.badName}</span>` : html`<span class="h
 <label class="fld"><span>${w.safetyWho}</span><select name="safety">${active.map(
     (x) => html`<option value="${x.id}"${x.id === safetyId ? raw(" selected") : ""}>${who(x)}${x.role === "OWNER" ? ` ${w.ownerDefault}` : ""}</option>`,
   )}</select></label>
-<p class="note">${w.ownerNote}</p><div class="acts"><button class="btn primary" type="submit">${w.saveEmails}</button></div></form></div>`;
+<p class="note">${w.ownerNote}</p><p class="note">${w.verifiedNote}</p><div class="acts"><button class="btn primary" type="submit">${w.saveEmails}</button></div></form></div>`;
 
   // Payments (Razorpay): status in words, never a key
   const keyId = env.RAZORPAY_KEY_ID ?? "";

@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { FIRST_BUY } from "./amma";
 import { can, canAny, memberById, memberCsrf, type Member } from "./auth";
+import { chatTextHidden } from "./business";
 import { config } from "./config";
 import { auditStmt, languageCsrf, refused, S, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleCopy, consoleLang, type ConsoleLang } from "./console-copy";
@@ -315,6 +316,8 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
         ).all<Waiting>()
       ).results
     : [];
+  // Today shows no message text; when the owner hides chat text from staff, their cards say so before they open the chat.
+  const textHidden = replies && waiting.length ? await chatTextHidden(env.DB, m.role) : false;
   const waitingCards = await Promise.all(
     waiting.map(async (w) => {
       const end = w.lastUserAt ? Date.parse(w.lastUserAt) + config.windowHours * HOUR : 0;
@@ -324,7 +327,7 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
         can(m, "reply_chat") === "yes"
           ? button({ label: cc.handBack, post: { action: "/app/today/handback", csrf: await memberCsrf(c.get("jwt"), m, `handback:${w.convId}`), fields: { conv: String(w.convId) } } })
           : "";
-      return html`<article class="card attention"><h3>${t.replyTo(who(w.name, w.waId, t))}</h3><p class="why">${why}</p>
+      return html`<article class="card attention"><h3>${t.replyTo(who(w.name, w.waId, t))}</h3><p class="why">${why}</p>${textHidden ? html`<p class="muted">${cc.chatTextHidden}.</p>` : ""}
 <div class="acts">${button({ label: cc.reply, href: `/app/inbox/${w.convId}`, kind: "primary" })}${handBack}</div></article>`;
     }),
   );
@@ -390,7 +393,7 @@ ${section(cc.secLater, later)}
 ${loose.length + looseLinks.length ? section(cc.secLooseEnds, looseBody, loose.length + looseLinks.length) : ""}`;
 
   const code = c.req.query("m") ?? "";
-  const joined = ({ joined: S.invite.joined, transferred: S.transferred } as Record<string, string>)[code];
+  const joined = ({ joined: S.invite.joined, transferred: S.transferred, transferred_p: S.transferredPractitioner } as Record<string, string>)[code];
   const flash = o.flash ?? (FLASH[code] ? (t[FLASH[code]] as string) : joined ?? null);
   const ws = await env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>();
   return c.html(
@@ -406,6 +409,7 @@ ${loose.length + looseLinks.length ? section(cc.secLooseEnds, looseBody, loose.l
       banners,
       badges: replies && waiting.length ? { inbox: waiting.length } : undefined,
       language: { csrf: await languageCsrf(c.get("jwt"), m), back: "/app" },
+      accent: c.get("accent"),
     }),
     o.status ?? 200,
   );
@@ -574,7 +578,7 @@ today.post("/today/call", async (c) => {
 <p class="why">${clock(b.startUtc, lang)} · ${serviceName(b.service, lang)} · ${callLangText(b.callLang ?? b.locale, m.locale)}</p>
 <div class="acts"><a class="btn primary" href="tel:+${digits}">${cc.call} +${digits}</a><a class="link" href="/app#b-${target.replace(":", "-")}">${t.backToday}</a></div>
 <p class="muted">${t.callLogged}</p></article>`;
-  return c.html(consoleFrame({ role: m.role, locale: m.locale, active: "today", title: cc.call, body, business: ws?.name ?? "", member: m.displayName ?? undefined }));
+  return c.html(consoleFrame({ role: m.role, locale: m.locale, active: "today", title: cc.call, body, business: ws?.name ?? "", member: m.displayName ?? undefined, accent: c.get("accent") }));
 });
 
 // Hand back to the bot: the chat leaves the team's queue (its "talk to a person" item is resolved). A safety item stays open.

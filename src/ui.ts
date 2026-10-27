@@ -4,6 +4,7 @@
 // The old /admin pages keep their own shell further down (page(), CONSOLE_CSS), recoloured to the same palette, until ticket 25.
 // Colour is never the only signal: every status has a word. Times are always the business's time (Bengaluru).
 import { html, raw } from "hono/html";
+import { accentCss, type AccentName } from "./business";
 import { consoleCopy, consoleLang, type ConsoleCopy } from "./console-copy";
 import { FONT_FACES } from "./fonts";
 import { formatIstLang, formatIstParts, istDay } from "./slots";
@@ -359,6 +360,7 @@ export type FrameOpts = {
   // The language switch: a POST to `action` (default /app/language) with csrf, locale (the other language) and back (where to return).
   language?: { csrf: string; action?: string; back?: string };
   query?: string; // the current People search, shown in the rail's search box
+  accent?: AccentName; // the workspace's accent colour from Settings (src/business.ts); teal, the default, adds nothing
 };
 
 export function consoleFrame(o: FrameOpts) {
@@ -391,7 +393,7 @@ export function consoleFrame(o: FrameOpts) {
     : "";
 
   return html`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${o.title} · ${o.business}</title><style>${raw(FONT_FACES)}${raw(APP_CSS)}</style></head><body>
+<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${o.title} · ${o.business}</title><style>${raw(FONT_FACES)}${raw(APP_CSS)}</style>${raw(accentCss(o.accent ?? "teal"))}</head><body>
 <a class="skip" href="#main">${c.skipToContent}</a>
 <div class="shell">
 <nav class="rail" aria-label="${c.navLabel}"><p class="brand">${o.business}</p>${search}<ul>${railTabs}</ul><div class="foot">${o.member ? html`<p class="me"><b>${o.member}</b>${roleName(o.role, lang)}</p>` : html`<p class="me">${roleName(o.role, lang)}</p>`}${switcher}</div></nav>

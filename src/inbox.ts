@@ -10,7 +10,7 @@ import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { can, canAny, memberCsrf, sha256Hex, WORKSPACE_ID, type Member } from "./auth";
 import { bookingChoice, SERVICES, WHO } from "./booking";
-import { prices } from "./business";
+import { chatTextHidden, prices } from "./business";
 import { config } from "./config";
 import { languageCsrf, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleCopy, consoleLang } from "./console-copy";
@@ -19,10 +19,11 @@ import type { Env } from "./env";
 import { FOLLOW_UP_TEXT, inboxCopy, type InboxCopy } from "./inbox-copy";
 import { sendEmailTo } from "./mail";
 import { moveSession } from "./mybookings";
+import { moveCall } from "./outcomes";
 import { noSellActiveFor, personState } from "./noise";
 import { razorpay } from "./pay/razorpay";
-import { sendMessage, templateVariant, type Out } from "./send";
-import { availableSlots, generateSlots, holdSlot, iso, istDay, istMinutes, nextWorkingDays, PRACTITIONER_SQL, spreadTimes, type Slot, type SlotKind } from "./slots";
+import { sendMessage, sendOrTemplate, templateVariant, type Out } from "./send";
+import { availableSlots, formatIstLang, generateSlots, holdSlot, iso, istDay, istMinutes, nextWorkingDays, PRACTITIONER_SQL, spreadTimes, type Slot, type SlotKind } from "./slots";
 import { bookingsOpen } from "./switches";
 import { bubble, clock, consoleFrame, dayName, firstName, forWhomText, last4, listDetail, listRow, rows, screenHead, section, statusChip, emptyState, thread, type From } from "./ui";
 
@@ -187,7 +188,7 @@ async function renderScreen(c: ConsoleCtx, o: { view: View; openId?: number; det
   return c.html(
     consoleFrame({
       role: m.role, locale, active: "inbox", title: consoleCopy(locale).tabInbox, body, business, member: m.displayName ?? undefined,
-      flash: o.flash?.text ?? null, badges: { inbox: counts.unassigned }, language: { csrf: await languageCsrf(c.get("jwt"), m), back },
+      flash: o.flash?.text ?? null, badges: { inbox: counts.unassigned }, language: { csrf: await languageCsrf(c.get("jwt"), m), back }, accent: c.get("accent"),
     }),
     o.status ?? 200,
   );
@@ -232,15 +233,17 @@ async function threadHtml(env: Env, ch: Chat, m: Member, nowMs: number) {
     await env.DB.prepare("SELECT at, detail FROM audit_log WHERE target = ?1 AND action = 'AI_REPLY' ORDER BY id DESC LIMIT 80").bind(`conv:${ch.id}`).all<{ at: string; detail: string }>()
   ).results;
   const seeSafety = rights(m, ch).seeSafety;
+  // The owner can hide chat text from staff (Settings → Privacy): every bubble keeps who and when, and says the text is hidden.
+  const allHidden = await chatTextHidden(env.DB, m.role);
   return thread(
     lines.map((l) => {
       const time = when(l.at, locale, nowMs);
       if (l.dir === "IN") {
-        const text = l.wipedAt ? ic.textRemoved : !seeSafety && l.waMsg && safetyIn.has(l.waMsg) ? ic.safetyInHidden : (l.body ?? "");
+        const text = l.wipedAt ? ic.textRemoved : !seeSafety && l.waMsg && safetyIn.has(l.waMsg) ? ic.safetyInHidden : allHidden ? cc.chatTextHidden : (l.body ?? "");
         return bubble({ from: "customer", text, time, locale });
       }
       const s = sender(l.key);
-      const text = l.wipedAt ? ic.textRemoved : s.followUp || l.body === "template:follow_up" ? ic.followUpBubble : l.body?.startsWith("template:") ? ic.templateBubble : (l.body ?? "");
+      const text = l.wipedAt ? ic.textRemoved : allHidden ? cc.chatTextHidden : s.followUp || l.body === "template:follow_up" ? ic.followUpBubble : l.body?.startsWith("template:") ? ic.templateBubble : (l.body ?? "");
       const label = s.from === "assistant" ? ai.find((a) => a.at <= l.at && Date.parse(l.at) - Date.parse(a.at) < MIN) : undefined;
       const labelText = label ? ((ic as Record<string, unknown>)[`label_${label.detail}`] as string | undefined) : undefined;
       const status = l.status === "FAILED" ? cc.notDelivered : l.status === "SKIPPED" ? ic.chipNotSent : "";
@@ -324,6 +327,17 @@ const upcomingSessions = (env: Env, convId: number, nowMs: number) =>
     .all<Upcoming>()
     .then((r) => r.results);
 
+// A paid ₹99 call that hasn't started: it can be moved once, free, on the missed-call reschedule's code (src/outcomes.ts moveCall).
+type UpcomingCall = { id: number; rc: number; practitionerId: number | null; startUtc: string };
+const upcomingCalls = (env: Env, convId: number, nowMs: number) =>
+  env.DB.prepare(
+    `SELECT i.id, i.reschedule_count AS rc, i.practitioner_id AS practitionerId, sl.start_utc AS startUtc
+     FROM intros i JOIN slots sl ON sl.id = i.slot_id WHERE i.conversation_id = ?1 AND sl.kind = 'CALL' AND i.state IN ('PAID', 'RESCHEDULED') AND sl.start_utc > ?2 ORDER BY sl.start_utc`,
+  )
+    .bind(convId, iso(nowMs))
+    .all<UpcomingCall>()
+    .then((r) => r.results);
+
 const timeFieldsets = (days: FreeDay[], locale: string, name: string) =>
   days.map(
     (d) => html`<fieldset><legend>${dayName(d.slots[0].startUtc, locale)}</legend><div class="opts">${d.slots.map(
@@ -361,6 +375,22 @@ ${payable ? html`<fieldset><legend>${ic.payLabel}</legend><div class="opts stack
 ${r.cashYes ? html`<p class="muted">${ic.ownerCash} <a href="/app/people/${ch.id}">${ic.openTheirPage}</a></p>` : ""}
 ${payable ? html`<button class="btn primary" type="submit">${ic.holdButton}</button>` : ""}</form>`
           : emptyState(ic.noTimes),
+      ),
+    );
+  }
+  for (const k of await upcomingCalls(c.env, ch.id, now)) {
+    if (can(m, "move_booking", { practitionerId: k.practitionerId }) !== "yes") continue;
+    const what = `${ic.callWord(rupees(prices().intro))}, ${dayName(k.startUtc, locale)}, ${clock(k.startUtc, locale)}`;
+    const days = k.rc === 0 ? await freeTimes(c.env, "CALL", now) : [];
+    parts.push(
+      section(
+        ic.moveTitle(what),
+        k.rc !== 0
+          ? html`<p class="card">${ic.callMovedOnce}</p>`
+          : days.length
+            ? html`<form class="pick card" method="post" action="/app/inbox/${ch.id}/move-call">${hidden("csrf", await token(c, m, "move-call", ch.id))}${hidden("intro", String(k.id))}
+<p class="muted">${ic.moveCallRule}</p>${timeFieldsets(days, locale, "time")}<button class="btn primary" type="submit">${ic.moveButton}</button></form>`
+            : emptyState(ic.noTimes),
       ),
     );
   }
@@ -635,6 +665,41 @@ inbox.post("/:id{[0-9]+}/move", async (c) => {
   const cust = { day: dayName(startUtc, lang), time: clock(startUtc, lang) };
   await sendMessage(c.env, ch.id, { type: "text", text: copyFor(ch.locale).moved(cust.day, cust.time) }, `inbox-move:${ses.id}:${startUtc}`);
   return answer(ic.moved(ic.at(p.day, p.time)));
+});
+
+// Move a paid ₹99 call that hasn't started: once, free, on the same code as the missed-call reschedule (src/outcomes.ts moveCall), with the
+// same rules (bookings open, a real free time, never a second move). The customer gets the new time (or the call_booked template outside
+// the window). Audited with the member.
+inbox.post("/:id{[0-9]+}/move-call", async (c) => {
+  const g = await guard(c, "move-call", "book");
+  if (g instanceof Response) return g;
+  const { ch, f, m } = g;
+  const ic = inboxCopy(m.locale);
+  const now = Date.now();
+  const iid = Number(f.intro);
+  const startUtc = f.time ?? "";
+  const call = (await upcomingCalls(c.env, ch.id, now)).find((k) => k.id === iid);
+  const answer = async (text: string, status: 200 | 400 | 409 = 200) => renderScreen(c, { view: "all", openId: ch.id, detail: await bookHtml(c, ch), flash: { text }, status, backHref: `/app/inbox/${ch.id}` });
+  if (!call || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(startUtc)) return answer(ic.callMoveRefused, 409);
+  if (can(m, "move_booking", { practitionerId: call.practitionerId }) !== "yes") return refused(c);
+  if (Date.parse(startUtc) <= now + config.booking.leadMinutes * MIN) return answer(ic.taken, 409);
+  if (!(await bookingsOpen(c.env))) return answer(ic.paused, 409);
+  const res = await moveCall(c.env.DB, { convId: ch.id, introId: call.id, startUtc, from: "PAID", nowMs: now });
+  if (res === "NOT_AVAILABLE") return answer(ic.callMoveRefused, 409);
+  if (res !== "MOVED") return answer(res === "ALREADY_HOLDING" ? ic.alreadyHolding : ic.taken, 409);
+  await auditStmt(c, "INBOX_MOVE_CALL", `intro:${call.id}`, `${call.startUtc} -> ${startUtc}`).run();
+  const lang = langOf(ch.locale);
+  const en = formatIstLang(startUtc, "en");
+  const hi = formatIstLang(startUtc, "hi");
+  const p = lang === "hi" ? hi : en;
+  await sendOrTemplate(
+    c.env,
+    ch.id,
+    { type: "text", text: copyFor(lang).rescheduled(p.day, p.time, config.businessNumber) },
+    { type: "template", name: "call_booked", params: [en.day, en.time, config.businessNumber], paramsHi: [hi.day, hi.time, config.businessNumber] },
+    `inbox-move-call:${call.id}:${startUtc}`,
+  );
+  return answer(ic.callMoved(ic.at(dayName(startUtc, m.locale), clock(startUtc, m.locale))));
 });
 
 // ---------- the 2-hour email ----------
