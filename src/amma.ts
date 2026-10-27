@@ -6,6 +6,7 @@ import { csrf, verifiedEmail } from "./auth";
 import { config } from "./config";
 import { copyFor, langOf, type AmmaCopy, type ForWhom } from "./copy";
 import type { Env } from "./env";
+import { recordOutcome, undoOutcome } from "./outcomes";
 import { formatIstParts, iso, istDay } from "./slots";
 
 type Ctx = Context<{ Bindings: Env; Variables: { jwt: string; email: string } }>;
@@ -54,7 +55,7 @@ type Row = {
 };
 
 // A buyer's very first session: they never paid for a 99 call, and this is their earliest session. Amma may answer "Not right fit" on it.
-const FIRST_BUY = `(CASE WHEN se.origin IN ('SELF','CREDIT')
+export const FIRST_BUY = `(CASE WHEN se.origin IN ('SELF','CREDIT')
     AND NOT EXISTS (SELECT 1 FROM intros i2 WHERE i2.conversation_id = se.conversation_id AND i2.state IN ('PAID','RESCHEDULED','CALLED_SESSION','CALLED_NOT_FIT','MISSED','RUDE'))
     AND se.id = (SELECT se2.id FROM sessions se2 JOIN slots s2 ON s2.id = se2.slot_id
                  WHERE se2.conversation_id = se.conversation_id AND se2.state IN ('CONFIRMED','CREDIT_BOOKED','COMPLETED','NO_SHOW','NOT_FIT') ORDER BY s2.start_utc LIMIT 1)
@@ -234,15 +235,8 @@ amma.post("/outcome", async (c) => {
     const now = Date.now();
     if (ses.startUtc > iso(now)) return message(c, cp.notYet, 409);
     // Same as a call: one atomic write, refused if this session already has an answer; the cron applies it after the undo window.
-    const res = await c.env.DB
-      .prepare(
-        `INSERT INTO outcomes (session_id, value, tapped_at, undo_until, slot_id)
-         SELECT ?1, 'NOT_FIT', ?2, ?3, ?4 WHERE NOT EXISTS (SELECT 1 FROM outcomes WHERE session_id = ?1)`,
-      )
-      .bind(sid, iso(now), iso(now + config.undoMinutes * 60_000), ses.slotId)
-      .run();
-    if (!res.meta.changes) return message(c, cp.alreadyAnswered, 409);
-    const oid = res.meta.last_row_id;
+    const oid = await recordOutcome(c.env.DB, { sessionId: sid, slotId: ses.slotId, value: "NOT_FIT", nowMs: now });
+    if (oid === null) return message(c, cp.alreadyAnswered, 409);
     await audit(c, "AMMA_OUTCOME", `session:${sid}`, "NOT_FIT");
     return c.html(
       page(html`<p class="msg">${cp.saved(config.undoMinutes)}</p>${undoForm(oid, await csrf(c.get("jwt"), `undo:${oid}`), cp.undo)}
@@ -260,15 +254,8 @@ amma.post("/outcome", async (c) => {
   const now = Date.now();
   if (intro.startUtc > iso(now)) return message(c, cp.notYet, 409);
   // One atomic write: refused if this call already has an outcome. Effects are applied later by the cron (src/outcomes.ts), once undo_until has passed.
-  const res = await c.env.DB
-    .prepare(
-      `INSERT INTO outcomes (intro_id, value, tapped_at, undo_until, slot_id)
-       SELECT ?1, ?2, ?3, ?4, ?5 WHERE NOT EXISTS (SELECT 1 FROM outcomes WHERE intro_id = ?1 AND slot_id = ?5)`,
-    )
-    .bind(id, v, iso(now), iso(now + config.undoMinutes * 60_000), intro.slotId)
-    .run();
-  if (!res.meta.changes) return message(c, cp.alreadyAnswered, 409);
-  const oid = res.meta.last_row_id;
+  const oid = await recordOutcome(c.env.DB, { introId: id, slotId: intro.slotId, value: v, nowMs: now });
+  if (oid === null) return message(c, cp.alreadyAnswered, 409);
   await audit(c, "AMMA_OUTCOME", `intro:${id}`, v);
   return c.html(
     page(html`<p class="msg">${cp.saved(config.undoMinutes)}</p>${undoForm(oid, await csrf(c.get("jwt"), `undo:${oid}`), cp.undo)}
@@ -282,11 +269,7 @@ amma.post("/undo", async (c) => {
   if (!Number.isInteger(oid) || f.csrf !== (await csrf(c.get("jwt"), `undo:${oid}`))) return c.text("Forbidden", 403);
   const cp = t();
   const was = await c.env.DB.prepare("SELECT intro_id AS introId, session_id AS sessionId, value FROM outcomes WHERE id = ?1").bind(oid).first<{ introId: number | null; sessionId: number | null; value: string }>();
-  const res = await c.env.DB
-    .prepare("DELETE FROM outcomes WHERE id = ?1 AND undo_until > ?2 AND applied_at IS NULL")
-    .bind(oid, iso(Date.now()))
-    .run();
-  if (!res.meta.changes) return message(c, cp.undoTooLate, 409);
+  if (!(await undoOutcome(c.env.DB, oid, Date.now()))) return message(c, cp.undoTooLate, 409);
   await audit(c, "AMMA_UNDO", was?.introId != null ? `intro:${was.introId}` : `session:${was?.sessionId}`, was?.value ?? "");
   return message(c, cp.undone, 200);
 });
