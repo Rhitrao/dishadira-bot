@@ -3,7 +3,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose";
 import app from "../src/index";
 import { ACTIONS, can, canAny, memberCsrf, PERMISSIONS, type Action, type Member, type Role } from "../src/auth";
-import { TABS } from "../src/console";
+import { backTo, languageCsrf, TABS } from "../src/console";
 import { holdSlot } from "../src/slots";
 import { addPerson, applySql, migrations, newDb } from "./db";
 
@@ -533,6 +533,51 @@ describe("migration 0010", () => {
       await expect(o.prepare("INSERT INTO requests (workspace_id, kind, target, asked_by) VALUES (1, 'GIFT', 'x', 1)").run()).rejects.toThrow();
     } finally {
       await old.close();
+    }
+  });
+});
+
+describe("language switch (the frame's form, ticket 20)", () => {
+  const langToken = async (email: string) => languageCsrf(await jwtFor(email), (await memberRow(email))!);
+
+  it("any member switches their own console language, audited, and goes back to the page they were on", async () => {
+    await withStaff();
+    for (const who of [OWNER, PRAC, STAFF]) {
+      const res = await post("/app/language", { csrf: await langToken(who), locale: "hi", back: "/app/people?f=waiting" }, who);
+      expect(res.status, who).toBe(303);
+      expect(res.headers.get("Location")).toBe("/app/people?f=waiting");
+      expect((await memberRow(who))!.locale).toBe("hi");
+    }
+    expect((await memberRow(OWNER))!.locale).toBe("hi");
+    expect(await (await get("/app", STAFF)).text()).toContain('<html lang="hi">');
+    const rows = await audits("MEMBER_LOCALE");
+    expect(rows).toHaveLength(3);
+    expect(rows[2]).toEqual({ actor: STAFF, memberId: (await memberRow(STAFF))!.id, ws: 1, target: `member:${(await memberRow(STAFF))!.id}`, detail: "en -> hi" });
+    // The same choice again changes nothing and writes no audit row.
+    await post("/app/language", { csrf: await langToken(STAFF), locale: "hi" }, STAFF);
+    expect(await audits("MEMBER_LOCALE")).toHaveLength(3);
+    // Back to English, returning by the Referer when the form has no back field.
+    const headers = { "Cf-Access-Jwt-Assertion": await jwtFor(STAFF), "Content-Type": "application/x-www-form-urlencoded", Origin: ORIGIN, Referer: `${ORIGIN}/app/inbox` };
+    const res = await app.request(ORIGIN + "/app/language", { method: "POST", headers, body: new URLSearchParams({ csrf: await langToken(STAFF), locale: "en" }).toString() }, env());
+    expect(res.headers.get("Location")).toBe("/app/inbox");
+    expect((await memberRow(STAFF))!.locale).toBe("en");
+  });
+
+  it("refuses a bad token, a foreign Origin, an unknown language, a removed member, and never redirects outside /app", async () => {
+    await withStaff();
+    expect((await post("/app/language", { csrf: "0".repeat(64), locale: "hi" }, STAFF)).status).toBe(403);
+    expect((await post("/app/language", { csrf: await langToken(OWNER), locale: "hi" }, STAFF)).status).toBe(403); // someone else's token
+    expect((await post("/app/language", { csrf: await langToken(STAFF), locale: "hi" }, STAFF, { origin: "https://evil.example.test" })).status).toBe(403);
+    expect((await post("/app/language", { csrf: await langToken(STAFF), locale: "kn" }, STAFF)).status).toBe(400);
+    const open = await langToken(STAFF);
+    await db.prepare("UPDATE members SET status = 'removed' WHERE email = ?1").bind(STAFF).run();
+    expect((await post("/app/language", { csrf: open, locale: "hi" }, STAFF)).status).toBe(403);
+    expect((await memberRow(STAFF))!.locale).toBe("en");
+    expect(await audits("MEMBER_LOCALE")).toHaveLength(0);
+    const res = await post("/app/language", { csrf: await langToken(OWNER), locale: "hi", back: "https://evil.example.test/" });
+    expect(res.headers.get("Location")).toBe("/app");
+    for (const [raw, want] of [["//evil.example.test/app", "/app"], ["/admin", "/app"], ["/appx", "/app"], ["/app", "/app"], ["/app/settings/team", "/app/settings/team"], ["https://bot.example.test/app/inbox?v=mine", "/app/inbox?v=mine"], ["/app\\@evil", "/app"], [null, "/app"], ["", "/app"]] as const) {
+      expect(backTo(raw), String(raw)).toBe(want);
     }
   });
 });

@@ -41,7 +41,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [x] 14 AI assistant (behind AI_REPLIES, default off) (PR: see the branch `claude/loving-fermat-2xaan4`)
 - [x] 15–17 Console redesign (PRs #26, #27, #28, merged and deployed to test 23 Oct)
 - [ ] 18 Flow fixes from the test chat (PR: see the branch `t18-flow-fixes`)
-- [ ] 19 Members, roles and the permission check (PR: see the branch `t19-members`; based on #30 and #29)
+- [ ] 19 Members, roles and the permission check (PR: see the branch `t19-members`; merges after #29, #30 and #31)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
@@ -85,9 +85,10 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
   - `src/console.ts`: `/app` behind `CONSOLE_V2` (a plain 404 while off), "No access" for any verified email without an active membership, role-filtered tabs (owner 6, practitioner 3, staff 4) with placeholder screens, each saying who can see it; invite accept (`/app/invite/<token>`: GET shows a button, POST accepts). `src/team.ts`: `/app/settings/team` (owner only): invite by email, change role, remove, hand over ownership (the old owner becomes Staff). Every change is one batch with its audit row (written only if the change happened).
   - `CONSOLE_V2 = "false"` at the top level, test and live in wrangler.toml; the release test insists on "false" at the top level and in live (test may be either), like AI_REPLIES.
   - The console pages use today's stylesheet (`CONSOLE_CSS`) and a small frame in src/console.ts; ticket 21 moves them to ticket 20's frame. Ticket 19's words are in `S` (console.ts) and `T` (team.ts), English only, ready to move to the string catalogue.
-- Checks: TESTS_PLACEHOLDER
+  - `POST /app/language` (for ticket 20's language switch, PR #31): `locale` en | hi for the signed-in member, Origin + CSRF (`languageCsrf`), audited as `MEMBER_LOCALE`, then back to the form's `back` path or the Referer, only inside /app.
+- Checks: `npx tsc --noEmit` passed; vitest file by file (the full run stalls on this 2-CPU box): 823/823 passed across 20 files (82 new in test/members.test.ts, 1 new in test/release.test.ts). health.test.ts caught a regression (/admin with no env gave 500) that is fixed; amma and admin re-run after it.
 - Open questions: the email question under "Blocked". After a hand-over the old owner becomes Staff (Phase 1 has no "owner who is also bookable"); say if Practitioner should be offered instead. Invited people also need to pass the Cloudflare Access policy (today two fixed emails) until ticket 25's hand step changes it to "any verified email".
-- Next: Rohit reviews; merge after #29 and #30. Then ticket 20's PR, then tickets 21–24.
+- Next: Rohit reviews; merge after #29 and #30, and after or alongside #31 (ticket 20, whose language switch posts to /app/language). Then tickets 21–24.
 
 ## Session notes (console v4 tickets: 19–25)
 - Added: tickets 19–25 in tickets.md ("v4: the role-based console, Phase 1") and the spec `docs/CONSOLE-PRD.md` (a copy of the PRD doc, no names). No code changed.

@@ -5,7 +5,7 @@
 // The page still uses today's stylesheet from src/ui.ts; ticket 21 moves it onto the new design system and the string catalogue.
 import { Hono, type Context } from "hono";
 import { html, raw } from "hono/html";
-import { activeMember, canAny, csrf, ROLES, seedMembers, sha256Hex, touchMember, verifiedEmail, WORKSPACE_ID, type Action, type Member, type Role } from "./auth";
+import { activeMember, canAny, csrf, memberCsrf, ROLES, seedMembers, sha256Hex, touchMember, verifiedEmail, WORKSPACE_ID, type Action, type Member, type Role } from "./auth";
 import type { Env } from "./env";
 import { iso } from "./slots";
 import { team } from "./team";
@@ -142,6 +142,33 @@ consoleApp.get("/people", placeholder("people"));
 consoleApp.get("/payments", placeholder("payments"));
 consoleApp.get("/settings", placeholder("settings"));
 consoleApp.route("/settings/team", team);
+
+// ---- the language switch in the page frame (ticket 20): every member may choose English or Hindi for their own console ----
+// The frame's form sends csrf (languageCsrf below), locale (the language to switch to) and back (the page it was on).
+export const languageCsrf = (jwt: string, m: Member) => memberCsrf(jwt, m, "language");
+// Only a path inside the console, never another site ("//host") or a full URL.
+export function backTo(raw: string | null | undefined): string {
+  let path = raw ?? "";
+  try {
+    if (/^https?:/i.test(path)) path = new URL(path).pathname + new URL(path).search;
+  } catch {
+    return "/app";
+  }
+  return /^\/app(?:[/?]|$)/.test(path) && !path.startsWith("//") && !path.includes("\\") ? path : "/app";
+}
+consoleApp.post("/language", async (c) => {
+  const m = c.get("member");
+  const f = (await c.req.parseBody()) as Record<string, string | undefined>;
+  if (f.csrf !== (await languageCsrf(c.get("jwt"), m))) return c.text("Forbidden", 403);
+  if (f.locale !== "en" && f.locale !== "hi") return c.text("Bad request", 400);
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE members SET locale = ?3 WHERE workspace_id = ?1 AND id = ?2 AND status = 'active' AND locale != ?3").bind(m.workspaceId, m.id, f.locale),
+    auditStmt(c, "MEMBER_LOCALE", `member:${m.id}`, `${m.locale} -> ${f.locale}`),
+  ]);
+  // The Referer carries the whole URL; only its path is used, and only inside /app.
+  const back = f.back ? backTo(f.back) : backTo(c.req.header("Referer"));
+  return c.redirect(back, 303);
+});
 
 // ---- accepting an invite: GET shows one button (mail scanners only ever GET), the POST does it ----
 type InviteRow = { id: number; email: string; role: Role; expiresAt: string; usedAt: string | null; memberStatus: string | null };
