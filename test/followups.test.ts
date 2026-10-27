@@ -1,10 +1,13 @@
 // Ticket 26: console follow-ups and the owner's contract decisions of 27 Oct 2026. One describe per item of the ticket.
 // All data is synthetic (names, numbers, emails). Access, WhatsApp, Razorpay and email are fakes: nothing real is called.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../src/index";
+import { factsText, RULES_HEADER, type Facts } from "../src/ai";
+import { checkReply } from "../src/aicheck";
+import { loadPrices } from "../src/business";
+import { KNOWLEDGE } from "../src/knowledge";
 import { mailOpenRequests, REQUESTS_MAIL_KEY } from "../src/requests";
 import { holdSlot, iso } from "../src/slots";
-import { vi } from "vitest";
 import { ALERTS, ConsoleHarness, OWNER, PRAC, STAFF } from "./console-env";
 
 const NOW = Date.parse("2026-10-05T10:00:00Z"); // Mon 3:30 pm in Bengaluru, inside working hours
@@ -144,7 +147,6 @@ describe("item 2: approving money received confirms the booking (one path)", () 
     const res = await h.post("/app/today/decide", { request: String(id), decision: "APPROVED", csrf: await h.tokenFor(STAFF, `decide:${id}:APPROVED`) }, STAFF);
     expect(res.status).toBe(403);
     expect(await h.count("SELECT COUNT(*) AS n FROM payments")).toBe(0);
-    void PRAC;
   });
 });
 
@@ -392,5 +394,35 @@ describe("item 8: one bundled 'ask owner' email, at most every 30 minutes", () =
     await ask("REFUND", "payment:1", 9900);
     await (app as unknown as { scheduled: (e: { cron: string }, env: unknown) => Promise<void> }).scheduled({ cron: "*/2 * * * *" }, h.env());
     expect(h.emails.filter((e) => e.subject.startsWith("Waiting for your approval"))).toHaveLength(1);
+  });
+});
+
+describe("item 6: the assistant quotes the prices in force", () => {
+  const FACTS: Facts = { today: "Monday, 5 October 2026", language: "en", noSell: false, hadIntroCall: false, creditsLeft: 0, next: null, openStep: null };
+  afterEach(async () => {
+    await h.db.prepare("DELETE FROM settings WHERE key LIKE 'price.%'").run().catch(() => undefined);
+  });
+
+  it("with no price rows: config's prices in the facts, and they pass the output check", async () => {
+    await loadPrices(h.env());
+    expect(factsText(FACTS)).toContain("- Prices in force: first call ₹99 (15 minutes); single session ₹799; 10 sessions ₹5,000 (₹500 a session); 20 sessions ₹9,000 (₹450 a session)");
+    expect(checkReply("The first call is ₹99 and a session is ₹799.")).toEqual({ ok: true });
+  });
+
+  it("after the owner changes prices in Settings: the facts carry them, the check allows them and refuses the old ones", async () => {
+    await h.db.prepare("INSERT INTO settings (key, value) VALUES ('price.intro_paise', '14900'), ('price.single_paise', '89900'), ('price.pack10_paise', '600000')").run();
+    await loadPrices(h.env());
+    const t = factsText(FACTS);
+    expect(t).toContain("first call ₹149 (15 minutes); single session ₹899; 10 sessions ₹6,000 (₹600 a session); 20 sessions ₹9,000 (₹450 a session)");
+    expect(checkReply("The first call is ₹149, a session ₹899, and 10 sessions are ₹6,000 (₹600 each).")).toEqual({ ok: true });
+    expect(checkReply("The first call is ₹99.")).toEqual({ ok: false, reason: "NUMBER" });
+    expect(checkReply("A session is ₹799.")).toEqual({ ok: false, reason: "NUMBER" });
+    await h.db.prepare("DELETE FROM settings WHERE key LIKE 'price.%'").run();
+    await loadPrices(h.env());
+  });
+
+  it("the rules and the knowledge bank say prices come from the trusted facts", () => {
+    expect(RULES_HEADER).toContain('Prices come from the trusted facts ("Prices in force")');
+    expect(KNOWLEDGE).toContain('The "Prices in force" line of the trusted facts is always right');
   });
 });

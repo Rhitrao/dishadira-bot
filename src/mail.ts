@@ -19,7 +19,8 @@ export async function sendEmail(env: Env, subject: string, text: string): Promis
   return r;
 }
 
-// One email to one address: Rohit's (above), or a console invite with its one-time link (src/team.ts).
+// One email to one address: the owner's (above), or a member's address the owner has verified in Cloudflare Email Routing
+// (CONTRACT v6). Console invites are never emailed (src/team.ts shows the link instead).
 export async function sendEmailTo(env: Env, to: string, subject: string, text: string): Promise<"SENT" | "SKIPPED" | "FAILED"> {
   if (!env.EMAIL || !to) {
     console.log("email skipped: not configured");
