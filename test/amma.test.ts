@@ -311,18 +311,25 @@ describe("safety", () => {
 });
 
 describe("one open intro per person", () => {
-  const run = async (conv: number, i: number) => {
+  const run = async (conv: number, i: number, ymd = "2026-10-05") => {
     await db.prepare("UPDATE conversations SET last_user_at = '2026-10-05T10:00:00Z' WHERE id = ?1").bind(conv).run();
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 404 })));
-    await bookingChoice({ ...(env() as object), SENDS: "true", WA_TOKEN: "t", WA_PHONE_ID: "1" } as never, `slot_PROTECTION_${generateSlots("2026-10-05", "CALL")[i].startUtc}`, conv, `m${i}${conv}`);
+    await bookingChoice({ ...(env() as object), SENDS: "true", WA_TOKEN: "t", WA_PHONE_ID: "1" } as never, `slot_PROTECTION_${generateSlots(ymd, "CALL")[i].startUtc}`, conv, `m${i}${conv}${ymd}`);
   };
-  it("a person with a PAID intro cannot book another; they are told when it is", async () => {
-    const { conv } = await booking("2026-10-05", 3, "Priya");
-    await run(conv, 6);
+  it("a person with a PAID intro still to come cannot book another; they are told when it is", async () => {
+    const { conv } = await booking("2026-10-05", 10, "Priya"); // 4:30 pm IST, after NOW (3:30 pm IST)
+    await run(conv, 6, "2026-10-06");
     expect((await db.prepare("SELECT count(*) AS n FROM intros").first<{ n: number }>())!.n).toBe(1);
     expect((await db.prepare("SELECT count(*) AS n FROM payments").first<{ n: number }>())!.n).toBe(0);
     const m = await db.prepare("SELECT body FROM messages WHERE direction = 'OUT' ORDER BY id DESC LIMIT 1").first<{ body: string }>();
-    expect(m?.body ?? "").toContain("already booked for Mon, 5 Oct at 2:45 pm");
+    expect(m?.body ?? "").toContain("already booked for Mon, 5 Oct at 4:30 pm");
+  });
+  it("a PAID call that is over but still waiting for an outcome tap does not block a new booking (ticket 18)", async () => {
+    const { conv } = await booking("2026-10-05", 3, "Priya"); // 2:45 pm IST: ended before NOW, no outcome tapped
+    await run(conv, 6, "2026-10-06");
+    expect((await db.prepare("SELECT count(*) AS n FROM intros").first<{ n: number }>())!.n).toBe(2);
+    const bodies = (await db.prepare("SELECT body FROM messages WHERE direction = 'OUT'").all<{ body: string | null }>()).results.map((r) => r.body ?? "");
+    expect(bodies.some((b) => b.includes("already booked"))).toBe(false);
   });
   it("a person with a live HELD intro is told the same, and no new hold is made", async () => {
     const { conv } = await booking("2026-10-05", 3, "Priya", { state: "HELD" });

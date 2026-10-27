@@ -3,7 +3,6 @@
 // The assistant only chooses words and one action from a fixed list; code does everything else. No message text is logged or stored here.
 import { checkReply, type RejectReason } from "./aicheck";
 import { callAI, factNumbers, gatherFacts, type AiOutput, type ChatMessage, type Facts, type NextAction } from "./ai";
-import { config } from "./config";
 import { copyFor, type Copy } from "./copy";
 import type { Env } from "./env";
 import { requestHuman } from "./handoff";
@@ -12,7 +11,7 @@ import { applyLabel, recordAiReply, type Label, type NoiseConv } from "./noise";
 import { botAudit } from "./safety";
 import { raiseAttention, type Out, type SendResult } from "./send";
 import { aiOn } from "./switches";
-import { noteReprompt, openStep, repromptHelpOut } from "./steps";
+import { openStep, resetReprompts } from "./steps";
 
 // What the caller does next:
 //  off       the assistant is not used (flag off, language not chosen yet): carry on with the old path
@@ -117,11 +116,10 @@ export async function answerWithAI(ctx: AnswerCtx): Promise<Answered> {
   if (open) {
     const merged = stepWithReply(open.out, text);
     if (!merged) return "reprompt";
+    // A question that got its answer is not a sign of being stuck: the "Talk to a person" offer counts only the turns
+    // that could not be answered (the re-prompts in src/whatsapp.ts), so a good answer starts that count again.
     const sent = await ctx.send(merged, "ai");
-    if (sent !== "BURST") {
-      const n = await noteReprompt(db, conv.id);
-      if ((n?.n ?? 0) >= config.booking.repromptHelpAfter) await ctx.send(repromptHelpOut(cp), "ai-help");
-    }
+    if (sent !== "BURST") await resetReprompts(db, conv.id);
     return "finished";
   }
   switch (next) {

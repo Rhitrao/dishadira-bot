@@ -326,10 +326,17 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       await reply({ type: "text", text: cp.handoffAck }, "handoff");
       return;
 
-    case "HUMAN_WAIT":
+    case "HUMAN_WAIT": {
       // Typed text waits for Rohit in /admin. A photo or file from someone with a booking may be a payment screenshot: he should know.
       if (text === null && (await hasBookingContext(db, conv.id))) await raiseAttention(db, "MEDIA_FROM_CUSTOMER", `conv:${conv.id}`);
+      // One short acknowledgement per handoff, so the person knows the message arrived: claimed by moving last_ack_at past human_since.
+      const claim = await db
+        .prepare("UPDATE conversations SET last_ack_at = ?2 WHERE id = ?1 AND mode = 'HUMAN' AND human_since IS NOT NULL AND (last_ack_at IS NULL OR last_ack_at < human_since)")
+        .bind(conv.id, nowIso())
+        .run();
+      if (claim.meta.changes) await reply({ type: "text", text: cp.humanWaitAck }, "human-ack");
       return;
+    }
 
     case "MEDIA": {
       // Voice note, image, video, sticker, document, location, contact. Never downloaded.
@@ -393,7 +400,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     // A booking step is open: send it again, with the hint. A re-prompt is not a strike.
     const open = await openStep(db, conv!.id);
     if (open) {
-      const res = await reply(repromptOut(cp, open), "reprompt");
+      const res = await reply(repromptOut(cp, open, viaAI), "reprompt");
       if (res !== "BURST") {
         const n = await noteReprompt(db, conv!.id);
         if ((n?.n ?? 0) >= config.booking.repromptHelpAfter) await reply(repromptHelpOut(cp), "reprompt-help");
@@ -490,7 +497,13 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     }
     const faq = config.faqIds.find((id) => `faq_${id}` === choice);
     if (faq) {
-      await reply({ type: "text", text: cp.faqAnswers[faq] }, "answer");
+      // One message: the answer with the menu buttons under it. Only an answer too long for a button message's body goes as text, then the menu.
+      const answer = cp.faqAnswers[faq];
+      if (answer.length <= config.whatsapp.buttonBodyMax) {
+        await reply(menuOut(cp, await noSellActive(db, conv!.id), answer), "answer");
+        return;
+      }
+      await reply({ type: "text", text: answer }, "answer");
       await menu(cp, "menu");
       return;
     }

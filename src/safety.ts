@@ -63,6 +63,8 @@ export async function runCrisis(env: Env, conv: SafetyConv, msgId: string, text:
   await sendMessage(env, conv.id, { type: "text", text: copyFor(safetyLang(conv, text)).crisis }, `${msgId}:crisis`, { safety: true });
   // A person takes over (a blocked chat stays blocked), and nothing is sold for a week.
   await db.prepare("UPDATE conversations SET mode = 'HUMAN', human_since = ?2 WHERE id = ?1 AND mode = 'BOT'").bind(conv.id, nowIso()).run();
+  // The crisis message already says a person has been told, so the HUMAN-mode acknowledgement (src/whatsapp.ts) is not sent after it.
+  await db.prepare("UPDATE conversations SET last_ack_at = ?2 WHERE id = ?1").bind(conv.id, nowIso()).run();
   await markGreeted(db, conv.id);
   await db.prepare("INSERT OR IGNORE INTO person_state (conversation_id) VALUES (?1)").bind(conv.id).run();
   await db.prepare("UPDATE person_state SET no_sell_until = ?2 WHERE conversation_id = ?1").bind(conv.id, iso(now + config.safety.noSellDays * 86_400_000)).run();

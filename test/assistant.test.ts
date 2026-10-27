@@ -121,10 +121,13 @@ describe("one message per answer, as the assistant's `next` says", () => {
     expect((await w.conv(from)).mode).toBe("HUMAN");
     expect(await w.count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'HUMAN_REQUEST' AND resolved_at IS NULL")).toBe(1);
     expect(w.emails.map((m) => m.subject)).toEqual(["A customer asked for a person"]);
-    // Now HUMAN: typed text waits for Rohit and never reaches the assistant.
+    // Now HUMAN: typed text waits for Rohit and never reaches the assistant. The first one gets one short acknowledgement (ticket 18), later ones nothing.
     await w.typed(from, "hello?? anyone");
     expect(w.aiCalls()).toHaveLength(1);
-    expect(w.sent()).toHaveLength(1);
+    expect(w.sent()).toHaveLength(2);
+    expect(w.last().text.body).toBe(en.humanWaitAck);
+    await w.typed(from, "still there?");
+    expect(w.sent()).toHaveLength(2);
   });
   it("the label human_request is a handoff whatever `next` says", async () => {
     const from = await w.greeted();
@@ -349,13 +352,17 @@ describe("in the middle of a booking: one message, the answer on top of the step
     expect(w.sent()).toHaveLength(1);
     expect(w.last().interactive.body.text).toBe(`Calls are only Monday to Friday.\n\n${en.chooseDay}`);
     expect(ids(w.last())).toEqual(buttons);
-    expect((await w.conv(from)).pending_reprompts).toBe(1);
+    expect((await w.conv(from)).pending_reprompts).toBe(0); // an answered question is not a re-prompt (ticket 18)
     expect(await w.count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(0);
   });
-  it("the third in a row adds Talk to a person", async () => {
+  it("answered questions never add Talk to a person; the third unanswered one in a row does (ticket 18)", async () => {
     const from = await atDayStep();
     w.ai = out("relevant_question", "Calls are only Monday to Friday.", "show_booking");
-    for (let i = 0; i < 3; i++) await w.typed(from, `Saturday please ${i}`);
+    for (let i = 0; i < 4; i++) await w.typed(from, `Saturday please ${i}`);
+    expect(w.last().interactive.body.text).toBe(`Calls are only Monday to Friday.\n\n${en.chooseDay}`);
+    expect(w.sent().some((m) => m.interactive?.body?.text === en.repromptHelp)).toBe(false);
+    w.ai = () => new Response("{}", { status: 500 });
+    for (let i = 0; i < 3; i++) await w.typed(from, `and sunday ${i}`);
     expect(w.last().interactive.body.text).toBe(en.repromptHelp);
     expect(ids(w.last())).toEqual(["menu_person"]);
   });
@@ -375,17 +382,18 @@ describe("in the middle of a booking: one message, the answer on top of the step
     expect((await w.conv(from)).mode).toBe("HUMAN");
     expect((await w.conv(from)).pending_step).toBeNull();
   });
-  it("if the assistant fails or its reply is rejected, the plain re-prompt goes out, as before", async () => {
+  it("if the assistant fails or its reply is rejected, a warm line and the step go out, never a bare re-prompt (ticket 18)", async () => {
     const from = await atDayStep();
     w.fetchMock.mockClear();
     w.ai = () => new Response("{}", { status: 500 });
     await w.typed(from, "Saturday please");
     expect(w.sent()).toHaveLength(1);
-    expect(w.last().interactive.body.text).toContain(en.reprompt(en.hintDays));
+    expect(w.last().interactive.body.text).toBe(`${en.repromptQuestion}\n\n${en.chooseDay}`);
     w.ai = out("relevant_question", "That is 100% possible", "none");
     await w.typed(from, "Saturday please, really");
-    expect(w.last().interactive.body.text).toContain(en.reprompt(en.hintDays));
+    expect(w.last().interactive.body.text).toBe(`${en.repromptQuestion}\n\n${en.chooseDay}`);
     expect(w.last().interactive.body.text).not.toContain("100%");
+    expect(w.last().interactive.body.text).not.toContain(en.reprompt(""));
   });
 });
 
@@ -503,6 +511,22 @@ describe("what the assistant is sent, and what it is not", () => {
 });
 
 describe("handoff fixes (docs/AGENT.md section 3.2 step 6)", () => {
+  it("the acknowledgement goes once per handoff: a later handoff gets its own (ticket 18)", async () => {
+    const from = await w.greeted();
+    await w.tap(from, "menu_person");
+    w.fetchMock.mockClear();
+    await w.typed(from, "my back hurts, will this help?");
+    await w.typed(from, "anyone there");
+    expect(w.sent().map((m) => m.text?.body)).toEqual([en.humanWaitAck]);
+    // The team finishes; the chat is back with the bot; a new request later is a new handoff.
+    await w.db.prepare("UPDATE conversations SET mode = 'BOT', human_since = NULL WHERE wa_id = ?1").bind(from).run();
+    await w.db.prepare("UPDATE attention SET resolved_at = '2026-10-05T09:00:00Z'").run();
+    vi.setSystemTime(NOW + 60_000);
+    await w.tap(from, "menu_person");
+    w.fetchMock.mockClear();
+    await w.typed(from, "one more question");
+    expect(w.sent().map((m) => m.text?.body)).toEqual([en.humanWaitAck]);
+  });
   it("HUMAN mode: a menu word gets the menu and the mode stays HUMAN; other text gets nothing", async () => {
     const from = await w.greeted();
     await w.tap(from, "menu_person");
@@ -511,7 +535,8 @@ describe("handoff fixes (docs/AGENT.md section 3.2 step 6)", () => {
     expect(w.last().interactive.body.text).toBe(en.menuBody);
     await w.typed(from, "Namaste");
     await w.typed(from, "are you there?");
-    expect(w.sent()).toHaveLength(2);
+    expect(w.sent()).toHaveLength(3); // the menu twice, then the one acknowledgement for this handoff (ticket 18)
+    expect(w.last().text.body).toBe(en.humanWaitAck);
     expect((await w.conv(from)).mode).toBe("HUMAN");
   });
   it("a new request emails Rohit at once: the person's page link only; at most one email per person per 6 hours", async () => {

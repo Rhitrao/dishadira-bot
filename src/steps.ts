@@ -43,8 +43,10 @@ export async function openStep(db: D1Database, convId: number, nowMs = Date.now(
 }
 
 // The step again: the re-prompt line (with the hours hint on the day and time steps) above the step's own question.
-export function repromptOut(cp: Copy, open: OpenStep): Out {
-  const line = cp.reprompt(open.step === "day" || open.step === "time" ? cp.hintDays : "");
+// `afterQuestion`: the person asked something the assistant could not answer, so the line thanks them and points to the call
+// instead of a bare "Please choose from the options below."
+export function repromptOut(cp: Copy, open: OpenStep, afterQuestion = false): Out {
+  const line = afterQuestion ? cp.repromptQuestion : cp.reprompt(open.step === "day" || open.step === "time" ? cp.hintDays : "");
   const out = open.out;
   if (out.type === "template") return out;
   if (out.type === "text") return { ...out, text: `${line}\n\n${out.text}` };
@@ -55,3 +57,4 @@ export function repromptOut(cp: Copy, open: OpenStep): Out {
 export const repromptHelpOut = (cp: Copy): Out => ({ type: "buttons", body: cp.repromptHelp, buttons: [{ id: "menu_person", title: cp.btnPerson }] });
 
 export const noteReprompt = (db: D1Database, convId: number) => db.prepare("UPDATE conversations SET pending_reprompts = pending_reprompts + 1 WHERE id = ?1 RETURNING pending_reprompts AS n").bind(convId).first<{ n: number }>();
+export const resetReprompts = (db: D1Database, convId: number) => db.prepare("UPDATE conversations SET pending_reprompts = 0 WHERE id = ?1 AND pending_reprompts > 0").bind(convId).run();

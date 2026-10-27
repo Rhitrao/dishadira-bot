@@ -39,9 +39,13 @@ export const config = {
   },
   // Placeholder until the Airtel number exists; the owner sets the real one here, never in git history.
   businessNumber: "+91 00000 00000",
+  whatsapp: {
+    buttonBodyMax: 1024, // WhatsApp: the body of a reply-button message
+  },
   booking: {
     leadMinutes: 60,
-    workingDays: 3,
+    workingDays: 3, // days offered on the day step: the first 3 working days that still have a free time
+    lookaheadDays: 10, // how many working days ahead to look for them
     maxListRows: 10,
     dayButtons: 3, // reply buttons on the day step (WhatsApp allows 3)
     timeRows: 9, // times on the time step; the "Another day" row makes it 10

@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-21 (Ticket 14: the AI assistant, behind AI_REPLIES, default off)
+Updated: 2026-10-27 (Ticket 18: flow fixes from the test chat)
 
 ## Payment provider
 Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
@@ -39,6 +39,8 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [x] 12 Gatekeeper, re-prompts, chat wipe (no AI) (PR: see the branch `claude/magical-curie-8p2j5t`)
 - [x] 13 Sessions (₹799) and packages (10 for ₹5,000, 20 for ₹9,000) (PR: see the branch `claude/eager-ptolemy-dub4q3`)
 - [x] 14 AI assistant (behind AI_REPLIES, default off) (PR: see the branch `claude/loving-fermat-2xaan4`)
+- [x] 15–17 Console redesign (PRs #26, #27, #28, merged and deployed to test 23 Oct)
+- [ ] 18 Flow fixes from the test chat (PR: see the branch `t18-flow-fixes`)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
@@ -72,6 +74,19 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
 5. [ ] From your own phone: choose a language, then type a question ("what is pranic healing?"). You get one message back. Try the cases in `test/agent-evals/cases.json`: a worry about stress, a refund, "Saturday please" at the day buttons, a rude message, "I feel hopeless". The 9pm digest has an "Assistant" section (answers written, replies replaced by the output check, calls that failed).
 6. [ ] Add the GitHub secret `ANTHROPIC_API_KEY` (repository Settings → Secrets and variables → Actions) and run **Actions → Assistant eval** (manual). It runs the 63 cases the assistant decides against the real model, never sends anything to WhatsApp, and writes a table plus tokens and cost per call to the job summary. Bar: 95% of labels right, every safety case right, no banned word. **The cost per reply was not measured in this session (no key here); the first run of the eval gives it.**
 7. [ ] Shadow week on the test number: read every reply. Amma reads `docs/KNOWLEDGE.md` and the Hindi messages. Only then think about live.
+
+## Session notes (Ticket 18: flow fixes from the test chat)
+- What changed (from the test chat, 17–26 Oct):
+  1. "Already has a call": one rule at the Book tap, at the end of the flow and in My bookings (a paid call not yet ended, or a live hold). A past call with no outcome tapped no longer blocks a new booking; it stays an AMMA_NO_TAP item (raised by the cron, unchanged). Before, the end-of-flow check counted any PAID call, so the 21 Oct call blocked the 26 Oct booking after four taps.
+  2. Day step: the first 3 working days that still have free times, looking up to 10 working days ahead (`config.booking.lookaheadDays`). Late at night only 2 days were offered before.
+  3. Questions during a booking step: answered questions reset the re-prompt count, so "Talk to a person" is offered only after 3 unanswered turns in a row; a failed or rejected answer sends `repromptQuestion` + the step instead of the bare re-prompt; RULES_HEADER and KNOWLEDGE.md say to end with a pointer to the step, never a question. src/knowledge.ts regenerated.
+  4. Help answers: the answer and the menu buttons in one message (falls back to two only above 1024 characters).
+  5. "What is this?" rewritten (EN + HI): no-touch pranic healing by phone, certified MCKS Pranic Healer, first step a 15-minute ₹99 call.
+  6. HUMAN mode: the first message after a handoff gets `humanWaitAck` once per handoff (no migration: `last_ack_at` past `human_since`).
+- After a crisis message the acknowledgement is not sent (the crisis message already says a person has been told).
+- Checks: `npm run typecheck` passed; vitest run file by file (the full run stalls on this 2-CPU box): 740/740 passed across 19 files.
+- Open questions for Rohit: Hindi lines to read: `repromptQuestion`, `humanWaitAck`, the new `what_is_this`.
+- Next: Rohit reviews and merges the PR, then Actions → Deploy → test, and re-runs the 26 Oct chat (Book after a past call; Help → What is this?; a question at the day step; Talk to a person, then type).
 
 ## Session notes (Ticket 14)
 - Branch: the ticket named `t14-ai-assistant`; this session was assigned `claude/loving-fermat-2xaan4` and used that (as in tickets 11 to 13). The repository's `tickets.md` has a sixth item (handoff fixes, added in the "t14-prep" PR) that the copy of the ticket sent with the request did not; it is done too.

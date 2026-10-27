@@ -342,3 +342,13 @@ Design: the council verdict in STATUS.md ("Console redesign"). Built in this ses
 - `/admin/people`: search by name, last 4 digits or booking id; filters All · Needs a person · Crisis · Quiet · Blocked.
 - `/admin/conv/<id>`: header (name, …4821, mode, language, ad), reply box with time left or, when the window is closed, "Show number to call" (audited reveal + `tel:` link), the message thread with the assistant's answer type and replaced answers marked, bookings, payments, packages, safety state.
 - `/admin/payments`: last 30 days, problems first, IST date, person, item, amount, status chip.
+
+### Ticket 18: flow fixes from the test chat (cap $12)
+From Rohit's test chat (17–26 Oct 2026). Bot flow only; no console or schema changes.
+1. One rule for "already has a call", used at the Book tap, at the end of the flow and in My bookings: a paid call that has not ended yet (or a live hold). A past call still waiting for an outcome tap no longer blocks a new booking; it stays an AMMA_NO_TAP item for the practitioner.
+2. The day step offers the first 3 working days that still have free times (a full day, or today late in the evening, is skipped), looking up to 10 working days ahead (`config.booking.lookaheadDays`).
+3. A question typed during a booking step: a good answer does not count towards the "Talk to a person" offer (only unanswered turns do); an answer that fails or is rejected sends `repromptQuestion` (a warm line) above the step, never the bare "Please choose from the options below."; the rules header and KNOWLEDGE §13 say to end with a pointer to the step, never a question.
+4. A Help answer comes with the menu buttons in one message when it fits the 1024-character body limit (`config.whatsapp.buttonBodyMax`).
+5. "What is this?" says: no-touch pranic healing by phone with Shantha Rao, a certified MCKS Pranic Healer; the first step is a 15-minute ₹99 call (EN + HI).
+6. While a person from the team has the chat (HUMAN), the first message gets one short acknowledgement (`humanWaitAck`), once per handoff (claimed by `last_ack_at` passing `human_since`; no migration).
+Tests in `test/amma.test.ts`, `test/flow.test.ts`, `test/assistant.test.ts`, `test/copy.test.ts`. docs/COPY.md and src/knowledge.ts regenerated.
