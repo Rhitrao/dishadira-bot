@@ -127,7 +127,7 @@ async function applyOne(env: Env, provider: PaymentProvider, o: Due): Promise<vo
   if (o.value === "SESSION") {
     await setState("CALLED_SESSION");
     await db
-      .prepare("INSERT INTO sessions (conversation_id, intro_id, service) SELECT ?1, ?2, ?3 WHERE NOT EXISTS (SELECT 1 FROM sessions WHERE intro_id = ?2)")
+      .prepare("INSERT INTO sessions (conversation_id, intro_id, service, practitioner_id) SELECT ?1, ?2, ?3, i.practitioner_id FROM intros i WHERE i.id = ?2 AND NOT EXISTS (SELECT 1 FROM sessions WHERE intro_id = ?2)")
       .bind(intro.conv, intro.id, intro.service)
       .run();
     const ses = await db.prepare("SELECT id FROM sessions WHERE intro_id = ?1").bind(intro.id).first<{ id: number }>();

@@ -20,7 +20,7 @@ import { requestRefund } from "./pay/refund";
 import { startSession } from "./session";
 import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
-import { bind, formatIstLang, generateSlots, iso, istDay } from "./slots";
+import { bind, formatIstLang, generateSlots, iso, istDay, PRACTITIONER_SQL } from "./slots";
 
 const nowIso = () => iso(Date.now());
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -196,7 +196,7 @@ export async function packChoice(env: Env, choice: string | null, convId: number
       await env.DB.prepare("UPDATE sessions SET service = ?2, for_whom = ?3, call_lang = ?4, state = 'OFFERED', updated_at = ?5 WHERE id = ?1").bind(sid, a, b, lang, nowIso()).run();
     } else {
       const ins = await env.DB
-        .prepare("INSERT INTO sessions (conversation_id, service, for_whom, call_lang, origin) VALUES (?1, ?2, ?3, ?4, 'SELF')")
+        .prepare(`INSERT INTO sessions (conversation_id, service, for_whom, call_lang, origin, practitioner_id) VALUES (?1, ?2, ?3, ?4, 'SELF', ${PRACTITIONER_SQL})`)
         .bind(conv.id, a, b, lang)
         .run();
       sid = ins.meta.last_row_id;
@@ -351,8 +351,8 @@ export async function bookCredit(db: D1Database, convId: number, service: string
   const results = await db.batch([
     // 1. The slot, booked at once, only if it is free, there is a credit, and fewer than the allowed sessions are upcoming.
     stmt(
-      `INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until)
-       SELECT 'SESSION', :start, :end, :conv, 'BOOKED', NULL
+      `INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until, practitioner_id)
+       SELECT 'SESSION', :start, :end, :conv, 'BOOKED', NULL, ${PRACTITIONER_SQL}
        WHERE NOT EXISTS (SELECT 1 FROM slots WHERE (state = 'BOOKED' OR hold_until > :now) AND start_utc < :end AND end_utc > :start)
          AND ${BALANCE} > 0
          AND (SELECT COUNT(*) FROM sessions se JOIN slots sl ON sl.id = se.slot_id
@@ -362,8 +362,8 @@ export async function bookCredit(db: D1Database, convId: number, service: string
     ),
     // 2. The session, on that slot, only if the slot is the one just booked for this person and no session uses it yet.
     stmt(
-      `INSERT INTO sessions (conversation_id, slot_id, service, for_whom, call_lang, origin, state, package_id, created_at, updated_at)
-       SELECT :conv, sl.id, :service, :who, :lang, 'CREDIT', 'CREDIT_BOOKED', ${PACKAGE}, :now, :now
+      `INSERT INTO sessions (conversation_id, slot_id, service, for_whom, call_lang, origin, state, package_id, created_at, updated_at, practitioner_id)
+       SELECT :conv, sl.id, :service, :who, :lang, 'CREDIT', 'CREDIT_BOOKED', ${PACKAGE}, :now, :now, sl.practitioner_id
        FROM slots sl
        WHERE sl.kind = 'SESSION' AND sl.start_utc = :start AND sl.owner_id = :conv AND sl.state = 'BOOKED'
          AND NOT EXISTS (SELECT 1 FROM sessions x WHERE x.slot_id = sl.id AND x.state IN ('HELD', 'CONFIRMED', 'CREDIT_BOOKED')) AND ${PACKAGE} IS NOT NULL`,

@@ -2,7 +2,7 @@
 // Never chat text or health details. Changes are POST-only, with an Origin check and a per-form CSRF token.
 import { Hono, type Context } from "hono";
 import { html } from "hono/html";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { csrf, verifiedEmail } from "./auth";
 import { config } from "./config";
 import { copyFor, langOf, type AmmaCopy, type ForWhom } from "./copy";
 import type { Env } from "./env";
@@ -15,33 +15,15 @@ const OUTCOMES = { SESSION: "btnSession", NOT_FIT: "btnNotFit", MISSED: "btnMiss
 type Outcome = keyof typeof OUTCOMES;
 const isOutcome = (v: unknown): v is Outcome => typeof v === "string" && v in OUTCOMES;
 
-const teamHost = (team: string) => (team.includes(".") ? team : `${team}.cloudflareaccess.com`);
-const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
-const keysFor = (host: string) => {
-  let k = keySets.get(host);
-  if (!k) keySets.set(host, (k = createRemoteJWKSet(new URL(`https://${host}/cdn-cgi/access/certs`))));
-  return k;
-};
-
-// The Worker verifies the Access JWT itself (signature, audience, issuer, expiry) and then the e-mail.
+// The Worker verifies the Access JWT itself (src/auth.ts: signature, audience, issuer, expiry) and then the e-mail.
 export async function allowedJwt(env: Env, token: string | undefined, rohitOnly = false): Promise<{ jwt: string; email: string } | null> {
-  if (!token || !env.ACCESS_TEAM || !env.ACCESS_AUD) return null;
-  try {
-    const host = teamHost(env.ACCESS_TEAM);
-    const { payload } = await jwtVerify(token, keysFor(host), { audience: env.ACCESS_AUD, issuer: `https://${host}` });
-    const email = typeof payload.email === "string" ? payload.email.toLowerCase() : "";
-    const allowed = (rohitOnly ? [env.ROHIT_EMAIL] : [env.AMMA_EMAIL, env.ROHIT_EMAIL]).filter(Boolean).map((e) => e.toLowerCase());
-    return email && allowed.includes(email) ? { jwt: token, email } : null;
-  } catch {
-    return null;
-  }
+  const email = await verifiedEmail(env, token);
+  const allowed = (rohitOnly ? [env.ROHIT_EMAIL] : [env.AMMA_EMAIL, env.ROHIT_EMAIL]).filter(Boolean).map((e) => e.toLowerCase());
+  return token && email && allowed.includes(email) ? { jwt: token, email } : null;
 }
 
-// CSRF token per form: SHA-256 of the form's scope + the visitor's own Access JWT (unknown to other sites). No extra secret.
-export async function csrf(jwt: string, scope: string): Promise<string> {
-  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`csrf|${scope}|${jwt}`));
-  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
+// CSRF token per form (src/auth.ts): SHA-256 of the form's scope + the visitor's own Access JWT. No extra secret.
+export { csrf };
 
 export const CSS = `
 *{box-sizing:border-box}

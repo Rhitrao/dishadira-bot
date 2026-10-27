@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "./env";
 import { admin } from "./admin";
 import { amma } from "./amma";
+import { consoleApp } from "./console";
 import { sendAlerts } from "./mail";
 import { applyDueOutcomes } from "./outcomes";
 import { reconcile } from "./pay/apply";
@@ -31,6 +32,7 @@ app.post("/wa/webhook", receiveWebhook);
 app.post("/pay/razorpay/webhook", (c) => razorpayWebhook(c));
 app.route("/amma", amma);
 app.route("/admin", admin);
+app.route("/app", consoleApp); // the role-based console, behind CONSOLE_V2 (a 404 while it is off)
 
 export const RECONCILE_CRON = "*/2 * * * *";
 
