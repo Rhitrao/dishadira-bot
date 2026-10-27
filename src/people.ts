@@ -16,10 +16,9 @@ import { auditStmt, languageCsrf, type ConsoleCtx, type ConsoleVars } from "./co
 import { consoleCopy } from "./console-copy";
 import { rupees, serviceName } from "./copy";
 import type { Env } from "./env";
-import { applyStatus, type Applied } from "./pay/apply";
-import { razorpay } from "./pay/razorpay";
 import { peopleCopy, type PeopleCopy } from "./people-copy";
 import { personState, quietActive, noSellActiveFor, ensureState } from "./noise";
+import { applyMoneyReceived } from "./requests";
 import { iso } from "./slots";
 import {
   appointmentRow, bookingChip, bubble, callLangText, clock, consoleFrame, dayName, emptyState, firstName, forWhomText, last4, ledger, listDetail,
@@ -654,20 +653,4 @@ async function askOwner(c: ConsoleCtx, kind: "BLOCK" | "MARK_PAID", target: stri
     auditStmt(c, `REQUEST_${kind}`, target, amountPaise ? rupees(amountPaise) : "", reason),
   ]);
   return { to: res.meta.changes ? "asked" : "already" };
-}
-
-// Money received outside Razorpay, applied as a paid link would be: the payment becomes PAID and the booking (call, session or package
-// credits) follows, with the customer's confirmation. Only for a link sent and not paid, and only if nothing else is paid for the same
-// booking, so the duplicate-payment refund (which goes to Razorpay) can never be set off by money Razorpay never had.
-// Exported so the owner's approval of a staff request (ticket 21) can run the same code.
-export async function applyMoneyReceived(env: Env, paymentId: number): Promise<Applied | "NOT_OPEN"> {
-  const pay = await env.DB.prepare(
-    `SELECT p.id, p.provider_link_id AS linkId, p.amount_paise AS amount, p.state,
-       (SELECT COUNT(*) FROM payments q WHERE q.purpose = p.purpose AND q.target_id = p.target_id AND q.state IN ${PAID_LIKE}) AS paidSiblings
-     FROM payments p WHERE p.id = ?1`,
-  )
-    .bind(paymentId)
-    .first<{ id: number; linkId: string | null; amount: number; state: string; paidSiblings: number }>();
-  if (!pay || !pay.linkId || !["PENDING", "FAILED"].includes(pay.state) || pay.paidSiblings > 0) return "NOT_OPEN";
-  return applyStatus(env, razorpay(env), { linkId: pay.linkId, status: "PAID", paidPaise: pay.amount, currency: config.currency });
 }

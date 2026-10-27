@@ -41,7 +41,7 @@ const en = {
   refundYes: (amount: string) => `Refund ${amount}`,
   blockEffect: (who: string) => `${who} gets no more replies from the bot. You can unblock them on their page.`,
   blockYes: (who: string) => `Block ${who}`,
-  markPaidEffect: (amount: string) => `This records that ${amount} was received outside Razorpay. It doesn't confirm a booking by itself.`,
+  markPaidEffect: (amount: string) => `This records that ${amount} was received outside Razorpay and confirms their booking. They get the usual confirmation on WhatsApp.`,
   markPaidYes: (amount: string) => `Record ${amount} as received`,
   kindCall: (min: number) => `${min}-minute call`,
   kindSession: "Session",
@@ -72,7 +72,8 @@ const en = {
   flashHandedBack: "Handed back to the bot.",
   flashApproved: "Approved and done.",
   flashDeclined: "Declined. Nothing was changed.",
-  flashRecorded: "Recorded as received.",
+  flashRecorded: "Recorded as received. Their booking is confirmed.",
+  flashLate: "Recorded as received, but that time was taken in the meantime, so nothing was booked. Offer them a new time from the Inbox, or refund them.",
   flashNothing: "Decided. There was nothing left to do.",
   flashAlready: "Someone already decided this. Nothing was changed.",
   flashGone: "Nothing changed: this was already done.",
@@ -95,7 +96,7 @@ const hi: TodayCopy = {
   refundYes: (amount) => `${amount} रिफ़ंड करें`,
   blockEffect: (who) => `${who} को बॉट से अब कोई जवाब नहीं मिलेगा। उनके पेज से अनब्लॉक कर सकते हैं।`,
   blockYes: (who) => `${who} को ब्लॉक करें`,
-  markPaidEffect: (amount) => `इससे दर्ज होगा कि ${amount} Razorpay के बाहर मिले। इससे अपने-आप कोई बुकिंग पक्की नहीं होती।`,
+  markPaidEffect: (amount) => `इससे दर्ज होगा कि ${amount} Razorpay के बाहर मिले, और उनकी बुकिंग पक्की हो जाएगी। उन्हें WhatsApp पर हमेशा वाली पुष्टि मिलेगी।`,
   markPaidYes: (amount) => `${amount} मिले, दर्ज करें`,
   kindCall: (min) => `${min} मिनट की कॉल`,
   kindSession: "सेशन",
@@ -124,7 +125,8 @@ const hi: TodayCopy = {
   flashHandedBack: "बॉट को वापस दे दिया।",
   flashApproved: "मंज़ूर हो गया और काम हो गया।",
   flashDeclined: "मना कर दिया। कुछ नहीं बदला।",
-  flashRecorded: "मिला हुआ दर्ज कर लिया।",
+  flashRecorded: "मिला हुआ दर्ज कर लिया। उनकी बुकिंग पक्की हो गई।",
+  flashLate: "मिला हुआ दर्ज कर लिया, पर इस बीच वह समय किसी और ने ले लिया, इसलिए कुछ बुक नहीं हुआ। इनबॉक्स से उन्हें नया समय दें, या पैसे लौटा दें।",
   flashNothing: "फ़ैसला हो गया। करने को कुछ बचा नहीं था।",
   flashAlready: "किसी ने पहले ही फ़ैसला कर दिया। कुछ नहीं बदला।",
   flashGone: "कुछ नहीं बदला: यह पहले ही हो चुका था।",
@@ -269,7 +271,7 @@ type Waiting = { convId: number; name: string | null; waId: string; since: strin
 
 const FLASH: Record<string, keyof TodayCopy> = {
   undone: "flashUndone", handback: "flashHandedBack", approved: "flashApproved", declined: "flashDeclined", recorded: "flashRecorded",
-  nothing: "flashNothing", gone: "flashGone",
+  nothing: "flashNothing", gone: "flashGone", late: "flashLate",
 };
 
 export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; status?: 200 | 403 | 409 | 503 } = {}) {
@@ -423,6 +425,8 @@ async function requestSubject(env: Env, r: RequestRow): Promise<{ name: string |
   const id = targetId(r.target);
   if (r.target.startsWith("conv:"))
     return env.DB.prepare("SELECT display_name AS name, wa_id AS waId, NULL AS paise FROM conversations WHERE id = ?1").bind(id).first();
+  if (r.target.startsWith("intro:")) // the Inbox's cash booking: a held call with no payment yet
+    return env.DB.prepare("SELECT c.display_name AS name, c.wa_id AS waId, NULL AS paise FROM intros i JOIN conversations c ON c.id = i.conversation_id WHERE i.id = ?1").bind(id).first();
   return env.DB.prepare(
     `SELECT c.display_name AS name, c.wa_id AS waId, COALESCE(p.paid_paise, p.amount_paise) AS paise FROM payments p JOIN conversations c ON c.id = CASE p.purpose
        WHEN 'INTRO' THEN (SELECT conversation_id FROM intros WHERE id = p.target_id)
@@ -615,6 +619,7 @@ today.post("/today/decide", async (c) => {
   if (result === "NOT_ALLOWED") return refused(c);
   if (result === "FAILED") return notSaved(c);
   if (result === "ALREADY") return todayPage(c, { flash: t.flashAlready, status: 409 });
-  const code = { DONE: decision === "APPROVED" ? "approved" : "declined", NOTHING: decision === "APPROVED" ? "nothing" : "declined", RECORDED: "recorded", GONE: "gone" }[result];
+  const approved = decision === "APPROVED";
+  const code = { DONE: !approved ? "declined" : r.kind === "MARK_PAID" ? "recorded" : "approved", NOTHING: approved ? "nothing" : "declined", LATE: "late", GONE: "gone" }[result];
   return back(c, code);
 });

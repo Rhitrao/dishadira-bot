@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { can, canAny, memberCsrf, sha256Hex, WORKSPACE_ID, type Member } from "./auth";
 import { bookingChoice, SERVICES, WHO } from "./booking";
+import { prices } from "./business";
 import { config } from "./config";
 import { languageCsrf, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleCopy, consoleLang } from "./console-copy";
@@ -351,7 +352,7 @@ async function bookHtml(c: ConsoleCtx, ch: Chat) {
     const payable = inWindow(ch, now) || r.cashAsk;
     parts.push(
       section(
-        ic.bookTitle(rupees(config.prices.intro)),
+        ic.bookTitle(rupees(prices().intro)),
         days.length
           ? html`<form class="pick card" method="post" action="/app/inbox/${ch.id}/book">${hidden("csrf", await token(c, m, "book", ch.id))}${hidden("n", crypto.randomUUID().slice(0, 12))}
 <fieldset><legend>${ic.serviceLabel}</legend><div class="opts">${svc}</div></fieldset><fieldset><legend>${ic.forWhomLabel}</legend><div class="opts">${who}</div></fieldset>
@@ -607,7 +608,7 @@ inbox.post("/:id{[0-9]+}/book", async (c) => {
     .run();
   const introId = intro.meta.last_row_id;
   await c.env.DB.batch([
-    askOwnerStmt(c.env, m, "MARK_PAID", `intro:${introId}`, config.prices.intro, "Paid outside Razorpay (cash or UPI), recorded from the Inbox"),
+    askOwnerStmt(c.env, m, "MARK_PAID", `intro:${introId}`, prices().intro, "Paid outside Razorpay (cash or UPI), recorded from the Inbox"),
     auditStmt(c, "INBOX_BOOK", `conv:${ch.id}`, `intro:${introId} money received, owner to approve`),
   ]);
   return answer(ic.heldCash(clock(hold.holdUntil, m.locale)));
