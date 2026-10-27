@@ -8,6 +8,7 @@ import { html, raw } from "hono/html";
 import { activeMember, canAny, csrf, memberCsrf, ROLES, seedMembers, sha256Hex, touchMember, verifiedEmail, WORKSPACE_ID, type Action, type Member, type Role } from "./auth";
 import type { Env } from "./env";
 import { iso } from "./slots";
+import { people } from "./people";
 import { team } from "./team";
 import { today } from "./today";
 import { CONSOLE_CSS, header } from "./ui";
@@ -139,7 +140,7 @@ const placeholder = (id: TabId) => async (c: ConsoleCtx) => {
 consoleApp.route("/", today); // Today (ticket 21, src/today.ts): GET /app and its POSTs under /app/today/*
 consoleApp.get("/inbox", placeholder("inbox"));
 consoleApp.get("/calendar", placeholder("calendar"));
-consoleApp.get("/people", placeholder("people"));
+consoleApp.route("/people", people); // ticket 23: the list and /app/people/<id> (src/people.ts)
 consoleApp.get("/payments", placeholder("payments"));
 consoleApp.get("/settings", placeholder("settings"));
 consoleApp.route("/settings/team", team);
