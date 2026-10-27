@@ -385,6 +385,7 @@ Spec: `docs/CONSOLE-PRD.md` (the PRD). Read it before any of these tickets; wher
 - Layout: under 900 px, a bottom tab bar (Today, Inbox, Calendar, People, More); from 900 px, a left rail and list-and-detail panes. Tabs come from the member's role.
 - Self-host Jost and Noto Sans Devanagari (woff2, OFL; add them to NOTICE) at `/app/fonts/*` with a long cache; add `font-src 'self'` to the console's CSP only.
 - `src/console-copy.ts`: the one string catalogue, English and Hindi, chosen by `members.locale`, with a language switch in the page frame.
+- Hindi ships in Phase 1 for every screen a practitioner sees (decided 27 Oct 2026).
 - Tests: every key has both languages; contrast of each token pair is at least 4.5:1 (computed in the test); the frame renders for each role with the right tabs.
 
 ### Ticket 21: Today (cap $22)
@@ -421,8 +422,8 @@ Spec: `docs/CONSOLE-PRD.md` (the PRD). Read it before any of these tickets; wher
   - Business: name, accent, default language.
   - Services and prices: a `settings` table, which the bot reads with the config values as fallback.
   - The bot switches (moved from /admin, same env-is-master rule).
-  - Daily summary recipients and the safety contact (alerts go to them).
-  - Privacy: chat retention shown, and whether staff can read chat text.
+  - Daily summary recipients and the safety contact (alerts go to them; the default safety contact is the owner).
+  - Privacy: chat retention shown, and whether staff can read chat text (on by default; safety messages are always hidden from staff).
   - System: today's health checks, moved here.
   - Audit log: filter by member and action; rows from before roles show "before roles".
 - The 9 pm summary email uses the console's words.

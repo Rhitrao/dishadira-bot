@@ -370,6 +370,7 @@ Phase 1 is the redesign itself. Phase 3 is the step from one business to a produ
 **Open questions.**
 
 - Pricing: the simulated panel pointed to about ₹499 a month for a solo practice and about ₹999 plus a per-practitioner fee for studios. That needs real interviews first.
-- Who should be the default safety contact in a new workspace: the first owner, or a person named during setup?
-- Should staff read chat text by default, or only after an owner turns it on?
+- Decided: the default safety contact in a new workspace is the first owner, changeable in Settings.
+- Decided: staff read chat text by default, so they can reply, except safety messages. An owner can turn it off in Settings.
+- Decided: the Hindi console for practitioners ships in Phase 1, because the first practitioner may prefer Hindi.
 - Two-way Google Calendar sync: Phase 2, or later?
