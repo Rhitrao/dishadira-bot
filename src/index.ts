@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "./env";
 import { admin } from "./admin";
 import { amma } from "./amma";
+import { serveFont } from "./fonts";
 import { sendAlerts } from "./mail";
 import { applyDueOutcomes } from "./outcomes";
 import { reconcile } from "./pay/apply";
@@ -25,6 +26,8 @@ app.onError((_e, c) => {
 });
 
 app.get("/health", (c) => c.json({ ok: true, version: VERSION }));
+// The console's self-hosted fonts (ticket 20); 404 unless CONSOLE_V2 is "true".
+app.get("/app/fonts/:file", serveFont);
 
 app.get("/wa/webhook", verifyWebhook);
 app.post("/wa/webhook", receiveWebhook);
