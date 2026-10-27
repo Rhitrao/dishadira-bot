@@ -6,3 +6,15 @@ Third-party code
 
 If small pieces are copied from github.com/ArnasDon/wacrm (MIT), add its copyright
 notice and licence text here.
+
+Fonts
+-----
+The console (/app) self-hosts two typefaces from fonts/, both under the SIL Open Font
+License, Version 1.1 (full text next to the files). Only the Latin (Jost) and Devanagari
+(Noto Sans Devanagari) subsets were taken, as published in the @fontsource npm packages
+v5.3.0; the font names and files are otherwise unchanged.
+
+- Jost: Copyright 2020 The Jost Project Authors (https://github.com/indestructible-type/Jost).
+  Licence: fonts/OFL-Jost.txt
+- Noto Sans Devanagari: Copyright 2022 The Noto Project Authors (https://github.com/notofonts/devanagari).
+  Licence: fonts/OFL-NotoSansDevanagari.txt

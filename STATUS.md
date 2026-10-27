@@ -41,6 +41,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [x] 14 AI assistant (behind AI_REPLIES, default off) (PR: see the branch `claude/loving-fermat-2xaan4`)
 - [x] 15–17 Console redesign (PRs #26, #27, #28, merged and deployed to test 23 Oct)
 - [ ] 18 Flow fixes from the test chat (PR: see the branch `t18-flow-fixes`)
+- [ ] 20 Design system, fonts and strings (PR https://github.com/Rhitrao/dishadira-bot/pull/31)
 - [ ] 19 Members, roles and the permission check (PR https://github.com/Rhitrao/dishadira-bot/pull/32; merges after #29, #30 and #31)
 
 ## Credits
@@ -77,6 +78,21 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
 6. [ ] Add the GitHub secret `ANTHROPIC_API_KEY` (repository Settings → Secrets and variables → Actions) and run **Actions → Assistant eval** (manual). It runs the 63 cases the assistant decides against the real model, never sends anything to WhatsApp, and writes a table plus tokens and cost per call to the job summary. Bar: 95% of labels right, every safety case right, no banned word. **The cost per reply was not measured in this session (no key here); the first run of the eval gives it.**
 7. [ ] Shadow week on the test number: read every reply. Amma reads `docs/KNOWLEDGE.md` and the Hindi messages. Only then think about live.
 
+## Session notes (Ticket 20: design system, fonts and strings)
+- What changed:
+  - `src/ui.ts`: the PRD design system. Colour tokens (light and dark, one table used by both the CSS and the contrast test), 19 px Jost body with nothing under 16 px, 26 px italic screen titles, 20 px semibold times and amounts, tabular figures, 48 px tap targets, 8 px gaps.
+  - Components: task card, appointment row (last 4 digits only), status chips (fixed word lists for bookings and payments, never a code), conversation bubble (staff get "A safety message. An owner is needed." instead of the text), confirm step (`details`, red POST button), empty state, banner, list rows, sections, screen header ("Visible to: …").
+  - `consoleFrame({ role, locale, active, title, body, business, member?, flash?, banners?, badges?, language?, query? })`: bottom tab bar under 900 px, left rail (with People search) from 900 px, and `listDetail()` for Inbox, People and Payments. Tabs by role: owner 6 (phone: 4 + More, a no-script `details` sheet with Payments and Settings), staff 4 (Today, Inbox, Calendar, People), practitioner 3 (Today, Calendar, People; no Inbox, as they don't reply to chats).
+  - `CONSOLE_CSP` = today's CSP plus `font-src 'self'`, for every /app route. `ConsoleRole` is exported from ui.ts.
+  - `src/console-copy.ts`: the one string catalogue, English and Hindi, by `members.locale` ("hi" = Hindi, anything else English).
+  - Fonts: Jost (Latin 400/500/600 and 500 italic for the titles) and Noto Sans Devanagari (Devanagari 400/500/600), OFL, from @fontsource v5.3.0, in `fonts/` with their licences; NOTICE updated. Served by the Worker at `/app/fonts/<file>` (`src/fonts.ts`) with `Cache-Control: public, max-age=31536000, immutable`, 404 unless `CONSOLE_V2` is "true". Bundled as Data modules: one `[[rules]]` block in wrangler.toml (inherited by test and live; checked with a dry run), and `vitest.config.ts` gives tests the same bytes.
+  - `/admin` keeps `page()`, `header()`, `chip()`, `mask()`, `ist()`, `ago()`, `left()` and `CONSOLE_CSS` unchanged in shape; only its colours moved to the PRD palette. `/amma` is untouched.
+- Checks: `npx tsc --noEmit` clean; vitest file by file (the full run stalls on this 2-CPU box): 765/765 passed across 20 files (25 new in test/ui.test.ts); `wrangler deploy --dry-run` at the top level and with `--env test` bundles the 7 fonts. Rendered every role at 390 px and 1366 px (light, and dark for the owner), plus Hindi and the Inbox list-and-detail: no horizontal scroll, no text under 16 px, no tap target under 48 px.
+- Open questions:
+  - A Hindi speaker should read the console strings in `src/console-copy.ts` (PRD: before Phase 2).
+  - The language switch posts to `/app/language` (fields `csrf`, `locale`, `back`); that route belongs with the /app shell (ticket 19 or 21).
+  - The Access application must cover `/app/*`, fonts included (a Cloudflare setting, by hand, ticket 25).
+- Next: merge #29 and #30, then this PR (after or alongside ticket 19), then tickets 21–24 use `consoleFrame` and the components.
 ## Session notes (Ticket 19: members, roles and the permission check)
 - What changed:
   - `migrations/0010_members.sql`: `workspaces` (workspace 1 seeded, named "My business" until Settings renames it), `members` (one role, `invited|active|removed`, `locale`, `last_seen_at`; a partial unique index allows one owner per workspace), `invites` (token hash, 7-day expiry, `used_at`), `requests` (ask owner), `practitioner_id` on `slots`, `intros`, `sessions`, and `workspace_id`, `member_id`, `reason` on `audit_log`. Only adds; nothing to undo.

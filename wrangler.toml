@@ -2,6 +2,12 @@ name = "dishadira-bot"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
+# The console's self-hosted fonts (src/fonts.ts) are bundled as bytes. Inherited by the test and live environments.
+[[rules]]
+type = "Data"
+globs = ["**/*.woff2"]
+fallthrough = true
+
 # Placeholder id: the real D1 database is created by Rohit, not in a coding session.
 [[d1_databases]]
 binding = "DB"
