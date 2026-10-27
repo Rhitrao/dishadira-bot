@@ -144,6 +144,7 @@ export type Copy = {
   btnPerson: string; // max 20 chars
   changeLanguageRow: string; // max 24 chars (a list row)
   handoffAck: string;
+  humanWaitAck: string; // once per handoff: the first message typed while a person from the team has the chat
   askPrompt: string;
   ack: string;
   bookSoon: string;
@@ -211,6 +212,7 @@ export type Copy = {
   reprompt: (hint: string) => string;
   hintDays: string;
   repromptHelp: string;
+  repromptQuestion: string; // above the open step when the assistant could not answer a typed question
   alreadyBookedStart: (day: string, time: string) => string;
   btnKeep: string; // max 20 chars
   helpListBody: string;
@@ -318,6 +320,7 @@ const en: Copy = {
   changeLanguageRow: "Change language",
   rowMyBookings: "My bookings",
   handoffAck: "Thank you. A person from our team will reply here, usually within 24 hours.",
+  humanWaitAck: "Got it. This is with our team, and they'll reply here.",
   askPrompt: "Please type your question below.",
   ack: "Thanks, a person will reply within 24 hours.",
   bookSoon: "Booking opens soon.",
@@ -395,6 +398,7 @@ const en: Copy = {
   reprompt: (hint) => `${hint ? `${hint} ` : ""}Please choose from the options below.`,
   hintDays: hintDaysText("en"),
   repromptHelp: "If you would rather talk to a person from our team, tap below.",
+  repromptQuestion: "Thanks for asking. Shantha Rao can explain this on your call. When you're ready, choose an option below.",
   alreadyBookedStart: (day, time) => `You already have a call on ${day} at ${time}. Shantha Rao will call you then.`,
   btnKeep: "Keep it",
   helpListBody: "How can we help?",
@@ -409,8 +413,8 @@ const en: Copy = {
   },
   faqAnswers: {
     what_is_this:
-      `Disha Dira offers ${serviceName("PROTECTION", "en").toLowerCase()} and ${serviceName("HEALING", "en").toLowerCase()} sessions with Shantha Rao. ` +
-      "You can first book a short call to speak with her.",
+      "Disha Dira offers no-touch pranic healing by phone with Shantha Rao, a certified Pranic Healer trained in the MCKS system. " +
+      `The first step is a ${config.slots.callMinutes}-minute call with her for ${intro}.`,
     how_it_works:
       `1. Pick a call time. 2. Pay ${intro}. ` +
       `3. Shantha Rao calls you for ${config.slots.callMinutes} minutes. ` +
@@ -482,6 +486,7 @@ const hi: Copy = {
   changeLanguageRow: "भाषा बदलें",
   rowMyBookings: "मेरी बुकिंग",
   handoffAck: "धन्यवाद। हमारी टीम का कोई व्यक्ति आमतौर पर 24 घंटे के अंदर यहीं जवाब देगा।",
+  humanWaitAck: "ठीक है। आपका मैसेज हमारी टीम तक पहुँच गया है, वे यहीं जवाब देंगे।",
   askPrompt: "कृपया अपना सवाल नीचे लिखें।",
   ack: "धन्यवाद। हमारी टीम का कोई व्यक्ति 24 घंटे के अंदर यहीं जवाब देगा।",
   bookSoon: "बुकिंग जल्द शुरू होगी।",
@@ -559,6 +564,7 @@ const hi: Copy = {
   reprompt: (hint) => `${hint ? `${hint} ` : ""}कृपया नीचे दिए विकल्पों में से चुनें।`,
   hintDays: hintDaysText("hi"),
   repromptHelp: "अगर आप हमारी टीम के किसी व्यक्ति से बात करना चाहें, तो नीचे टैप करें।",
+  repromptQuestion: "पूछने के लिए धन्यवाद। शांता राव जी कॉल पर इसे समझा सकती हैं। जब आप तैयार हों, नीचे दिए विकल्पों में से चुनें।",
   alreadyBookedStart: (day, time) => `आपकी कॉल पहले से ${day} को ${time} बजे बुक है। शांता राव जी उसी समय कॉल करेंगी।`,
   btnKeep: "ठीक है",
   helpListBody: "हम कैसे मदद कर सकते हैं?",
@@ -573,8 +579,8 @@ const hi: Copy = {
   },
   faqAnswers: {
     what_is_this:
-      `दिशा दिरा में शांता राव जी के साथ ${serviceName("HEALING", "hi")} और ${serviceName("PROTECTION", "hi")} सेशन होते हैं। ` +
-      "शुरुआत में आप उनसे बात करने के लिए एक छोटी कॉल बुक कर सकते हैं।",
+      "दिशा दिरा में शांता राव जी, जो MCKS पद्धति में प्रशिक्षित सर्टिफ़ाइड प्राणिक हीलर हैं, फ़ोन पर बिना छुए प्राणिक हीलिंग करती हैं। " +
+      `पहला कदम उनके साथ ${config.slots.callMinutes} मिनट की ${intro} की कॉल है।`,
     how_it_works:
       `1. कॉल का समय चुनें। 2. ${intro} का भुगतान करें। 3. शांता राव जी आपको ${config.slots.callMinutes} मिनट के लिए कॉल करेंगी। ` +
       "4. अगर आप दोनों को ठीक लगे, तो आप पूरा सेशन या पैकेज बुक कर सकते हैं।",

@@ -4,7 +4,7 @@ import app from "../src/index";
 import { config } from "../src/config";
 import { allCopy } from "../src/copy";
 import { isMenuWord, plainWord } from "../src/whatsapp";
-import { generateSlots, holdSlot, spreadTimes, type Slot } from "../src/slots";
+import { generateSlots, holdSlot, nextWorkingDays, spreadTimes, type Slot } from "../src/slots";
 import { applySql, migrations, newDb } from "./db";
 import { FakeRazorpay, paidEvent, rzpEnv, rzpHeaders } from "./razorpay";
 
@@ -151,8 +151,8 @@ describe("the whole booking, in both languages, within WhatsApp's limits", () =>
       expect(buttonTitles(last())).toEqual(["English", "हिंदी"]);
       expect(last().interactive.body.text).toBe(c.chooseLanguage);
       await tapRow(from, "faq_timings");
-      expect(sent().at(-2).text.body).toBe(c.faqAnswers.timings);
-      expect(buttonIds(last())).toEqual(["menu_book", "menu_pack", "menu_how"]); // the menu again
+      expect(last().interactive.body.text).toBe(c.faqAnswers.timings); // ticket 18: the answer and the menu buttons in one message
+      expect(buttonIds(last())).toEqual(["menu_book", "menu_pack", "menu_how"]);
 
       await tapButton(from, "menu_book");
       expect(last().interactive.body.text).toBe(c.ageCheck);
@@ -275,15 +275,18 @@ describe("the time list: the spread rule, sections and full days", () => {
     const fill = async (ymd: string) => {
       for (const s of slotsOf(ymd)) await db.prepare("INSERT INTO slots (kind,start_utc,end_utc,owner_id,state) VALUES ('CALL',?1,?2,?3,'BOOKED')").bind(s.startUtc, s.endUtc, other).run();
     };
-    await fill("2026-10-06"); // Tuesday is full
+    await fill("2026-10-06"); // Tuesday is full: the next working day with free times takes its place (ticket 18)
     await tapButton(from, "more_HEALING_SELF");
-    expect(buttonTitles(last())).toEqual(["Mon, 5 Oct", "Wed, 7 Oct"]);
+    expect(buttonTitles(last())).toEqual(["Mon, 5 Oct", "Wed, 7 Oct", "Thu, 8 Oct"]);
     // Tuesday's button is still in the chat: the day is full, so it says so and shows the days again.
     await tapButton(from, "day_HEALING_SELF_2026-10-06");
     expect(sent().at(-2).text.body).toBe(allCopy.en.slotTaken);
-    expect(buttonTitles(last())).toEqual(["Mon, 5 Oct", "Wed, 7 Oct"]);
+    expect(buttonTitles(last())).toEqual(["Mon, 5 Oct", "Wed, 7 Oct", "Thu, 8 Oct"]);
     await fill("2026-10-05");
     await fill("2026-10-07");
+    await tapButton(from, "more_HEALING_SELF");
+    expect(buttonTitles(last())).toEqual(["Thu, 8 Oct", "Fri, 9 Oct", "Mon, 12 Oct"]);
+    for (const ymd of nextWorkingDays(Date.now(), config.booking.lookaheadDays)) if (!["2026-10-05", "2026-10-06", "2026-10-07"].includes(ymd)) await fill(ymd);
     await tapButton(from, "more_HEALING_SELF");
     expect(last().text.body).toBe(allCopy.en.noSlots);
     expect(await count("SELECT COUNT(*) AS n FROM slots WHERE owner_id IN (SELECT id FROM conversations WHERE wa_id = '" + from + "')")).toBe(0);
@@ -562,10 +565,11 @@ describe("talk to a person, and HUMAN mode", () => {
     await typed(from, "when will someone reply?");
     await media(from, "image");
     await media(from, "audio");
-    expect(sent()).toHaveLength(0);
+    expect(sent()).toHaveLength(1); // ticket 18: one short acknowledgement for this handoff, nothing more
+    expect(last().text.body).toBe(allCopy.en.humanWaitAck);
     await typed(from, "hi");
     await typed(from, "menu");
-    expect(sent()).toHaveLength(2); // the menu, twice
+    expect(sent()).toHaveLength(3); // the menu, twice
     expect(last().interactive.body.text).toBe(allCopy.en.menuBody);
     expect(await count("SELECT COUNT(*) AS n FROM attention")).toBe(1); // just the HUMAN_REQUEST
     expect(await count("SELECT COUNT(*) AS n FROM messages WHERE direction = 'IN' AND body LIKE 'when will%'")).toBe(1); // stored, for the reply box
@@ -579,7 +583,7 @@ describe("talk to a person, and HUMAN mode", () => {
     await tapButton(from, "menu_how");
     expect(last().interactive.type).toBe("list");
     await tapRow(from, "faq_price");
-    expect(sent().at(-2).text.body).toBe(allCopy.hi.faqAnswers.price);
+    expect(last().interactive.body.text).toBe(allCopy.hi.faqAnswers.price);
     await tapRow(from, "menu_lang");
     expect(buttonTitles(last())).toEqual(["English", "हिंदी"]);
     await tapButton(from, "lang_en");
@@ -758,7 +762,7 @@ describe("the session picker uses the same day and time steps", () => {
   it("no free session day: the no-times message and an item for Rohit", async () => {
     const { from, sid } = await offered("en");
     const other = (await db.prepare("INSERT INTO conversations (wa_id) VALUES (?1)").bind(newPhone()).run()).meta.last_row_id;
-    for (const ymd of ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"]) {
+    for (const ymd of nextWorkingDays(Date.now(), config.booking.lookaheadDays)) {
       for (const s of generateSlots(ymd, "SESSION")) await db.prepare("INSERT INTO slots (kind,start_utc,end_utc,owner_id,state) VALUES ('SESSION',?1,?2,?3,'BOOKED')").bind(s.startUtc, s.endUtc, other).run();
     }
     await tapButton(from, `sess_offer_${sid}`);

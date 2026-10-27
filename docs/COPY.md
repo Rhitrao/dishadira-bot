@@ -22,6 +22,7 @@ What a customer sees first. The greeting is one message in both languages, follo
 | Menu button 3 (max 20 letters) | Help | मदद |
 | "Talk to a person" (a row in the Help list; also a button in the fallback menu and while nothing may be sold) (max 20 letters) | Talk to a person | किसी से बात करें |
 | After "Talk to a person" | Thank you. A person from our team will reply here, usually within 24 hours. | धन्यवाद। हमारी टीम का कोई व्यक्ति आमतौर पर 24 घंटे के अंदर यहीं जवाब देगा। |
+| The first message typed while a person from the team has the chat (once per handoff) | Got it. This is with our team, and they'll reply here. | ठीक है। आपका मैसेज हमारी टीम तक पहुँच गया है, वे यहीं जवाब देंगे। |
 | Shown instead of booking while booking is closed | Booking opens soon. | बुकिंग जल्द शुरू होगी। |
 | An old "Ask a question" button still in an older chat | Please type your question below. | कृपया अपना सवाल नीचे लिखें। |
 | After a typed message the bot cannot answer yet (also a question in the very first message, after the language tap) | Thanks, a person will reply within 24 hours. | धन्यवाद। हमारी टीम का कोई व्यक्ति 24 घंटे के अंदर यहीं जवाब देगा। |
@@ -39,7 +40,7 @@ The list behind "Help": the six answers, then My bookings, Talk to a person and 
 | Row: My bookings (max 24 letters) | My bookings | मेरी बुकिंग |
 | Row: Change language (max 24 letters) | Change language | भाषा बदलें |
 | Topic title "what_is_this" (max 24 letters) | What is this? | यह क्या है? |
-| Answer "what_is_this" | Disha Dira offers energy cleansing and healing sessions with Shantha Rao. You can first book a short call to speak with her. | दिशा दिरा में शांता राव जी के साथ हीलिंग और एनर्जी क्लींजिंग सेशन होते हैं। शुरुआत में आप उनसे बात करने के लिए एक छोटी कॉल बुक कर सकते हैं। |
+| Answer "what_is_this" | Disha Dira offers no-touch pranic healing by phone with Shantha Rao, a certified Pranic Healer trained in the MCKS system. The first step is a 15-minute call with her for ₹99. | दिशा दिरा में शांता राव जी, जो MCKS पद्धति में प्रशिक्षित सर्टिफ़ाइड प्राणिक हीलर हैं, फ़ोन पर बिना छुए प्राणिक हीलिंग करती हैं। पहला कदम उनके साथ 15 मिनट की ₹99 की कॉल है। |
 | Topic title "how_it_works" (max 24 letters) | How it works | यह कैसे होता है |
 | Answer "how_it_works" | 1. Pick a call time. 2. Pay ₹99. 3. Shantha Rao calls you for 15 minutes. 4. If you both agree, you can book a full session or a package. | 1. कॉल का समय चुनें। 2. ₹99 का भुगतान करें। 3. शांता राव जी आपको 15 मिनट के लिए कॉल करेंगी। 4. अगर आप दोनों को ठीक लगे, तो आप पूरा सेशन या पैकेज बुक कर सकते हैं। |
 | Topic title "price" (max 24 letters) | Price | फ़ीस |
@@ -181,6 +182,7 @@ Sent by code, never by the AI. The crisis and emergency messages go to everyone,
 | Re-prompt: added above the step when someone types instead of tapping ({hint} is the next row, or nothing) | {hint} Please choose from the options below. | {hint} कृपया नीचे दिए विकल्पों में से चुनें। |
 | Hint on the day and time steps (from config.hours) | Calls and sessions are Monday to Friday, 2 pm to 7 pm (India time). | कॉल और सेशन सोमवार से शुक्रवार, दोपहर 2 से शाम 7 बजे तक (भारतीय समय) होते हैं। |
 | From the third re-prompt in a row: a second message with the Talk to a person button | If you would rather talk to a person from our team, tap below. | अगर आप हमारी टीम के किसी व्यक्ति से बात करना चाहें, तो नीचे टैप करें। |
+| Above the step again, when the assistant could not answer a question typed in the middle of a booking | Thanks for asking. Shantha Rao can explain this on your call. When you're ready, choose an option below. | पूछने के लिए धन्यवाद। शांता राव जी कॉल पर इसे समझा सकती हैं। जब आप तैयार हों, नीचे दिए विकल्पों में से चुनें। |
 | Book tapped by someone who already has a call (with the buttons below) | You already have a call on {day} at {time}. Shantha Rao will call you then. | आपकी कॉल पहले से {day} को {time} बजे बुक है। शांता राव जी उसी समय कॉल करेंगी। |
 | Button under it (max 20 letters); the other button is Talk to a person | Keep it | ठीक है |
 

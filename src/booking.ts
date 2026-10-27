@@ -24,12 +24,14 @@ export type Conv = { id: number; wa_id: string; display_name: string | null; loc
 export const loadConv = (db: D1Database, id: number) =>
   db.prepare("SELECT id, wa_id, display_name, locale, age_ok_at FROM conversations WHERE id = ?1").bind(id).first<Conv>();
 
-// Free slots a customer could hold right now, per IST day, for the first `window` working days.
+// Free slots a customer could hold right now, per IST day: the first `window` working days that still have a free time.
+// A full day (or today, late in the evening) is skipped and the next working day is looked at instead, up to config.booking.lookaheadDays.
 async function freeByDay(db: D1Database, kind: SlotKind, window: number, nowMs: number): Promise<Map<string, Slot[]>> {
   const out = new Map<string, Slot[]>();
-  for (const ymd of nextWorkingDays(nowMs, window)) {
+  for (const ymd of nextWorkingDays(nowMs, config.booking.lookaheadDays)) {
+    if (out.size >= window) break;
     const free = await availableSlots(db, kind, ymd, nowMs + config.booking.leadMinutes * 60_000, nowMs);
-    if (free.length) out.set(ymd, free); // a full day is skipped
+    if (free.length) out.set(ymd, free);
   }
   return out;
 }
@@ -199,6 +201,18 @@ async function upcomingCall(db: D1Database, convId: number): Promise<string | nu
   return row?.startUtc ?? null;
 }
 
+// The start of a ₹99 call this person is holding right now (HELD, hold not expired), or null.
+async function liveHeldCall(db: D1Database, convId: number): Promise<string | null> {
+  const row = await db
+    .prepare(
+      `SELECT s.start_utc AS startUtc FROM intros i JOIN slots s ON s.id = i.slot_id
+       WHERE i.conversation_id = ?1 AND i.state = 'HELD' AND s.hold_until > ?2 LIMIT 1`,
+    )
+    .bind(convId, nowIso())
+    .first<{ startUtc: string }>();
+  return row?.startUtc ?? null;
+}
+
 // The times of one day; if the day filled up meanwhile, say so and show the days again.
 async function showTimes(env: Env, conv: Conv, service: string, forWhom: ForWhom, ymd: string, msgId: string): Promise<void> {
   const ok = await sendTimes(env, conv, "CALL", ymd, (u) => `time_${service}_${forWhom}_${u}`, `more_${service}_${forWhom}`, msgId);
@@ -225,16 +239,12 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
     return;
   }
 
-  // 1b. One open intro per person: PAID (call not done yet) or HELD with a live hold.
-  const open = await db
-    .prepare(
-      `SELECT s.start_utc AS startUtc FROM intros i JOIN slots s ON s.id = i.slot_id
-       WHERE i.conversation_id = ?1 AND (i.state = 'PAID' OR (i.state = 'HELD' AND s.hold_until > ?2)) LIMIT 1`,
-    )
-    .bind(conv.id, nowIso())
-    .first<{ startUtc: string }>();
+  // 1b. One open intro per person: a paid call that has not ended yet (the same rule as the check at the Book tap and My bookings),
+  // or a HELD one with a live hold. A past call that is still waiting for an outcome tap does not block: it is the practitioner's
+  // AMMA_NO_TAP item (src/watch.ts), not the customer's problem.
+  const open = (await upcomingCall(db, conv.id)) ?? (await liveHeldCall(db, conv.id));
   if (open) {
-    const p = formatIstLang(open.startUtc, lang);
+    const p = formatIstLang(open, lang);
     await send({ type: "text", text: cp.callAlreadyBooked(p.day, p.time) }, "booked");
     return;
   }

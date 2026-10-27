@@ -649,6 +649,7 @@ Plain everyday words. English words people use anyway (booking, call, session, p
 | btnSeeTimes | See call times | कॉल का समय देखें |
 | changeLanguageRow | Change language | भाषा बदलें |
 | handoffAck | Thank you. A person from our team will reply here, usually within 24 hours. | धन्यवाद। हमारी टीम का कोई व्यक्ति आमतौर पर 24 घंटे के अंदर यहीं जवाब देगा। |
+| humanWaitAck | Got it. This is with our team, and they'll reply here. | ठीक है। आपका मैसेज हमारी टीम तक पहुँच गया है, वे यहीं जवाब देंगे। |
 | ageCheck | Are you 18 or older? | क्या आपकी उम्र 18 साल या उससे ज़्यादा है? |
 | btnYes / btnNo | Yes / No | हाँ / नहीं |
 | ageNo | Please ask a parent or guardian to message us. They can book the call for you. | कृपया अपने माता-पिता या अभिभावक से हमें मैसेज करने को कहें। वे आपके लिए कॉल बुक कर सकते हैं। |
@@ -728,13 +729,14 @@ Plain everyday words. English words people use anyway (booking, call, session, p
 | alreadyBookedStart(day, time) | You already have a call on {day} at {time}. Shantha Rao will call you then. | आपकी कॉल पहले से {day} को {time} बजे बुक है। शांता राव जी उसी समय कॉल करेंगी। |
 | btnKeep | Keep it | ठीक है |
 | reprompt(hint) | {hint} Please choose from the options below. | {hint} कृपया नीचे दिए विकल्पों में से चुनें। |
+| repromptQuestion | Thanks for asking. Shantha Rao can explain this on your call. When you're ready, choose an option below. | पूछने के लिए धन्यवाद। शांता राव जी कॉल पर इसे समझा सकती हैं। जब आप तैयार हों, नीचे दिए विकल्पों में से चुनें। |
 | hintDays | Calls and sessions are Monday to Friday, 2 pm to 7 pm (India time). | कॉल और सेशन सोमवार से शुक्रवार, दोपहर 2 से शाम 7 बजे तक (भारतीय समय) होते हैं। |
 
 ### FAQ answers in Hindi (English stays as in `copy.ts`)
 
 | FAQ | Hindi |
 |---|---|
-| what_is_this | दिशा दिरा में शांता राव जी के साथ हीलिंग और एनर्जी क्लींजिंग सेशन होते हैं। शुरुआत में आप उनसे बात करने के लिए एक छोटी कॉल बुक कर सकते हैं। |
+| what_is_this | दिशा दिरा में शांता राव जी, जो MCKS पद्धति में प्रशिक्षित सर्टिफ़ाइड प्राणिक हीलर हैं, फ़ोन पर बिना छुए प्राणिक हीलिंग करती हैं। पहला कदम उनके साथ 15 मिनट की ₹99 की कॉल है। |
 | how_it_works | 1. कॉल का समय चुनें। 2. ₹99 का भुगतान करें। 3. शांता राव जी आपको 15 मिनट के लिए कॉल करेंगी। 4. अगर आप दोनों को ठीक लगे, तो आप पूरा सेशन बुक कर सकते हैं। |
 | price | पहली कॉल ₹99 की है। एक सेशन ₹799 का है। 10 सेशन ₹5,000 में (₹500 प्रति सेशन) और 20 सेशन ₹9,000 में (₹450 प्रति सेशन)। पैकेज की कोई समय-सीमा नहीं है। |
 | timings | कॉल सोमवार से शुक्रवार, दोपहर 2 बजे से शाम 7 बजे तक (भारतीय समय) होती हैं। |
@@ -772,7 +774,7 @@ Every reply should leave the person **one step closer** to the right booking, or
 | 3. Has a concern | They describe stress, a relationship, a loss, a worry | To feel heard, in one line | "Shantha Rao can listen on a ₹99 call" (`show_booking`), except for illness, grief or supernatural worries (`ask_more`) |
 | 4. Hesitating | Price, trust, family, doctor, "let me think" | Their doubt answered calmly (§14) | One low-pressure line, or none |
 | 5. Ready | "How do I book", "can she call me", "book karna hai" | No friction | One line + the button (`show_booking`) |
-| 6. In the booking flow | `open_step` in the trusted facts | A one-line answer, so they can carry on | Always `none` while a step is open: code shows the step again. This beats every other rule about `next`. |
+| 6. In the booking flow | `open_step` in the trusted facts | A short answer that ends by pointing to the step, never with a question | Always `none` while a step is open: code shows the step again. This beats every other rule about `next`. |
 | 7. Paying | The facts show a held time or a pending payment | Reassurance or a fix | `none`; payment trouble → `handoff` |
 | 8. Booked | The facts show an upcoming call or session | Help to prepare, the booked time, no selling | `none` |
 | 9. After the ₹99 call | The facts show a past ₹99 call | If Shantha Rao suggested sessions, where to book them | `show_menu` (Sessions & packages). Never pick a size |
@@ -800,7 +802,7 @@ Each line: what happens → what you do (label, `next`).
 - **"Hello? Anyone there?" after a gap:** "Yes, we're here. How can we help?" (`ask_more`, no strike)
 
 **Interruptions and detours**
-- **A question while a booking step is open** (`open_step` set): answer in one line, with no button and no nudge. Code shows the step again. (`none`)
+- **A question while a booking step is open** (`open_step` set): answer in one or two short sentences, with no button and no nudge, and end with a short pointer to the step ("When you're ready, choose below."), never with a question ("Would you like to know how a session works?"): the step's own buttons sit right under your reply, and a question pulls the other way. Code shows the step again. (`none`)
 - **Changes their mind mid-flow** ("actually, for my mother", "I want a session instead"): say it's fine and where to go: "No problem. Tap *Book ₹99 call* again and choose Family member", or "Sessions & packages" for a session. If a time is already held, it's released after 20 minutes. (`none` while `open_step` is set; otherwise `show_menu` or `show_booking`)
 - **Wants to go back** ("wrong day", "change the time" before paying): "No problem. The time you picked is held for 20 minutes and then released, so you can book again after that. If you'd like help sooner, type *Talk to a person*." (`ask_more`)
 - **Changes topic suddenly:** follow them. Answer the new question. Don't drag them back to the old one.
