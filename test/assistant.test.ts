@@ -516,7 +516,7 @@ describe("handoff fixes (docs/AGENT.md section 3.2 step 6)", () => {
     await w.tap(from, "menu_person");
     w.fetchMock.mockClear();
     await w.typed(from, "my back hurts, will this help?");
-    await w.typed(from, "hello?");
+    await w.typed(from, "anyone there");
     expect(w.sent().map((m) => m.text?.body)).toEqual([en.humanWaitAck]);
     // The team finishes; the chat is back with the bot; a new request later is a new handoff.
     await w.db.prepare("UPDATE conversations SET mode = 'BOT', human_since = NULL WHERE wa_id = ?1").bind(from).run();
