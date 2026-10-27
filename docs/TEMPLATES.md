@@ -125,6 +125,18 @@ Your session is booked for {{1}} at {{2}} (India time). Shantha Rao will call yo
 | {{2}} | Time of the session (India time) | 2:00 pm |
 | {{3}} | Sessions left in the package | 9 |
 
+## 8. follow_up
+
+Sent from the console's Inbox by a team member when a customer handed to the team has not written for 24 hours, so a normal reply can no longer go (ticket 22). No variables, no buttons. **Not in the CONTRACT's template list yet:** submit it only after Rohit has said yes (STATUS.md, "Blocked").
+
+**Body**
+
+```
+We're following up on your message to our team. Please reply here when it suits you, and we'll carry on from there.
+```
+
+No variables, so no sample values.
+
 ---
 
 ## Hindi versions
@@ -186,3 +198,11 @@ One Quick reply button, text `सेशन बुक करें`. Sample: {{1}
 ```
 
 Samples: {{1}} बुध, 7 अक्टूबर · {{2}} दोपहर 2:00 · {{3}} 9
+
+### 8. follow_up_hi
+
+```
+हमारी टीम को भेजे आपके संदेश के बारे में हम फिर से संपर्क कर रहे हैं। जब सुविधा हो, यहीं जवाब दें, हम वहीं से बात आगे बढ़ाएँगे।
+```
+
+No variables.

@@ -119,6 +119,11 @@ export const config = {
     mailEveryHours: 6, // Rohit is emailed about a person's request for a human at most this often
     autoReturnHours: 24, // a HUMAN chat goes back to the bot this long after the handoff if Rohit has not replied from /admin
   },
+  // The console's Inbox (src/inbox.ts, ticket 22).
+  inbox: {
+    claimMinutes: 30, // "Assign to me" lapses this long after the claim, or after the same member's last reply
+    mailAfterWorkingMinutes: 120, // a handed-over chat with no team reply for this many minutes inside config.hours: one email to the team
+  },
   // Noise: strikes, quiet periods, blocks (docs/AGENT.md section 4).
   noise: {
     strikesToQuiet: 3,
@@ -184,6 +189,8 @@ export const config = {
     payment_update: { approved: false, language: "en", hi: { name: "payment_update_hi", approved: false, language: "hi" } },
     package_confirmed: { approved: false, language: "en", hi: { name: "package_confirmed_hi", approved: false, language: "hi" } },
     session_booked: { approved: false, language: "en", hi: { name: "session_booked_hi", approved: false, language: "hi" } },
+    // The Inbox's follow-up once the 24-hour window has closed (ticket 22; not yet in the CONTRACT's template list, see STATUS "Blocked").
+    follow_up: { approved: false, language: "en", hi: { name: "follow_up_hi", approved: false, language: "hi" } },
   },
   languages: ["en", "hi"],
   faqIds: ["what_is_this", "how_it_works", "price", "timings", "refund", "privacy"],

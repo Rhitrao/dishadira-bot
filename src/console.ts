@@ -8,6 +8,7 @@ import { html, raw } from "hono/html";
 import { activeMember, canAny, csrf, memberCsrf, ROLES, seedMembers, sha256Hex, touchMember, verifiedEmail, WORKSPACE_ID, type Action, type Member, type Role } from "./auth";
 import type { Env } from "./env";
 import { iso } from "./slots";
+import { inbox } from "./inbox";
 import { people } from "./people";
 import { team } from "./team";
 import { today } from "./today";
@@ -138,7 +139,7 @@ const placeholder = (id: TabId) => async (c: ConsoleCtx) => {
   return c.html(frame({ title: S.tabs[id], member: m, tab: id, flash, body: html`${header(S.tabs[id], S.questions[id])}<p class="small muted">${visibleTo(tab.action)}</p>${extra}` }));
 };
 consoleApp.route("/", today); // Today (ticket 21, src/today.ts): GET /app and its POSTs under /app/today/*
-consoleApp.get("/inbox", placeholder("inbox"));
+consoleApp.route("/inbox", inbox); // ticket 22: src/inbox.ts
 consoleApp.get("/calendar", placeholder("calendar"));
 consoleApp.route("/people", people); // ticket 23: the list and /app/people/<id> (src/people.ts)
 consoleApp.get("/payments", placeholder("payments"));
