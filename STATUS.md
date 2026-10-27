@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-27 (Ticket 19: members, roles and the permission check)
+Updated: 2026-10-27 (Ticket 25: switch over)
 
 ## Payment provider
 Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
@@ -47,6 +47,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 23 People and the person page (PR https://github.com/Rhitrao/dishadira-bot/pull/34)
 - [ ] 22 Inbox (PR https://github.com/Rhitrao/dishadira-bot/pull/35)
 - [ ] 24 Payments, Settings and the audit log (PR https://github.com/Rhitrao/dishadira-bot/pull/36; no migration)
+- [ ] 25 Switch over (PR: see the branch `t25-switch-over`; CONSOLE_V2 "true" on test only)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
@@ -89,6 +90,26 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
 5. [ ] From your own phone: choose a language, then type a question ("what is pranic healing?"). You get one message back. Try the cases in `test/agent-evals/cases.json`: a worry about stress, a refund, "Saturday please" at the day buttons, a rude message, "I feel hopeless". The 9pm digest has an "Assistant" section (answers written, replies replaced by the output check, calls that failed).
 6. [ ] Add the GitHub secret `ANTHROPIC_API_KEY` (repository Settings → Secrets and variables → Actions) and run **Actions → Assistant eval** (manual). It runs the 63 cases the assistant decides against the real model, never sends anything to WhatsApp, and writes a table plus tokens and cost per call to the job summary. Bar: 95% of labels right, every safety case right, no banned word. **The cost per reply was not measured in this session (no key here); the first run of the eval gives it.**
 7. [ ] Shadow week on the test number: read every reply. Amma reads `docs/KNOWLEDGE.md` and the Hindi messages. Only then think about live.
+
+## Switch on the new console (Ticket 25)
+Steps 3–6 are **by hand**: Claude never changes Cloudflare settings or deploys. With `CONSOLE_V2` "true", /admin and /amma send you to /app; setting it back to "false" (a PR and a deploy) brings the old pages back unchanged.
+1. [ ] Merge the Ticket 25 PR (after Tickets 19–24).
+2. [ ] Run **Actions → Deploy → test**. The test bot now has `CONSOLE_V2 = "true"`; live stays "false".
+3. [ ] *By hand:* Cloudflare Zero Trust → Access → Applications → the **bot-test** application: make sure its path covers `/app/*` (the fonts at `/app/fonts/*` included) as well as /admin and /amma. While testing, keep the policy to the two existing emails.
+4. [ ] *By hand:* open `bot-test.disha-dira.com/app` and check Today, Inbox, People, Payments, Settings and the Team page (Settings → Team). Open an old /admin and /amma bookmark: each should land on its /app page.
+5. [ ] *By hand:* only after inviting the real team members from the Team page, change the bot-test policy to allow **any verified email**. Membership in the console is still the gate: someone signed in but not invited sees "No access".
+6. [ ] *By hand, later:* live. A PR sets `CONSOLE_V2 = "true"` under `[env.live.vars]` (the release test must be changed in the same PR, on your word), then steps 2–5 for the live application and `bot.disha-dira.com`.
+
+## Session notes (Ticket 25: switch over)
+- New `src/switchover.ts` (one mapping, one link helper, one middleware), registered in `src/index.ts` before /admin and /amma.
+- CONSOLE_V2 on: old GETs redirect (302): /admin and /amma (and /amma/confirm, and any unknown old path) → /app; /admin/people → /app/people, keeping `q` and mapping `f` (human → waiting, blocked, all; crisis/quiet/paid have no match and are dropped); /admin/conv/<id> → /app/people/<id>; /admin/payments → /app/payments; /admin/pack-refund/<package> → the buyer's /app/people/<id>. Old `?m=` codes are dropped. Old POSTs return 410 with a "The console has moved" page (English and Hindi; the Hindi line needs a Hindi speaker's read) and a link, and change nothing. The redirect runs before the old sign-in check; /app checks the member itself.
+- CONSOLE_V2 off: the old pages, their sign-in and their POSTs are unchanged (tested).
+- Email links (`consoleLink`): crisis → /app/people/<id>; "asked for a person" → /app/inbox/<id>; daily summary follow-ups → /app/people/<id>; health alerts → /app/payments (an outcome that didn't apply → /app), and each `payment:<id>` line now carries a link (/app/payments/<id>, or /admin/payments when off). Off, they are the old pages; the health alert's "Open /admin" is now a full link with PUBLIC_URL.
+- wrangler.toml: `CONSOLE_V2 = "true"` under `[env.test.vars]` only; the release test still requires "false" at the top level and in live, and now also that exactly three sections set it.
+- The old pages are not removed (a later release). src/today.ts, inbox.ts, people.ts, payments.ts, settings.ts, team.ts, requests.ts, ai.ts and docs/KNOWLEDGE.md untouched.
+- Checks: `npx tsc --noEmit` clean; every test file run one at a time (counts in the PR).
+- Open: the heartbeat alert has no link (it says to check the cron triggers); /app Today has the "bot not run for 15 minutes" banner instead of /admin's on-open check.
+- Next: merge after 19–24, then the checklist above.
 
 ## Session notes (Ticket 21: Today)
 - What changed:
