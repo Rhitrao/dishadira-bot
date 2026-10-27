@@ -56,6 +56,7 @@ outcomes: intro id, value, tapped_at, undo_until, applied_at. Effects run only a
 attention: kind, target, created_at, resolved_at. Feeds Rohit's queue and the 9pm digest.
 Console v4 (ticket 19, docs/CONSOLE-PRD.md): workspaces, members (one role each: OWNER | PRACTITIONER | STAFF, exactly one owner),
   invites (one-time, 7 days, token hash only), requests (ask owner); practitioner_id on slots, intros, sessions; audit_log member_id.
+  Inbox (ticket 22): conversations.claimed_by / claimed_at ("Assign to me", lapses after 30 min) and inbox_mail_at (one 2-hour email per handoff).
   Settings (ticket 24): the owner's prices (price.*_paise; config is the default and the fallback), email recipients (mail.*),
   privacy.staff_read_chat and business.* live in the settings table; a payment is checked against the price when its link was made.
 

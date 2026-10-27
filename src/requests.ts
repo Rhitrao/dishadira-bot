@@ -1,0 +1,125 @@
+// "Ask owner" (docs/CONSOLE-PRD.md): a member whose role may only ask (staff, for refunds, blocks and money received outside Razorpay)
+// creates a request; it waits on the owner's Today until they approve or decline it. Nothing happens before that.
+// Approving runs the existing code for that kind (the one refund path in src/pay/refund.ts, the same block as /admin); both the
+// decision and its effect are written to audit_log with the deciding member.
+//
+// Targets: REFUND and MARK_PAID name a payment ("payment:<id>"); BLOCK names a conversation ("conv:<id>").
+import type { D1PreparedStatement } from "@cloudflare/workers-types";
+import { can, WORKSPACE_ID, type Action, type Member } from "./auth";
+import type { Env } from "./env";
+import type { PaymentProvider } from "./pay/provider";
+import { approveRefund, declineRefund, requestRefund } from "./pay/refund";
+import { iso } from "./slots";
+
+export type RequestKind = "REFUND" | "MARK_PAID" | "BLOCK";
+export const REQUEST_KINDS: readonly RequestKind[] = ["REFUND", "MARK_PAID", "BLOCK"];
+export const isRequestKind = (v: unknown): v is RequestKind => typeof v === "string" && (REQUEST_KINDS as readonly string[]).includes(v);
+
+// The permission row behind each kind: staff get "ask" there, the owner "yes".
+export const REQUEST_ACTION: Record<RequestKind, Action> = { REFUND: "refund", MARK_PAID: "record_payment", BLOCK: "block" };
+
+const TARGET: Record<RequestKind, RegExp> = { REFUND: /^payment:\d+$/, MARK_PAID: /^payment:\d+$/, BLOCK: /^conv:\d+$/ };
+export const targetId = (target: string) => Number(/:(\d+)$/.exec(target)?.[1]);
+
+export type RequestRow = {
+  id: number; kind: RequestKind; target: string; amountPaise: number | null; askedBy: number; reason: string | null; createdAt: string;
+  decidedBy: number | null; decision: "APPROVED" | "DECLINED" | null; decidedAt: string | null;
+};
+const COLS = `id, kind, target, amount_paise AS amountPaise, asked_by AS askedBy, reason, created_at AS createdAt,
+  decided_by AS decidedBy, decision, decided_at AS decidedAt`;
+
+// An audit row in the same batch as the change before it, written only if that change happened (SQLite's changes()).
+const auditAfter = (env: Env, m: Member, action: string, target: string, detail: string, reason: string | null = null): D1PreparedStatement =>
+  env.DB.prepare("INSERT INTO audit_log (actor, action, target, detail, workspace_id, member_id, reason) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 WHERE changes() > 0").bind(
+    m.email, action, target, detail, m.workspaceId, m.id, reason,
+  );
+
+// Asks the owner. Only a member whose permission for this kind is "ask" may (the owner does it directly; others can't at all).
+// One open request per kind and target: a second ask while one waits changes nothing.
+export async function createRequest(
+  env: Env,
+  asker: Member,
+  r: { kind: RequestKind; target: string; amountPaise?: number | null; reason?: string | null },
+): Promise<{ ok: true; id: number } | { ok: false; why: "NOT_ALLOWED" | "BAD_TARGET" | "EXISTS" }> {
+  if (!isRequestKind(r.kind) || can(asker, REQUEST_ACTION[r.kind]) !== "ask") return { ok: false, why: "NOT_ALLOWED" };
+  if (!TARGET[r.kind].test(r.target)) return { ok: false, why: "BAD_TARGET" };
+  const reason = r.reason?.trim().slice(0, 200) || null;
+  const [ins] = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO requests (workspace_id, kind, target, amount_paise, asked_by, reason, created_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 WHERE NOT EXISTS (SELECT 1 FROM requests WHERE workspace_id = ?1 AND kind = ?2 AND target = ?3 AND decided_at IS NULL)`,
+    ).bind(asker.workspaceId, r.kind, r.target, r.amountPaise ?? null, asker.id, reason, iso(Date.now())),
+    auditAfter(env, asker, "REQUEST_CREATED", r.target, r.kind, reason),
+  ]);
+  return ins.meta.changes ? { ok: true, id: ins.meta.last_row_id } : { ok: false, why: "EXISTS" };
+}
+
+export async function openRequests(env: Env, workspaceId = WORKSPACE_ID): Promise<RequestRow[]> {
+  const { results } = await env.DB.prepare(`SELECT ${COLS} FROM requests WHERE workspace_id = ?1 AND decided_at IS NULL ORDER BY id`).bind(workspaceId).all<RequestRow>();
+  return results;
+}
+
+export async function requestById(env: Env, id: number, workspaceId = WORKSPACE_ID): Promise<RequestRow | null> {
+  return env.DB.prepare(`SELECT ${COLS} FROM requests WHERE workspace_id = ?1 AND id = ?2`).bind(workspaceId, id).first<RequestRow>();
+}
+
+// What a decision did: DONE (the effect ran), NOTHING (approved or declined, but there was nothing left to do, e.g. a refund already
+// exists), RECORDED (money received outside Razorpay: the approval is the record; see STATUS.md "Blocked"), ALREADY (someone decided
+// it first), NOT_ALLOWED, GONE (no such open request), FAILED (the effect failed: the decision was put back, so it can be tried again).
+export type Decided = "DONE" | "NOTHING" | "RECORDED" | "ALREADY" | "NOT_ALLOWED" | "GONE" | "FAILED";
+
+// The block of /admin (src/admin.ts blockAction): the chat is BLOCKED and the number goes on the block list (once).
+function blockStatements(env: Env, convId: number, by: string): D1PreparedStatement[] {
+  return [
+    env.DB.prepare("UPDATE conversations SET mode = 'BLOCKED' WHERE id = ?1").bind(convId),
+    env.DB.prepare(
+      "INSERT INTO blocks (wa_id, reason, by, created_at) SELECT wa_id, 'ADMIN', ?2, ?3 FROM conversations WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.wa_id = conversations.wa_id)",
+    ).bind(convId, by, iso(Date.now())),
+  ];
+}
+
+// Approve or decline one open request. The claim (decided_at set only if still open) comes first, with its audit row, so two owners
+// or two tabs decide it once. Then the effect; if the effect throws, the claim is released and FAILED is returned.
+export async function decideRequest(env: Env, provider: PaymentProvider, owner: Member, id: number, decision: "APPROVED" | "DECLINED"): Promise<Decided> {
+  const r = await requestById(env, id, owner.workspaceId);
+  if (!r) return "GONE";
+  if (can(owner, REQUEST_ACTION[r.kind]) !== "yes") return "NOT_ALLOWED";
+  if (r.decidedAt) return "ALREADY";
+  const at = iso(Date.now());
+  const [claim] = await env.DB.batch([
+    env.DB.prepare("UPDATE requests SET decision = ?3, decided_by = ?4, decided_at = ?5 WHERE workspace_id = ?1 AND id = ?2 AND decided_at IS NULL").bind(owner.workspaceId, id, decision, owner.id, at),
+    auditAfter(env, owner, decision === "APPROVED" ? "REQUEST_APPROVED" : "REQUEST_DECLINED", `request:${id}`, `${r.kind} ${r.target}`),
+  ]);
+  if (!claim.meta.changes) return "ALREADY";
+  try {
+    const result = await effect(env, provider, owner, r, decision);
+    await env.DB.prepare("INSERT INTO audit_log (actor, action, target, detail, workspace_id, member_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+      .bind(owner.email, `REQUEST_${r.kind}_${decision}`, r.target, `request:${id}: ${result}`, owner.workspaceId, owner.id)
+      .run();
+    return result;
+  } catch {
+    await env.DB.prepare("UPDATE requests SET decision = NULL, decided_by = NULL, decided_at = NULL WHERE id = ?1 AND decided_at = ?2 AND decided_by = ?3").bind(id, at, owner.id).run();
+    return "FAILED";
+  }
+}
+
+async function effect(env: Env, provider: PaymentProvider, owner: Member, r: RequestRow, decision: "APPROVED" | "DECLINED"): Promise<Decided> {
+  const tid = targetId(r.target);
+  if (r.kind === "REFUND") {
+    // A refund already waiting for approval (a rude caller's) moves on, or stays as declined; otherwise a new one, on the one refund path.
+    const waiting = await env.DB.prepare("SELECT 1 AS x FROM refunds WHERE payment_id = ?1 AND state = 'PENDING_APPROVAL'").bind(tid).first();
+    if (decision === "DECLINED") return waiting ? ((await declineRefund(env, tid)) ? "DONE" : "NOTHING") : "NOTHING";
+    if (waiting) return (await approveRefund(env, provider, tid)) ? "DONE" : "NOTHING";
+    const pay = await env.DB.prepare("SELECT state FROM payments WHERE id = ?1").bind(tid).first<{ state: string }>();
+    if (!pay || !["PAID", "UNKNOWN"].includes(pay.state)) return "NOTHING";
+    return (await requestRefund(env, provider, tid, "ADMIN", owner.email)) === "CREATED" ? "DONE" : "NOTHING";
+  }
+  if (r.kind === "BLOCK") {
+    if (decision === "DECLINED") return "NOTHING";
+    const res = await env.DB.batch(blockStatements(env, tid, owner.email));
+    return res[0].meta.changes ? "DONE" : "NOTHING";
+  }
+  // MARK_PAID: the CONTRACT lets only a verified Razorpay webhook or status read mark a payment PAID, so the approval records that
+  // the money arrived (requests row + audit, with the amount) and changes no payment or booking.
+  return decision === "APPROVED" ? "RECORDED" : "NOTHING";
+}
