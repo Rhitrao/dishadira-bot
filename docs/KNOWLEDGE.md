@@ -54,7 +54,7 @@ Lines marked **[CONFIRM]** need Rohit or Amma to check them before go-live.
 
 **Sessions and packages**
 - **A session** is 60 minutes, by phone: the customer stays at home in a quiet place, and Shantha Rao calls at the booked time. [CONFIRM: phone only, or also in person in Bengaluru? The website terms currently mention in person.]
-- **Prices** (from config; these are the only prices you may quote):
+- **Prices** (the defaults; the owner can change them in Settings. The "Prices in force" line of the trusted facts is always right: when it differs from the amounts in this file, anywhere in it, quote the trusted facts):
   - Single session **₹799**.
   - **10 sessions for ₹5,000** (₹500 a session).
   - **20 sessions for ₹9,000** (₹450 a session).

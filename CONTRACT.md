@@ -1,21 +1,24 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-10-21 (v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-10-27 (v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
-Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma) and never sees chats. Rohit = owner, sole operator.
+Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
+  read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
 Goal: turn Click-to-WhatsApp ad enquiries into paid sessions; Amma only ever speaks to people who have paid.
 Scope: one practice, one practitioner, two services (PROTECTION, HEALING), INR, Asia/Kolkata, English + Hindi.
 Journey: pick a call slot -> pay ₹99 -> Amma calls (15 min) -> Session | Not right fit | Missed | Rude ->
   Session: single ₹799, or a package (10 for ₹5,000 / 20 for ₹9,000) -> confirmed -> day-before reminder.
 Also from the menu at any time (with a soft nudge to the ₹99 call first): single session, or a package. Package sessions
   are booked later from credits, with no payment per session; max 2 upcoming per buyer; packages never expire.
-Defaults (owner may change in config, never in code): intro 9900 paise, single session 79900 paise, packages 10 x 500000 paise
+Defaults (config holds them; the owner may change prices in Settings; never in code): intro 9900 paise, single session 79900 paise, packages 10 x 500000 paise
   and 20 x 900000 paise, both services;
   hours Mon-Fri 14:00-19:00 IST; call slots 15 min; session slots 60 min, max 5/day; holds 20 min.
-Prices, hours, copy, FAQ answers and limits live in one config module; Disha Dira specifics never hard-coded elsewhere.
+Hours, copy, FAQ answers, limits and the default prices live in one config module; the owner's price changes from Settings live
+  in the settings table (config is the fallback). Disha Dira specifics never hard-coded elsewhere.
 
 Stack
-One TypeScript Worker (Hono) + D1 + Cron Triggers + Cloudflare Access + Cloudflare email (send to Rohit's verified
-address only). Static site is separate (Cloudflare Pages). Native fetch/Web Crypto. Runtime libs: hono, zod, jose.
+One TypeScript Worker (Hono) + D1 + Cron Triggers + Cloudflare Access + Cloudflare email (send only to verified addresses:
+DIGEST_TO, and member addresses the owner has verified in Cloudflare Email Routing). Invites are never emailed: the team page
+shows the one-time link, with a "Send on WhatsApp" link and a field to copy it. Static site is separate (Cloudflare Pages). Native fetch/Web Crypto. Runtime libs: hono, zod, jose.
 Vitest + wrangler in GitHub Actions. Pin versions, commit the lockfile.
 AI: Anthropic API (Claude Haiku) answers typed questions only, behind the AI_REPLIES flag, grounded only in docs/KNOWLEDGE.md.
 Not in v1: voice, broadcasts, marketing templates, queues, Durable Objects, ORMs, React frameworks,
@@ -69,7 +72,9 @@ Age: booking asks once whether the person is 18+; under-18s are asked to have a 
 Greeting says it is Disha Dira's booking assistant and that Shantha Rao calls personally; first choice is language.
 Customer sees real call slots BEFORE paying. Holding a slot and creating a link happen in one guarded step.
 Payment links expire no later than the hold and no earlier than the provider minimum.
-Only a verified provider webhook or a provider status read marks PAID. Screenshots and customer text never do.
+Only a verified provider webhook or a provider status read marks PAID, or the owner recording money received outside Razorpay
+  (or approving a staff member's request for it), which confirms the booking through the same paid-booking code and is audited
+  with a reason. Screenshots and customer text never do.
 After a pay tap: "Payment in progress, please don't pay again." Poll status if no webhook within 2 minutes.
 A second payment for the same target is refunded automatically (reason DUPLICATE).
 Late payment after hold expiry never takes another slot; it raises attention for Rohit (new slot or refund).
@@ -82,7 +87,8 @@ Verify raw-body signatures (Meta X-Hub-Signature-256, Razorpay X-Razorpay-Signat
 Before returning 200, commit the event and its business change plus any reply intent, or return a retriable error.
 Outbound sends: PENDING -> SENDING -> SENT | FAILED | UNKNOWN, claimed atomically. No blind resend after a timeout.
 Outside the 24-hour window only approved templates: call_booked, session_offer, session_confirmed, reminder,
-  payment_update, package_confirmed, session_booked. All UTILITY. If a needed template isn't approved, raise attention instead of sending.
+  payment_update, package_confirmed, session_booked, follow_up (no variables; Hindi follow_up_hi). All UTILITY. follow_up stays
+  `approved: false` in config until Meta approves it. If a needed template isn't approved, raise attention instead of sending.
 
 Amma's page (/amma)
 Behind Cloudflare Access (Amma's Google account) plus Worker JWT check. Big text, one column, phone-first.

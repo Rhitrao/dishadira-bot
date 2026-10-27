@@ -11,8 +11,10 @@ const IST_OFFSET_MINUTES = 330;
 export const iso = (ms: number) => new Date(ms).toISOString().slice(0, 19) + "Z";
 
 // Whose calendar a new call or session is on (practitioner_id on slots, intros and sessions; migration 0010). Phase 1 has one
-// practitioner: the workspace's first active one, or NULL before the console's one-time seed (which then fills the NULLs).
-export const PRACTITIONER_SQL = "(SELECT id FROM members WHERE workspace_id = 1 AND role = 'PRACTITIONER' AND status = 'active' ORDER BY id LIMIT 1)";
+// practitioner: the active one who already has the most slots (so an owner who hands over and stays on as Practitioner, ticket 26,
+// doesn't take over the calendar), then the first by id; NULL before the console's one-time seed (which then fills the NULLs).
+export const PRACTITIONER_SQL =
+  "(SELECT pm.id FROM members pm WHERE pm.workspace_id = 1 AND pm.role = 'PRACTITIONER' AND pm.status = 'active' ORDER BY (SELECT COUNT(*) FROM slots ps WHERE ps.practitioner_id = pm.id) DESC, pm.id LIMIT 1)";
 const hhmm = (s: string) => {
   const [h, m] = s.split(":").map(Number);
   return h * 60 + m;

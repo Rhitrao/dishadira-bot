@@ -564,7 +564,7 @@ describe("approvals and requests", () => {
     expect(await audits("REQUEST_DECLINED")).toHaveLength(1);
   });
 
-  it("money received outside Razorpay is recorded on approval and changes no payment", async () => {
+  it("money received outside Razorpay: approving confirms the booking on the paid-link path (CONTRACT v6)", async () => {
     const b = await booking();
     await db.prepare("UPDATE payments SET state = 'PENDING' WHERE id = ?1").bind(b.payId).run();
     const ask = await createRequest(env(), await member(STAFF), { kind: "MARK_PAID", target: `payment:${b.payId}`, amountPaise: 9900, reason: "Paid by UPI" });
@@ -573,8 +573,10 @@ describe("approvals and requests", () => {
     expect(html).toContain("₹99 received from Asha");
     const res = await post("/app/today/decide", formFor(html, "/app/today/decide", { decision: "APPROVED" })!, OWNER);
     expect(res.headers.get("Location")).toBe("/app?m=recorded");
-    expect(await count("SELECT COUNT(*) AS n FROM payments WHERE id = ?1 AND state = 'PENDING'", b.payId)).toBe(1);
-    expect((await audits("REQUEST_MARK_PAID_APPROVED"))[0].detail).toContain("RECORDED");
+    expect(await count("SELECT COUNT(*) AS n FROM payments WHERE id = ?1 AND state = 'PAID'", b.payId)).toBe(1);
+    expect(await count("SELECT COUNT(*) AS n FROM intros WHERE id = ?1 AND state = 'PAID'", b.id)).toBe(1);
+    expect(await audits("REQUEST_MARK_PAID_APPROVED")).toEqual([expect.objectContaining({ detail: expect.stringContaining("DONE"), reason: "Paid by UPI" })]);
+    expect(await page(OWNER, "/app?m=recorded")).toContain("Their booking is confirmed.");
   });
 
   it("a failed refund effect puts the decision back so it can be tried again", async () => {

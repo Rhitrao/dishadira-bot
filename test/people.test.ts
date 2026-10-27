@@ -282,14 +282,15 @@ describe("the person page", () => {
     expect(await audits("PERSON_OPENED")).toEqual([]);
   });
 
-  it("a practitioner sees their own customer, but no money and no chat", async () => {
+  it("a practitioner sees their own customer and reads their chat (read-only, CONTRACT v6), but no money", async () => {
     const { a } = await three();
     await message(a, "IN", "my private worry");
     const { paymentId } = await heldWithLink(a, NOW + 50 * HOUR);
     const body = await (await get(`/app/people/${a}`, PRAC)).text();
     expect(body).toContain("Asha Devi");
-    expect(body).not.toContain("my private worry");
-    expect(body).toContain("Practitioners speak to customers on calls");
+    expect(body).toContain("my private worry");
+    expect(body).not.toContain("Practitioners speak to customers on calls");
+    expect(body).not.toMatch(/<textarea|\/reply"/); // nothing to reply with
     expect(body).not.toContain("Payments</span>");
     expect(body).not.toContain('chip attention">Waiting<'); // the unpaid link's status
     expect(body).not.toContain("/money");

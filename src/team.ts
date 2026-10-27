@@ -1,17 +1,19 @@
-// Settings → Team (/app/settings/team), owner only (the manage_team row of the permission table): invite by email with a one-time
+// Settings → Team (/app/settings/team), owner only (the manage_team row of the permission table): invite someone with a one-time
 // link that lasts 7 days, change a role, remove a member, hand over ownership. Every change is one guarded batch with its audit row.
 // The owner can't remove or demote themselves: ownership only moves by a transfer, so a workspace always has exactly one owner.
+// Invites are never emailed (CONTRACT v6: email goes only to verified addresses): the page shows the link once, with a "Send on
+// WhatsApp" link and a field to copy it from. On a hand-over the old owner chooses to stay on as Practitioner (the default) or Staff.
 import { Hono } from "hono";
-import { html } from "hono/html";
+import { html, raw } from "hono/html";
 import { can, listMembers, memberById, memberCsrf, sha256Hex, WORKSPACE_ID, type Member, type Role } from "./auth";
 import { auditStmt, frame, refused, S, visibleTo, type ConsoleCtx, type ConsoleVars } from "./console";
 import type { Env } from "./env";
-import { sendEmailTo } from "./mail";
 import { iso } from "./slots";
 import { ago, chip, header } from "./ui";
 
 export const INVITE_DAYS = 7;
 const INVITE_ROLES: Role[] = ["PRACTITIONER", "STAFF"]; // nobody is invited as owner: ownership is handed over
+const AFTER_HANDOVER: Role[] = ["PRACTITIONER", "STAFF"]; // what the old owner becomes; the first is the default
 
 // Team words, kept with the console's other ticket 19 words until the string catalogue (ticket 20) takes them.
 export const T = {
@@ -27,19 +29,20 @@ export const T = {
   removeWhy: (who: string) => `${who} can't open the console any more, from their next page. Their past actions stay in the audit log.`,
   removeYes: "Remove from the team",
   transfer: "Make owner…",
-  transferWhy: (who: string) => `${who} becomes the owner, with money, settings and the team. You become Staff. Only the new owner can undo this.`,
+  transferWhy: (who: string) => `${who} becomes the owner, with money, settings and the team. Only the new owner can undo this.`,
+  transferAs: "After the hand-over, I stay on as",
   transferYes: "Hand over ownership",
   inviteTitle: "Invite someone",
   email: "Email address",
   name: "Name to show (optional)",
-  send: "Send invite",
-  inviteMail: {
-    subject: "Your invite to the booking console",
-    body: (business: string, role: string, link: string) =>
-      `You've been invited to join ${business} on the booking console as ${role}.\n\nOpen this link within ${INVITE_DAYS} days and sign in with this email address:\n${link}\n\nThe link works once. If you weren't expecting this, ignore this email.`,
-  },
+  send: "Make an invite link",
+  // The message the owner sends the invited person themselves (WhatsApp, or copied anywhere). The link is added on its own line.
+  inviteText: (business: string, role: string, email: string) =>
+    `You're invited to join ${business} on the booking console as ${role}. Open this link within ${INVITE_DAYS} days and sign in with ${email}. It works once:`,
+  linkReady: (email: string) => `Invite ready for ${email}. Send them this link yourself: it works once and lasts ${INVITE_DAYS} days, and it's shown only now.`,
+  sendOnWhatsApp: "Send on WhatsApp",
+  copyLabel: "Or copy the link",
   flash: {
-    invited: "Invite sent. The link works once and lasts 7 days.",
     role: "Role changed.",
     removed: "Removed from the team.",
     bademail: "That doesn't look like an email address.",
@@ -47,7 +50,6 @@ export const T = {
     gone: "Nothing changed: that member has already changed or left.",
     self: "You can't change your own role or remove yourself. Hand over ownership first.",
   } as Record<string, string>,
-  notSent: (link: string) => `The invite is saved, but the email didn't go. Send them this link yourself (it works once, for 7 days): ${link}`,
 };
 
 export const team = new Hono<{ Bindings: Env; Variables: ConsoleVars }>();
@@ -58,7 +60,7 @@ const form = async (c: ConsoleCtx) => (await c.req.parseBody()) as Record<string
 const who = (m: Pick<Member, "displayName" | "email">) => m.displayName || m.email;
 
 // The owner's forms are only drawn for the actions can() allows; each POST asks can() again and checks its own token.
-async function teamPage(c: ConsoleCtx, flash: string | null, status: 200 | 400 = 200) {
+async function teamPage(c: ConsoleCtx, flash: string | null, status: 200 | 400 = 200, ready?: unknown) {
   const me = c.get("member");
   const jwt = c.get("jwt");
   const members = await listMembers(c.env);
@@ -78,6 +80,9 @@ async function teamPage(c: ConsoleCtx, flash: string | null, status: 200 | 400 =
         m.status === "active"
           ? html`<details class="confirm"><summary>${T.transfer}</summary><p class="why">${T.transferWhy(who(m))}</p>
 <form method="post" action="/app/settings/team/transfer"><input type="hidden" name="member" value="${m.id}"><input type="hidden" name="csrf" value="${await memberCsrf(jwt, me, `team-transfer:${m.id}`)}">
+<fieldset class="as"><legend class="small muted">${T.transferAs}</legend>${AFTER_HANDOVER.map(
+              (r, i) => html`<label><input type="radio" name="as" value="${r}"${i === 0 ? raw(" checked") : ""}> ${S.roles[r]}</label> `,
+            )}</fieldset>
 <button class="danger solid" type="submit">${T.transferYes}</button></form></details>`
           : "";
       return html`<div class="card"><h3>${who(m)}</h3><p class="who">${m.email}</p>${chips}${seen}<div class="actions">${roleForm}${remove}${transfer}</div></div>`;
@@ -89,8 +94,8 @@ async function teamPage(c: ConsoleCtx, flash: string | null, status: 200 | 400 =
 <p><label>${T.name}<br><input type="text" name="name" maxlength="60" autocomplete="off"></label></p>
 <p><label>${T.roleLabel} <select name="role">${INVITE_ROLES.map((r) => html`<option value="${r}">${S.roles[r]}</option>`)}</select></label></p>
 <div class="actions"><button class="primary" type="submit">${T.send}</button></div></form></div>`;
-  const body = html`${header(T.title, T.sub)}<p class="small muted">${visibleTo("manage_team")}</p>${rows}${invite}`;
-  return c.html(frame({ title: T.title, member: me, tab: "settings", body, flash }), status);
+  const body = html`${header(T.title, T.sub)}<p class="small muted">${visibleTo("manage_team")}</p>${ready ?? ""}${rows}${invite}`;
+  return c.html(frame({ title: T.title, member: me, tab: "settings", body, flash, accent: c.get("accent") }), status);
 }
 
 // Only the owner reaches anything here (GET or POST).
@@ -142,10 +147,12 @@ team.post("/invite", async (c) => {
   if (!res[2].meta.changes) return back(c, "member"); // already active: nothing was written
   const ws = await c.env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(WORKSPACE_ID).first<{ name: string }>();
   const link = `${c.env.PUBLIC_URL || new URL(c.req.url).origin}/app/invite/${token}`;
-  const sent = await sendEmailTo(c.env, email, T.inviteMail.subject, T.inviteMail.body(ws?.name ?? "", S.roles[role], link));
-  if (sent === "SENT") return back(c, "invited");
-  // No redirect here: the link is shown once, on this page, and never put in a URL.
-  return teamPage(c, T.notSent(link));
+  // No email and no redirect: the link is shown once, on this response, and never put in this page's own URL.
+  const message = `${T.inviteText(ws?.name ?? "", S.roles[role], email)}\n${link}`;
+  const ready = html`<div class="card"><p>${T.linkReady(email)}</p>
+<div class="actions"><a class="btn primary" href="https://wa.me/?text=${encodeURIComponent(message)}" rel="noopener noreferrer" target="_blank">${T.sendOnWhatsApp}</a></div>
+<p><label class="small muted" for="invite-link">${T.copyLabel}</label><br><input type="text" id="invite-link" readonly value="${link}" style="width:100%"></p></div>`;
+  return teamPage(c, null, 200, ready);
 });
 
 team.post("/role", async (c) => {
@@ -183,29 +190,32 @@ team.post("/remove", async (c) => {
   return back(c, "removed");
 });
 
-// The old owner becomes Staff in the same batch, and the new owner is promoted only if that demotion happened (changes() = 1).
+// The old owner becomes the role they chose (Practitioner by default, or Staff) in the same batch, and the new owner is promoted only if
+// that demotion happened (changes() = 1).
 // The one-owner index refuses the whole batch if two hand-overs race. If the new owner left in between, the demotion is put back.
 team.post("/transfer", async (c) => {
   const me = c.get("member");
   const f = await form(c);
   if (f.csrf !== (await memberCsrf(c.get("jwt"), me, `team-transfer:${f.member}`))) return c.text("Forbidden", 403);
+  const as = (f.as ?? AFTER_HANDOVER[0]) as Role;
+  if (!AFTER_HANDOVER.includes(as)) return c.text("Bad request", 400);
   const m = await targetOf(c, f.member);
   if (m === "self") return back(c, "self");
   if (!m || m.status !== "active") return back(c, "gone");
   try {
     const res = await c.env.DB.batch([
-      c.env.DB.prepare("UPDATE members SET role = 'STAFF' WHERE workspace_id = ?1 AND id = ?2 AND role = 'OWNER' AND status = 'active'").bind(WORKSPACE_ID, me.id),
+      c.env.DB.prepare("UPDATE members SET role = ?3 WHERE workspace_id = ?1 AND id = ?2 AND role = 'OWNER' AND status = 'active'").bind(WORKSPACE_ID, me.id, as),
       c.env.DB.prepare("UPDATE members SET role = 'OWNER' WHERE workspace_id = ?1 AND id = ?2 AND status = 'active' AND role != 'OWNER' AND changes() = 1").bind(WORKSPACE_ID, m.id),
-      auditStmt(c, "ownership_transferred", `member:${m.id}`, `from member:${me.id}`),
+      auditStmt(c, "ownership_transferred", `member:${m.id}`, `from member:${me.id}, now ${as}`),
     ]);
     if (!res[1].meta.changes) throw new Error("not changed");
   } catch {
     await c.env.DB.prepare(
-      "UPDATE members SET role = 'OWNER' WHERE workspace_id = ?1 AND id = ?2 AND role = 'STAFF' AND NOT EXISTS (SELECT 1 FROM members WHERE workspace_id = ?1 AND role = 'OWNER' AND status != 'removed')",
-    ).bind(WORKSPACE_ID, me.id).run();
+      "UPDATE members SET role = 'OWNER' WHERE workspace_id = ?1 AND id = ?2 AND role = ?3 AND NOT EXISTS (SELECT 1 FROM members WHERE workspace_id = ?1 AND role = 'OWNER' AND status != 'removed')",
+    ).bind(WORKSPACE_ID, me.id, as).run();
     return back(c, "gone");
   }
-  return c.redirect("/app?m=transferred", 303);
+  return c.redirect(`/app?m=${as === "STAFF" ? "transferred" : "transferred_p"}`, 303);
 });
 
 // 32 random bytes, URL-safe. Only its SHA-256 is stored.
