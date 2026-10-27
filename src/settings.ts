@@ -298,6 +298,32 @@ const ACTION_WORDS: Record<string, { en: string; hi: string }> = {
   CRISIS: { en: "Sent the crisis message", hi: "संकट वाला संदेश भेजा" },
   EMERGENCY: { en: "Sent the emergency message", hi: "आपात संदेश भेजा" },
 };
+// What an audit row is about, in words, with a link where there is a page for it. Unknown targets show as written.
+const TARGET_WORDS: Record<string, { en: string; hi: string; href?: string }> = {
+  conv: { en: "Customer", hi: "ग्राहक", href: "/app/people/" },
+  payment: { en: "Payment", hi: "पेमेंट", href: "/app/payments/" },
+  intro: { en: "Call", hi: "कॉल" },
+  session: { en: "Session", hi: "सेशन" },
+  package: { en: "Package", hi: "पैकेज" },
+  member: { en: "Member", hi: "सदस्य" },
+  attention: { en: "Item", hi: "काम" },
+  workspace: { en: "The business", hi: "बिज़नेस" },
+};
+const KEY_WORDS: Record<string, { en: string; hi: string }> = {
+  [KEYS.intro]: { en: "First call price", hi: "पहली कॉल का दाम" }, [KEYS.single]: { en: "Session price", hi: "सेशन का दाम" },
+  [KEYS.pack10]: { en: "10-session package price", hi: "10 सेशन के पैकेज का दाम" }, [KEYS.pack20]: { en: "20-session package price", hi: "20 सेशन के पैकेज का दाम" },
+  [KEYS.digest]: { en: "Daily summary", hi: "रोज़ की रिपोर्ट" }, [KEYS.safety]: { en: "Safety contact", hi: "सुरक्षा संपर्क" },
+  [KEYS.staffReadChat]: { en: "Staff read chats", hi: "स्टाफ़ चैट पढ़े" }, [KEYS.accent]: { en: "Accent colour", hi: "मुख्य रंग" }, [KEYS.locale]: { en: "Language for new members", hi: "नए सदस्यों की भाषा" },
+};
+function targetText(target: string, locale: string) {
+  const l = consoleLang(locale);
+  if (KEY_WORDS[target]) return html`${KEY_WORDS[target][l]}`;
+  const m = /^([a-z]+):(\d+)$/.exec(target);
+  const t = m ? TARGET_WORDS[m[1]] : undefined;
+  if (!m || !t) return html`${target}`;
+  return t.href ? html`<a href="${t.href}${m[2]}">${t[l]} ${m[2]}</a>` : html`${t[l]} ${m[2]}`;
+}
+
 const actionText = (action: string, locale: string) =>
   ACTION_WORDS[action]?.[consoleLang(locale)] ?? action.replace(/^ADMIN_/, "").replaceAll("_", " ").toLowerCase().replace(/^./, (ch) => ch.toUpperCase());
 
@@ -526,13 +552,13 @@ async function systemCard(c: ConsoleCtx, now: number) {
   ]);
   const stale = !beat || now - Date.parse(beat) > HEARTBEAT_STALE_MIN * 60_000;
   const [mailState, mailAt] = mail?.split("|") ?? [null, null];
-  const line = (label: string, value: unknown, tone: ChipTone, word: string) => html`<dt>${label}</dt><dd>${statusChip(word, tone)} ${value}</dd>`;
+  const line = (label: string, value: unknown, tone: ChipTone, word: string | null) => html`<dt>${label}</dt><dd>${word ? html`${statusChip(word, tone)} ` : ""}${value}</dd>`;
   const at = (v: string | null | undefined) => (v ? `${whenText(v, lang)} (${agoText(v, lang, now)})` : w.never);
   const aiHigh = (ai?.n ?? 0) >= config.ai.aiRepliesPerDayTotal * 0.8;
   return html`<div class="card" id="system"><dl class="kv">
 ${line(w.botRan, stale ? w.botRanStale(HEARTBEAT_STALE_MIN) : w.botRanOk(agoText(beat, lang, now)), stale ? "danger" : "done", stale ? w.problem : w.ok)}
-${line(w.lastIn, at(lastIn?.at), "plain", "·")}
-${line(w.lastOut, at(lastOut?.at), "plain", "·")}
+${line(w.lastIn, at(lastIn?.at), "plain", null)}
+${line(w.lastOut, at(lastOut?.at), "plain", null)}
 ${line(w.notDelivered, String(failed?.n ?? 0), failed?.n ? "attention" : "done", failed?.n ? w.check : w.ok)}
 ${line(w.aiToday, `${ai?.n ?? 0} / ${config.ai.aiRepliesPerDayTotal}`, aiHigh ? "attention" : "done", aiHigh ? w.check : w.ok)}
 ${line(w.lastAlert, mailState === "FAILED" ? html`${at(mailAt)}<br>${w.alertFailed}` : at(mailAt), mailState === "FAILED" ? "danger" : "done", mailState === "FAILED" ? w.problem : w.ok)}
@@ -697,7 +723,7 @@ settings.get("/audit", async (c) => {
 <button class="btn" type="submit">${w.filter}</button></form>`;
   const list = page.length
     ? html`<div class="rows log">${page.map(
-        (r) => html`<div class="row"><div><p class="t">${actionText(r.action, lang)}</p><p class="s">${by(r)}${r.target ? ` · ${r.target}` : ""}${r.detail ? ` · ${r.detail}` : ""}</p>${
+        (r) => html`<div class="row"><div><p class="t">${actionText(r.action, lang)}</p><p class="s">${by(r)}${r.target ? html` · ${targetText(r.target, lang)}` : ""}${r.detail ? ` · ${r.detail}` : ""}</p>${
           r.reason ? html`<p class="s">${w.reasonLabel(r.reason)}</p>` : ""
         }</div><time datetime="${r.at}">${whenText(r.at, lang)}</time></div>`,
       )}</div>`
