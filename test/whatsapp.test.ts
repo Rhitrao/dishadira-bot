@@ -158,8 +158,9 @@ describe("POST /wa/webhook", () => {
     fetchMock.mockClear();
 
     await post(listPick("wamid.E4", "faq_price"));
-    expect(sent()[0].text.body).toContain("₹99");
-    expect(sent()[1].interactive.action.buttons).toHaveLength(3); // menu again
+    expect(sent()).toHaveLength(1); // ticket 18: the answer and the menu buttons in one message
+    expect(sent()[0].interactive.body.text).toContain("₹99");
+    expect(sent()[0].interactive.action.buttons).toHaveLength(3);
     expect(await count("SELECT COUNT(*) n FROM attention")).toBe(0);
   });
 

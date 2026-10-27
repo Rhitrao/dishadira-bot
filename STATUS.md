@@ -83,8 +83,9 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
   4. Help answers: the answer and the menu buttons in one message (falls back to two only above 1024 characters).
   5. "What is this?" rewritten (EN + HI): no-touch pranic healing by phone, certified MCKS Pranic Healer, first step a 15-minute ₹99 call.
   6. HUMAN mode: the first message after a handoff gets `humanWaitAck` once per handoff (no migration: `last_ack_at` past `human_since`).
-- Checks: see the PR (typecheck, full vitest run).
-- Open questions for Rohit: (1) Hindi lines to read: `repromptQuestion`, `humanWaitAck`, the new `what_is_this`. (2) The acknowledgement in HUMAN mode also goes after a crisis message (the chat is HUMAN then). Keep it, or skip it after a crisis?
+- After a crisis message the acknowledgement is not sent (the crisis message already says a person has been told).
+- Checks: `npm run typecheck` passed; vitest run file by file (the full run stalls on this 2-CPU box): 740/740 passed across 19 files.
+- Open questions for Rohit: Hindi lines to read: `repromptQuestion`, `humanWaitAck`, the new `what_is_this`.
 - Next: Rohit reviews and merges the PR, then Actions → Deploy → test, and re-runs the 26 Oct chat (Book after a past call; Help → What is this?; a question at the day step; Talk to a person, then type).
 
 ## Session notes (Ticket 14)
