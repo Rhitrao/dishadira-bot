@@ -34,6 +34,15 @@ export async function sendEmailTo(env: Env, to: string, subject: string, text: s
   }
 }
 
+// One email to each address: the daily summary and the crisis email go to the members chosen in Settings (src/business.ts recipients).
+export async function sendEmailToEach(env: Env, tos: string[], subject: string, text: string): Promise<"SENT" | "SKIPPED" | "FAILED"> {
+  if (!env.EMAIL || !tos.length) return sendEmailTo(env, "", subject, text); // logs the skip
+  let result: "SENT" | "FAILED" = "SENT";
+  for (const to of tos) if ((await sendEmailTo(env, to, subject, text)) !== "SENT") result = "FAILED";
+  await noteMail(env, result);
+  return result;
+}
+
 const noteMail = (env: Env, state: string) => setSetting(env.DB, MAIL_LAST_KEY, `${state}|${iso(Date.now())}`).catch(() => undefined);
 
 const plural = (n: number) => (n === 1 ? "item" : "items");

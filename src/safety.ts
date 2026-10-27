@@ -5,7 +5,8 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { config } from "./config";
 import { copyFor, langOf, type Lang } from "./copy";
 import type { Env } from "./env";
-import { sendEmail } from "./mail";
+import { recipients } from "./business";
+import { sendEmailToEach } from "./mail";
 import { sendMessage } from "./send";
 import { iso } from "./slots";
 
@@ -69,10 +70,11 @@ export async function runCrisis(env: Env, conv: SafetyConv, msgId: string, text:
   await db.prepare("INSERT OR IGNORE INTO person_state (conversation_id) VALUES (?1)").bind(conv.id).run();
   await db.prepare("UPDATE person_state SET no_sell_until = ?2 WHERE conversation_id = ?1").bind(conv.id, iso(now + config.safety.noSellDays * 86_400_000)).run();
   await botAudit(db, "CRISIS", `conv:${conv.id}`);
-  // One open item per person; the email goes out with a new one, and says where to look, never what was written.
+  // One open item per person; the email goes to the safety contact (Settings; the owner by default) with a new one, and says where to
+  // look, never what was written.
   const open = await db.prepare("SELECT 1 FROM attention WHERE kind = 'CRISIS' AND target = ?1 AND resolved_at IS NULL").bind(`conv:${conv.id}`).first();
   if (!open) {
-    await sendEmail(env, "Urgent: crisis message", `A crisis message arrived. Open ${env.PUBLIC_URL ?? ""}/admin/conv/${conv.id} now.`);
+    await sendEmailToEach(env, await recipients(env, "safety"), "Urgent: crisis message", `A crisis message arrived. Open ${env.PUBLIC_URL ?? ""}/admin/conv/${conv.id} now.`);
     await db.prepare("INSERT INTO attention (kind, target) VALUES ('CRISIS', ?1)").bind(`conv:${conv.id}`).run();
   }
 }

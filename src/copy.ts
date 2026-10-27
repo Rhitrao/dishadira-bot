@@ -1,7 +1,8 @@
 // ALL customer-facing text lives here, in English and Hindi (wording: docs/KNOWLEDGE.md §10 and §11; the full list for review: docs/COPY.md).
-// Prices, durations and the hold time are built from config, never typed in. Both languages must have exactly the same keys (test/copy.test.ts).
+// Prices come from the prices in force (src/business.ts: the owner's Settings, else config); durations and the hold time from config. Both languages must have exactly the same keys (test/copy.test.ts).
 // Rules: never name an illness, never promise results, never ask for health details.
 import { config } from "./config";
+import { DEFAULT_PRICES, prices, type Prices } from "./business";
 
 export type Lang = "en" | "hi";
 export type FaqId = (typeof config.faqIds)[number];
@@ -12,11 +13,11 @@ export const langOf = (locale: string | null | undefined): Lang => (locale === "
 
 // ₹799, ₹5,000 (Indian digit grouping): every amount a customer reads is built from config.
 export const rupees = (paise: number) => `₹${(paise / 100).toLocaleString("en-IN")}`;
-const intro = rupees(config.prices.intro);
-const sessionPrice = rupees(config.prices.single);
-const p10 = config.prices.pack10;
-const p20 = config.prices.pack20;
-export const packPrice = (n: number) => rupees(n === p10.sessions ? p10.paise : p20.paise);
+// A package's price at the prices in force (src/business.ts).
+export const packPrice = (n: number) => {
+  const p = prices();
+  return rupees(n === p.pack10.sessions ? p.pack10.paise : p.pack20.paise);
+};
 // Per-session rate of a package: price ÷ sessions (₹500, ₹450).
 export const perSession = (pack: { sessions: number; paise: number }) => rupees(pack.paise / pack.sessions);
 const rules = config.sessionRules;
@@ -272,6 +273,15 @@ const GREETING =
   "आपको जवाब देने के लिए आपके मैसेज हमारे असिस्टेंट और AI सेवा प्रदाता द्वारा प्रोसेस किए जाते हैं। प्राइवेसी: disha-dira.com/privacy.html\n\n" +
   "Please choose your language / कृपया भाषा चुनें:";
 const CHOOSE_LANGUAGE = "Please choose your language / कृपया भाषा चुनें:";
+
+// Every message with a price in it is built from one set of prices. The body below is the builder's, left unindented so the wording
+// reads as before; copyFor() builds it once per set of prices.
+function buildCopy(P: Prices): Record<Lang, Copy> {
+const intro = rupees(P.intro);
+const sessionPrice = rupees(P.single);
+const p10 = P.pack10;
+const p20 = P.pack20;
+const packPrice = (n: number) => rupees(n === p10.sessions ? p10.paise : p20.paise);
 
 const ammaEn: AmmaCopy = {
   title: "Calls and sessions",
@@ -641,8 +651,17 @@ const hi: Copy = {
   amma: ammaEn, // Amma's page copy stays English
 };
 
-export const allCopy: Record<Lang, Copy> = { en, hi };
+return { en, hi };
+}
+
+// The copy at config's prices (what tests and docs/COPY.md compare against), and the copy at the prices in force.
+export const allCopy: Record<Lang, Copy> = buildCopy(DEFAULT_PRICES);
+const built = new Map<string, Record<Lang, Copy>>([[JSON.stringify(DEFAULT_PRICES), allCopy]]);
 
 export function copyFor(locale: string | null | undefined): Copy {
-  return allCopy[langOf(locale)];
+  const p = prices();
+  const key = JSON.stringify(p);
+  let c = built.get(key);
+  if (!c) built.set(key, (c = buildCopy(p)));
+  return c[langOf(locale)];
 }

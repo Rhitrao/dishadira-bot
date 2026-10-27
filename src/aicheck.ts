@@ -1,5 +1,6 @@
 // The output check: every assistant reply passes through checkReply() before it can be sent (docs/AGENT.md section 6, ticket 14).
 // A reply that fails is replaced by the fixed fallback for its label (src/copy.ts). Only the reason CODE is ever recorded, never the reply.
+import { prices } from "./business";
 import { config } from "./config";
 import { hasPhrase } from "./safety";
 
@@ -34,7 +35,7 @@ export function numbersIn(text: string): number[] {
 
 // Prices, per-session rates, package sizes, durations, hours and hold minutes all come from config; the person's own booking facts add more.
 export function allowedNumbers(factNumbers: readonly number[] = []): Set<number> {
-  const p = config.prices;
+  const p = prices(); // the prices in force: the assistant may repeat them
   const hourOf = (hhmm: string) => Number(hhmm.split(":")[0]);
   const hours = [hourOf(config.hours.start), hourOf(config.hours.end)];
   return new Set<number>([

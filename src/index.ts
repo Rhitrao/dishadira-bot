@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "./env";
 import { admin } from "./admin";
+import { loadPrices } from "./business";
 import { amma } from "./amma";
 import { serveFont } from "./fonts";
 import { consoleApp } from "./console";
@@ -27,6 +28,12 @@ app.onError((_e, c) => {
   return c.text("error", 500);
 });
 
+// Every request quotes the owner's prices from Settings (src/business.ts); /health and the font files don't need them.
+app.use("*", async (c, next) => {
+  if (c.req.path !== "/health" && !c.req.path.startsWith("/app/fonts/")) await loadPrices(c.env);
+  await next();
+});
+
 app.get("/health", (c) => c.json({ ok: true, version: VERSION }));
 // The console's self-hosted fonts (ticket 20); 404 unless CONSOLE_V2 is "true".
 app.get("/app/fonts/:file", serveFont);
@@ -46,6 +53,7 @@ export const REMINDER_CRON = "0 13 * * *"; // 18:30 IST
 
 // Cloudflare calls scheduled() for each cron in wrangler.toml: every 2 minutes (jobs + heartbeat), 6:30pm IST (reminders) and 9pm IST (digest).
 const scheduled = async (event: { cron: string }, env: Env) => {
+  await loadPrices(env);
   if (event.cron === DIGEST_CRON) return runDigest(env).catch(() => undefined);
   if (event.cron === REMINDER_CRON) return sendReminders(env).then(() => undefined, () => undefined);
   if (event.cron !== RECONCILE_CRON) return;

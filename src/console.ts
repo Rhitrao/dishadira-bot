@@ -9,7 +9,9 @@ import { activeMember, canAny, csrf, memberCsrf, ROLES, seedMembers, sha256Hex, 
 import type { Env } from "./env";
 import { iso } from "./slots";
 import { inbox } from "./inbox";
+import { payments } from "./payments";
 import { people } from "./people";
+import { settings } from "./settings";
 import { team } from "./team";
 import { today } from "./today";
 import { CONSOLE_CSS, header } from "./ui";
@@ -142,9 +144,9 @@ consoleApp.route("/", today); // Today (ticket 21, src/today.ts): GET /app and i
 consoleApp.route("/inbox", inbox); // ticket 22: src/inbox.ts
 consoleApp.get("/calendar", placeholder("calendar"));
 consoleApp.route("/people", people); // ticket 23: the list and /app/people/<id> (src/people.ts)
-consoleApp.get("/payments", placeholder("payments"));
-consoleApp.get("/settings", placeholder("settings"));
+consoleApp.route("/payments", payments); // ticket 24 (src/payments.ts)
 consoleApp.route("/settings/team", team);
+consoleApp.route("/settings", settings); // ticket 24 (src/settings.ts)
 
 // ---- the language switch in the page frame (ticket 20): every member may choose English or Hindi for their own console ----
 // The frame's form sends csrf (languageCsrf below), locale (the language to switch to) and back (the page it was on).
