@@ -504,7 +504,6 @@ function action(scope: string, allowed: (m: Member, c: ConsoleCtx, id: number, t
       if ("to" in done) return c.redirect(`/app/people/${id}?m=${done.to}`, 303);
       return personPage(c, id, done.page);
     } catch {
-      console.log("people: write failed", scope); // never the form's text
       return personPage(c, id, { flash: consoleCopy(m.locale).notSaved, draft: draftOf?.(f), status: 500 });
     }
   };
