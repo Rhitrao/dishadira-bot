@@ -352,3 +352,85 @@ From Rohit's test chat (17–26 Oct 2026). Bot flow only; no console or schema c
 5. "What is this?" says: no-touch pranic healing by phone with Shantha Rao, a certified MCKS Pranic Healer; the first step is a 15-minute ₹99 call (EN + HI).
 6. While a person from the team has the chat (HUMAN), the first message gets one short acknowledgement (`humanWaitAck`), once per handoff (claimed by `last_ack_at` passing `human_since`; no migration).
 Tests in `test/amma.test.ts`, `test/flow.test.ts`, `test/assistant.test.ts`, `test/copy.test.ts`. docs/COPY.md and src/knowledge.ts regenerated.
+
+## v4: the role-based console, Phase 1 (PRD, 27 Oct 2026)
+
+Spec: `docs/CONSOLE-PRD.md` (the PRD). Read it before any of these tickets; where a ticket and the PRD disagree, the ticket wins and you note it under "Blocked" in STATUS.md. Each ticket is one session, one branch, one PR; nothing is merged or deployed by the session.
+
+**Order.** Tickets 19 and 20 first (they can run at the same time). Tickets 21–24 after both are merged; those four can run at the same time. Ticket 25 last. After 25, one review session reads every v4 PR for role leaks, masking and CSRF.
+
+**Rules for all of v4.**
+- No names in code, copy or tests: roles and settings only ("the practitioner", "{business}"). Existing `ROHIT_EMAIL`/`AMMA_EMAIL` are read only by the one-time member seed in ticket 19.
+- Every console route lives under `/app`, behind `CONSOLE_V2` (env: `"false"` at the top level and in live, test may be `"true"`). The old `/admin` and `/amma` keep working until ticket 25.
+- Every route and every button goes through `can(member, action, target)`. A hidden button and a refused POST must always agree; test both.
+- Customer phone numbers: last 4 digits everywhere except an audited reveal. CSV exports are masked too.
+- Server-rendered HTML, no scripts, the strict CSP (only `font-src 'self'` is added, in ticket 20). POST-only changes with Origin + per-form CSRF, as today.
+- All console words come from the string catalogue (ticket 20), English and Hindi. No internal codes on screen (no "HUMAN", "SENDS", "AMMA_NO_TAP").
+
+### Ticket 19: members, roles and the permission check (cap $22)
+- Migration `0010_members.sql`:
+  - `workspaces` (id, name, slug, time_zone, status), seeded with workspace 1.
+  - `members` (workspace_id, email, display_name, role `OWNER|PRACTITIONER|STAFF`, locale, status `invited|active|removed`, last_seen_at); one role per membership; exactly one OWNER per workspace.
+  - `invites` (workspace_id, email, role, token_hash, expires_at, invited_by).
+  - `requests` (workspace_id, kind `REFUND|MARK_PAID|BLOCK`, target, amount_paise, asked_by, decided_by, decision, reason, created_at, decided_at).
+  - `practitioner_id` on `slots`, `intros`, `sessions`; `workspace_id`, `member_id`, `reason` on `audit_log`.
+- `src/auth.ts`: verify the Access JWT (as `allowedJwt` does today, but any verified email), load the active membership, refuse with a plain "No access" page otherwise. `can()` implements the PRD's permission table exactly (`yes | no | ask`), from one table in code.
+- One-time seed on the first request when `members` is empty: `ROHIT_EMAIL` becomes the OWNER, `AMMA_EMAIL` the PRACTITIONER; existing slots, intros and sessions point to that practitioner.
+- `/app` shell: the page frame, role-filtered tabs (placeholders for the screens), and `/app/settings/team`: invite by email (Cloudflare Email Service, one-time link, 7 days), change role, remove member, transfer ownership. All of it audited.
+- Tests: every role × action in the permission table; a removed member is refused on the next request and their open forms fail; invite expiry and reuse; exactly one owner.
+
+### Ticket 20: design system, fonts and strings (cap $18)
+- Rewrite `src/ui.ts` to the PRD design system: the colour tokens (light and dark), 19 px body with nothing under 16 px, 48 px tap targets, tabular figures.
+- Components: task card, appointment row, status chip, conversation bubble, confirm step (`details`), empty state, banner.
+- Layout: under 900 px, a bottom tab bar (Today, Inbox, Calendar, People, More); from 900 px, a left rail and list-and-detail panes. Tabs come from the member's role.
+- Self-host Jost and Noto Sans Devanagari (woff2, OFL; add them to NOTICE) at `/app/fonts/*` with a long cache; add `font-src 'self'` to the console's CSP only.
+- `src/console-copy.ts`: the one string catalogue, English and Hindi, chosen by `members.locale`, with a language switch in the page frame.
+- Tests: every key has both languages; contrast of each token pair is at least 4.5:1 (computed in the test); the frame renders for each role with the right tabs.
+
+### Ticket 21: Today (cap $22)
+- `/app` (Today), in the PRD order: Safety, Waiting for a reply, Approvals (owner), Up next, Later, and Loose ends after the last call. Banners only for bookings paused, payments failing, bot not run for 15 minutes.
+- Practitioner view: own calls and own customers' safety cards only; nothing about money.
+- Up next rows: time, first name and last 4 digits, service, who it's for, call language. **Call** is an audited `tel:` reveal, shown only from 1 hour before to 1 hour after the call.
+- **How did it go?** from the start time until 24 hours later. Three outcomes say what happens next; amounts come from settings. After a tap: "Saved. Undo until <time>" (`config.undoMinutes`). It reuses the existing outcome code, so behaviour matches `/amma`. "Report behaviour" sits under More.
+- Approvals: one card per open `requests` row, with Approve and Decline. The decision runs the existing refund, block or mark-paid code and is audited.
+- Tests: PRD acceptance checks 1, 2, 3 and 8; the role views; an empty day.
+
+### Ticket 22: Inbox (cap $20)
+- `/app/inbox`: chats in HUMAN mode and open safety follow-ups, oldest first, in three views: All, Mine and Unassigned. Each says why, how long they've waited and how long is left to reply.
+- Thread with labelled bubbles. Reply inside the 24-hour window; after it, the approved follow-up template, ready to send. Staff never see the text of safety messages.
+- Actions: Assign to me (others see who; the claim lapses after 30 minutes without a reply), Hand back to the bot, Done (one-line closing note), and Book or move for them. That last one is a real slot picker using the existing booking code: the payment link goes to the customer, or staff record money received, which creates a `requests` row.
+- Email to staff and owner when a handed-over chat has had no reply for 2 hours in working hours (one email per chat).
+- Tests: PRD checks 6 and 7; a staff member can't see safety text; booking for a customer holds a real slot.
+
+### Ticket 23: People and the person page (cap $18)
+- `/app/people`: search by name or last 4 digits; filters Waiting, Upcoming, Has a package, Blocked. A practitioner sees only customers booked with them.
+- `/app/people/<id>`, top to bottom:
+  - Header: name, last 4 digits, language, first contact, ad headline.
+  - The next booking.
+  - Package "N of M left", with a ledger from `credits`.
+  - Payments.
+  - The chat, with its deletion date.
+  - The Safety panel, in plain words, with Allow bookings again (owner).
+  - More (owner): show full number (reason required), block, remove their data.
+- Record money received outside Razorpay (staff → a `requests` row; owner → applied directly). Opening the page is audited.
+- Tests: PRD check 9; practitioner scoping; the plain-words safety panel for each state; the reveal needs a reason.
+
+### Ticket 24: Payments, Settings and the audit log (cap $20)
+- `/app/payments` (owner): problems first (failed or stuck refunds, amount mismatch, paid with no booking), each with its next step; any month's received, refunded and net, plus sessions owed on packages; masked CSV export; payment statuses in words.
+- `/app/settings` (owner):
+  - Business: name, accent, default language.
+  - Services and prices: a `settings` table, which the bot reads with the config values as fallback.
+  - The bot switches (moved from /admin, same env-is-master rule).
+  - Daily summary recipients and the safety contact (alerts go to them).
+  - Privacy: chat retention shown, and whether staff can read chat text.
+  - System: today's health checks, moved here.
+  - Audit log: filter by member and action; rows from before roles show "before roles".
+- The 9 pm summary email uses the console's words.
+- Tests: the bot quotes prices from settings; exports are masked; only the owner reaches these pages.
+
+### Ticket 25: switch over (cap $10)
+- With `CONSOLE_V2` on, `/admin` and `/amma` redirect to the matching `/app` page, and alert emails link to `/app`.
+- With it off, nothing changes (the rollback).
+- STATUS.md gets the owner's hand steps: test on the test bot, then change the Access policy to "any verified email" by hand (a Cloudflare setting, never a deploy), then switch on in live.
+- The old pages are removed in a later release, not in this ticket.
+- Tests: redirects with the flag on and off; an old email link lands on the right `/app` page.

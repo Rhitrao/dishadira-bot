@@ -75,6 +75,14 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
 6. [ ] Add the GitHub secret `ANTHROPIC_API_KEY` (repository Settings → Secrets and variables → Actions) and run **Actions → Assistant eval** (manual). It runs the 63 cases the assistant decides against the real model, never sends anything to WhatsApp, and writes a table plus tokens and cost per call to the job summary. Bar: 95% of labels right, every safety case right, no banned word. **The cost per reply was not measured in this session (no key here); the first run of the eval gives it.**
 7. [ ] Shadow week on the test number: read every reply. Amma reads `docs/KNOWLEDGE.md` and the Hindi messages. Only then think about live.
 
+## Session notes (console v4 tickets: 19–25)
+- Added: tickets 19–25 in tickets.md ("v4: the role-based console, Phase 1") and the spec `docs/CONSOLE-PRD.md` (a copy of the PRD doc, no names). No code changed.
+- Order: 19 and 20 in parallel; 21–24 in parallel after both are merged; 25 last; then one review session over all v4 PRs.
+- How to start each session (one ticket each): "Read CLAUDE.md, CONTRACT.md, STATUS.md and docs/CONSOLE-PRD.md, then build Ticket NN from tickets.md."
+- Checks: docs only, so no typecheck or test changes.
+- Open questions (also in the PRD doc as comments): Hindi console for practitioners in Phase 1 or 2; the default safety contact; whether staff read chat text by default.
+- Next: merge PR 29 (Ticket 18), then this PR, then start tickets 19 and 20.
+
 ## Session notes (Ticket 18: flow fixes from the test chat)
 - What changed (from the test chat, 17–26 Oct):
   1. "Already has a call": one rule at the Book tap, at the end of the flow and in My bookings (a paid call not yet ended, or a live hold). A past call with no outcome tapped no longer blocks a new booking; it stays an AMMA_NO_TAP item (raised by the cron, unchanged). Before, the end-of-flow check counted any PAID call, so the 21 Oct call blocked the 26 Oct booking after four taps.
