@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-28 (Ticket 27: Calendar and a console polish pass)
+Updated: 2026-10-28 (Ticket 28: one cron per Worker)
 
 ## Payment provider
 Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
@@ -48,7 +48,8 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 22 Inbox (PR https://github.com/Rhitrao/dishadira-bot/pull/35)
 - [ ] 24 Payments, Settings and the audit log (PR https://github.com/Rhitrao/dishadira-bot/pull/36; no migration)
 - [ ] 25 Switch over (PR https://github.com/Rhitrao/dishadira-bot/pull/38; CONSOLE_V2 "true" on test only)
-- [ ] 27 Calendar and a console polish pass (PR https://github.com/Rhitrao/dishadira-bot/pull/39)
+- [x] 27 Calendar and a console polish pass (PR https://github.com/Rhitrao/dishadira-bot/pull/39, merged)
+- [ ] 28 One cron per Worker, so test and live fit the Workers Free limit of 5 (PR https://github.com/Rhitrao/dishadira-bot/pull/41)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
@@ -500,3 +501,10 @@ Steps 3–6 are **by hand**: Claude never changes Cloudflare settings or deploys
 - Credits: not visible from inside the session; check the Usage page.
 - Open questions: none.
 - Next: Ticket 02 (Data + slots), after Rohit merges PR 1.
+
+## Session note: Ticket 28 (28 Oct 2026)
+- What changed: wrangler.toml has one cron per environment (`*/2 * * * *`). src/index.ts `runDailyJobs` runs the reminders (6:30 pm IST) and the digest (9 pm IST) from it, once per IST day, claimed in `settings` and released on failure. Tests in test/remind.test.ts and test/release.test.ts.
+- Why: the first Deploy → live uploaded the live Worker and applied the live migrations, then failed on the cron triggers (Workers Free allows 5 per account; test had 3, live needed 3).
+- Checks run: typecheck; remind, followups, gate and release test files (CI runs the full suite).
+- Next step: after the merge, run Deploy → test, then Deploy → live. The test Worker drops from 3 crons to 1 on its deploy, so deploy test first to free the slots.
+- Live setup so far (Rohit, 28 Oct): Meta Business Verification approved; the Airtel number registered on the Cloud API; PR #40 merged. Still to do: the custom domain bot.disha-dira.com, the live secrets, the live Access app, Razorpay live keys and webhook, the live WhatsApp webhook.

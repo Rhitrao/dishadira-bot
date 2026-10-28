@@ -1,4 +1,4 @@
-// Day-before reminders (cron 13:00 UTC = 18:30 IST): everyone with a call or a confirmed session tomorrow (IST) gets one message.
+// Day-before reminders (6:30 pm IST, run once a day from the 2-minute cron, src/index.ts runDailyJobs): everyone with a call or a confirmed session tomorrow (IST) gets one message.
 // Free text inside the 24-hour window, the `reminder` template outside it. The dedupe key is per booking (intro or session + slot),
 // so a second run, or a rescheduled call, never sends the same reminder twice. While SENDS is paused nothing is written at all,
 // so no dedupe row blocks the reminder if Rohit resumes sends the same evening.

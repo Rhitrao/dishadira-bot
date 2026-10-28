@@ -392,7 +392,7 @@ describe("item 8: one bundled 'ask owner' email, at most every 30 minutes", () =
 
   it("runs in the 2-minute cron", async () => {
     await ask("REFUND", "payment:1", 9900);
-    await (app as unknown as { scheduled: (e: { cron: string }, env: unknown) => Promise<void> }).scheduled({ cron: "*/2 * * * *" }, h.env());
+    await (app as unknown as { scheduled: (e: { cron: string; scheduledTime: number }, env: unknown) => Promise<void> }).scheduled({ cron: "*/2 * * * *", scheduledTime: NOW }, h.env());
     expect(h.emails.filter((e) => e.subject.startsWith("Waiting for your approval"))).toHaveLength(1);
   });
 });

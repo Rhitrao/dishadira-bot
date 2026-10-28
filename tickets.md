@@ -464,3 +464,10 @@ The owner's feedback from the test console (28 Oct 2026): "Calendar is not clean
 6. **Polish sweep:** render every /app screen for owner, practitioner and staff, English and Hindi, 390 and 1366 px, light and dark, with realistic synthetic data, using Playwright from a scratch script outside the repo; fix spacing, alignment, chip wrapping, mixed button sizes, heading scale, empty areas, text under 16 px, tap targets under 48 px, horizontal scroll and dark-mode contrast. The PR lists the fixes.
 - Rules: no names, secrets or real numbers; no merge or deploy; no Cloudflare, Meta or Razorpay changes.
 - Tests: the Calendar (role scoping, day and week, empty week, weekend) and the thread collapsing; every existing test stays green.
+
+### Ticket 28: one cron per Worker (cap $6)
+The first Deploy → live (28 Oct 2026) failed at the last step: "This account has reached the Workers Free limit of 5 cron triggers per account." Test used 3 and live needs 3. Rohit chose to stay on the free plan for now.
+1. Each environment has one cron, `*/2 * * * *`. The 6:30 pm IST reminders and the 9 pm IST digest run from it, once per IST day, on the first tick at or after their time (a missed tick only delays them by 2 minutes).
+2. The day's run is claimed with one `settings` row (`daily:<job>:<IST day>`), given back if the job fails so the next tick tries again. Reminders are not claimed while SENDS is paused, so resuming sends the same evening still sends them (unchanged behaviour).
+- Rules: no new migration; no merge or deploy; no Cloudflare, Meta or Razorpay changes.
+- Tests: too early, on time, once a day, a missed tick, paused sends, the digest time, the next day, a failed job; every existing test stays green.
