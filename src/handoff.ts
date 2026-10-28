@@ -3,6 +3,7 @@
 import { config } from "./config";
 import type { Env } from "./env";
 import { sendEmail } from "./mail";
+import { consoleLink } from "./switchover";
 import { raiseAttention } from "./send";
 import { iso } from "./slots";
 import { clearStep } from "./steps";
@@ -20,5 +21,5 @@ export async function requestHuman(env: Env, convId: number, nowMs = Date.now())
     .prepare("UPDATE person_state SET human_mail_at = ?2 WHERE conversation_id = ?1 AND (human_mail_at IS NULL OR human_mail_at <= ?3)")
     .bind(convId, iso(nowMs), iso(nowMs - config.handoff.mailEveryHours * HOUR))
     .run();
-  if (claim.meta.changes) await sendEmail(env, "A customer asked for a person", `A customer asked to talk to a person. Open ${env.PUBLIC_URL ?? ""}/admin/conv/${convId}`);
+  if (claim.meta.changes) await sendEmail(env, "A customer asked for a person", `A customer asked to talk to a person. Open ${consoleLink(env, `/admin/conv/${convId}`, `/app/inbox/${convId}`)}`);
 }

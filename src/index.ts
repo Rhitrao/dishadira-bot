@@ -16,6 +16,7 @@ import { mailOpenRequests } from "./requests";
 import { sendReminders } from "./remind";
 import { runDigest } from "./report";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat, returnStaleHumans } from "./watch";
+import { switchOver } from "./switchover";
 import { wipeChats } from "./wipe";
 import { receiveWebhook, verifyWebhook } from "./whatsapp";
 
@@ -42,6 +43,8 @@ app.get("/app/fonts/:file", serveFont);
 app.get("/wa/webhook", verifyWebhook);
 app.post("/wa/webhook", receiveWebhook);
 app.post("/pay/razorpay/webhook", (c) => razorpayWebhook(c));
+// With CONSOLE_V2 on, the old pages send people to /app (src/switchover.ts); off, they work exactly as before.
+for (const path of ["/amma", "/amma/*", "/admin", "/admin/*"]) app.use(path, switchOver);
 app.route("/amma", amma);
 app.route("/admin", admin);
 app.route("/app", consoleApp); // the role-based console, behind CONSOLE_V2 (a 404 while it is off)

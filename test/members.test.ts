@@ -175,8 +175,10 @@ describe("/app: the gate", () => {
     for (const v of [undefined, "false", "TRUE"]) {
       expect((await get("/app", OWNER, env({ CONSOLE_V2: v }))).status).toBe(404);
       expect((await get("/app/settings/team", OWNER, env({ CONSOLE_V2: v }))).status).toBe(404);
+      expect((await app.request(ORIGIN + "/admin", {}, env({ CONSOLE_V2: v }))).status).toBe(403);
     }
-    expect((await app.request(ORIGIN + "/admin", {}, env())).status).toBe(403);
+    // On, /admin sends people to /app (ticket 25, test/switchover.test.ts).
+    expect((await app.request(ORIGIN + "/admin", {}, env())).headers.get("Location")).toBe("/app");
   });
 
   it("refuses a missing, foreign or badly signed token with No access", async () => {

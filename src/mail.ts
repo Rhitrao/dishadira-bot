@@ -4,6 +4,7 @@ import { config } from "./config";
 import type { Env } from "./env";
 import { getSetting, setSetting } from "./switches";
 import { iso, istDay } from "./slots";
+import { consoleLink } from "./switchover";
 
 export const ALERT_KINDS = ["REFUND_FAILED", "REFUND_STUCK", "PAYMENT_MISMATCH", "UNKNOWN_PAYMENT_LINK", "OUTCOME_FAILED"] as const;
 export const HEARTBEAT_KEY = "HEARTBEAT";
@@ -63,6 +64,12 @@ export async function heartbeatStale(env: Env, nowMs: number): Promise<boolean> 
   return !last || nowMs - Date.parse(last) > HEARTBEAT_STALE_MIN * 60_000;
 }
 
+// One alert line: the item, and for a payment a link to it (the old Payments page, or that payment in /app/payments).
+const itemLine = (env: Env, target: string | null) => {
+  const pay = /^payment:(\d+)$/.exec(target ?? "");
+  return pay ? `${target} · ${consoleLink(env, "/admin/payments", `/app/payments/${pay[1]}`)}` : (target ?? "");
+};
+
 // Immediate alerts for open attention items of the urgent kinds, and (when asked) for a missing 2-minute heartbeat.
 export async function sendAlerts(env: Env, nowMs = Date.now(), opts: { heartbeat?: boolean } = {}): Promise<string[]> {
   if (!mailConfigured(env)) return [];
@@ -70,7 +77,7 @@ export async function sendAlerts(env: Env, nowMs = Date.now(), opts: { heartbeat
   for (const kind of ALERT_KINDS) {
     const { results } = await env.DB.prepare("SELECT target FROM attention WHERE kind = ?1 AND resolved_at IS NULL ORDER BY id").bind(kind).all<{ target: string | null }>();
     if (!results.length) continue;
-    const body = `${results.length} open ${plural(results.length)} of kind ${kind}:\n${results.map((r) => `- ${r.target ?? ""}`).join("\n")}\n\nOpen /admin to act.`;
+    const body = `${results.length} open ${plural(results.length)} of kind ${kind}:\n${results.map((r) => `- ${itemLine(env, r.target)}`).join("\n")}\n\nOpen ${consoleLink(env, "/admin", kind === "OUTCOME_FAILED" ? "/app" : "/app/payments")} to act.`;
     if (await alertOnce(env, kind, `Disha Dira alert: ${kind}`, body, nowMs)) sent.push(kind);
   }
   if (opts.heartbeat && (await heartbeatStale(env, nowMs))) {

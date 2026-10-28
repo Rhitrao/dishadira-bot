@@ -6,6 +6,7 @@ import type { Env } from "./env";
 import { sendAlerts, sendEmailToEach } from "./mail";
 import { formatIstParts, iso, istDay } from "./slots";
 import { switchStates } from "./switches";
+import { consoleLink } from "./switchover";
 
 const PAID_LIKE = "('PAID','REFUND_PENDING','REFUNDED','REFUND_FAILED')";
 const rupees = (paise: number) => `₹${paise / 100}`;
@@ -211,7 +212,7 @@ export async function digestText(env: Env, nowMs = Date.now()): Promise<string> 
     ...(await packageLines(env, nowMs)),
     "",
     "Worth a follow-up (last 24 hours, not paid yet)",
-    ...(leads.length ? leads.map((l) => `- ${firstName(l.name)} · ${env.PUBLIC_URL ?? ""}/admin/conv/${l.id}`) : ["- Nobody."]),
+    ...(leads.length ? leads.map((l) => `- ${firstName(l.name)} · ${consoleLink(env, `/admin/conv/${l.id}`)}`) : ["- Nobody."]),
     "",
     "What's switched off",
     ...(off.length ? off.map((o) => `- ${o}`) : ["- Nothing: the bot is taking bookings and answering."]),
