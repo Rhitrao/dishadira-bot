@@ -38,7 +38,7 @@ export const config = {
     ammaTapReminderHours: 3,
   },
   // Placeholder until the Airtel number exists; the owner sets the real one here, never in git history.
-  businessNumber: "+91 00000 00000",
+  businessNumber: "+91 63661 99009",
   whatsapp: {
     buttonBodyMax: 1024, // WhatsApp: the body of a reply-button message
   },
