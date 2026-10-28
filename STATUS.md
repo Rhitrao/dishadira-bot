@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-27 (Ticket 25: switch over)
+Updated: 2026-10-28 (Ticket 27: Calendar and a console polish pass)
 
 ## Payment provider
 Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
@@ -48,6 +48,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 22 Inbox (PR https://github.com/Rhitrao/dishadira-bot/pull/35)
 - [ ] 24 Payments, Settings and the audit log (PR https://github.com/Rhitrao/dishadira-bot/pull/36; no migration)
 - [ ] 25 Switch over (PR https://github.com/Rhitrao/dishadira-bot/pull/38; CONSOLE_V2 "true" on test only)
+- [ ] 27 Calendar and a console polish pass (PR: see the branch `t27-calendar-polish`)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
@@ -87,6 +88,18 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
 5. [ ] From your own phone: choose a language, then type a question ("what is pranic healing?"). You get one message back. Try the cases in `test/agent-evals/cases.json`: a worry about stress, a refund, "Saturday please" at the day buttons, a rude message, "I feel hopeless". The 9pm digest has an "Assistant" section (answers written, replies replaced by the output check, calls that failed).
 6. [ ] Add the GitHub secret `ANTHROPIC_API_KEY` (repository Settings → Secrets and variables → Actions) and run **Actions → Assistant eval** (manual). It runs the 63 cases the assistant decides against the real model, never sends anything to WhatsApp, and writes a table plus tokens and cost per call to the job summary. Bar: 95% of labels right, every safety case right, no banned word. **The cost per reply was not measured in this session (no key here); the first run of the eval gives it.**
 7. [ ] Shadow week on the test number: read every reply. Amma reads `docs/KNOWLEDGE.md` and the Hindi messages. Only then think about live.
+
+## Session notes (Ticket 27: Calendar and a console polish pass)
+- What changed:
+  - **Calendar** (new `src/calendar.ts`, replaces the placeholder): Week (Mon–Sun, this week by default) and Day views by links, ‹ Today › links, a practitioner filter for owner and staff only when there are two or more practitioners (`?p=`), a practitioner always sees only their own. Each day: calls, sessions and live holds in time order (time, first name …last4, service, kind, who it's for, status chip, "Waiting for payment until …" on a hold, Open → person page), then the free times left (the slot generator less every booked or unlapsed slot, as ranges), the hours line from config (`hoursText`) and one quiet "Changing working hours and time off comes in a later release." Weekends, and past days with nothing booked, are one quiet line. Empty week: "Nothing booked this week. Next booking: …" with a link to that day.
+  - **No page on the old look:** the /app `frame()` is deleted. `appPage()` (console.ts) puts refusals, the team page and error pages on `consoleFrame`; new `plainFrame()` (ui.ts) carries "No access" (English + Hindi), the invite page and the moved-page notice (switchover.ts, now with the console CSP so the fonts load). A bare-text 400/403/404 from any /app screen (an old form token, a bad field, an unknown address) is shown as a styled page, and `consoleApp.onError` shows a styled 500 (route-only log). The team page is rebuilt on ui.ts components with English and Hindi words. `page()`/`CONSOLE_CSS` stay for /admin and /amma only.
+  - **Chats** (new `src/chat.ts`, used by the Inbox and the person page): consecutive wiped messages collapse into one quiet line ("12 earlier messages were deleted after 7 days, for privacy", from CHAT_RETENTION_MINUTES); taps show "Tapped: <label>" (older taps "Tapped a button"); photos, voice and files one line ("not downloaded"); templates "Approved WhatsApp message: call booked"; buttons/list/link sends keep their text with a short note; skipped replies are not shown; never an empty bubble. Latest 20 with "Show earlier messages" (`?all=1` / `?chat=all`). To label taps, src/whatsapp.ts now stores the button or list row title (our own words) as the inbound row's body; the wipe removes it like any text and src/ai.ts leaves `interactive`/`button` rows out of the assistant's history (tested).
+  - **Inbox detail:** header (name, why, waited, the window state once), then the claim, the reply box or the follow-up card, the actions (Assign to me, Book or move, Hand back, Done; two columns on phones), then the thread. The list row says "Follow-up message only"; the window chip is amber, red is kept for safety.
+  - **Business name:** `SEEDED_WORKSPACE_NAME`/`hasOwnName()` (business.ts). While the name is the seeded default, the frame shows "Booking console" and the owner's Today has one plain task, "Add your business name in Settings"; the invite message says "the team".
+  - **Polish sweep** (Playwright, 59 pages × 390/1366 × light/dark, synthetic data, scratch script outside the repo): last 4 digits never split from their "…"; list rows wrap their chips under the text instead of squeezing it; short parts of an appointment row ("15-minute call") never break; the appointment time column sizes to the time; calendar free times calmer (muted label, ink times); per-day hours line only in Day view; day headings and small links (audit targets, "Back to Settings", "Open Payments", "Back to the chat", "Open their page") are 48 px tall; the long window chip no longer wraps in the list; team form fields capped in width; "No access" paragraphs spaced. Final check: no horizontal scroll, no text under 16 px, no tap target under 48 px, Jost loaded, on every page.
+- Checks: `npx tsc --noEmit` clean; every test file run one at a time: see the PR for the final count. New: test/calendar.test.ts (9), test/chat.test.ts (9). Changed to the new markup: members (remove-form field order), people (wiped line), today and ui (no-wrap spans), logging (the route-only error log is on the list).
+- Open questions: Hindi strings added here (calendar, chat lines, team page, errors) need a Hindi speaker's read. The calendar's "Book for a customer" (PRD) is still the Inbox's "Book or move"; editing hours and time off stays Phase 2. Free times are one calendar for all practitioners (CONTRACT: one calendar).
+- Next: Rohit reviews the PR on the test console; merge, then **Actions → Deploy → test** by hand.
 
 ## Session notes (Ticket 26: console follow-ups and contract decisions)
 - What changed:
