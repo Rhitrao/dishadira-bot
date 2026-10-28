@@ -6,19 +6,23 @@
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { can, listMembers, memberById, memberCsrf, sha256Hex, WORKSPACE_ID, type Member, type Role } from "./auth";
-import { auditStmt, frame, refused, S, visibleTo, type ConsoleCtx, type ConsoleVars } from "./console";
+import { hasOwnName } from "./business";
+import { appPage, auditStmt, refused, S, type ConsoleCtx, type ConsoleVars } from "./console";
+import { consoleCopy, consoleLang } from "./console-copy";
 import type { Env } from "./env";
 import { iso } from "./slots";
-import { ago, chip, header } from "./ui";
+import { agoText, EXTRA_CSS } from "./settings";
+import { confirmStep, roleName, section, statusChip } from "./ui";
 
 export const INVITE_DAYS = 7;
 const INVITE_ROLES: Role[] = ["PRACTITIONER", "STAFF"]; // nobody is invited as owner: ownership is handed over
 const AFTER_HANDOVER: Role[] = ["PRACTITIONER", "STAFF"]; // what the old owner becomes; the first is the default
 
-// Team words, kept with the console's other ticket 19 words until the string catalogue (ticket 20) takes them.
-export const T = {
+// Team words, English and Hindi (the owner's language), in the shape of src/console-copy.ts.
+const en = {
   title: "Team",
   sub: "Who can open the console, and what each person can do.",
+  backToSettings: "Settings",
   you: "You",
   invited: "Invite sent",
   lastSeen: (when: string) => `Last opened ${when}`,
@@ -36,21 +40,53 @@ export const T = {
   email: "Email address",
   name: "Name to show (optional)",
   send: "Make an invite link",
-  // The message the owner sends the invited person themselves (WhatsApp, or copied anywhere). The link is added on its own line.
-  inviteText: (business: string, role: string, email: string) =>
-    `You're invited to join ${business} on the booking console as ${role}. Open this link within ${INVITE_DAYS} days and sign in with ${email}. It works once:`,
   linkReady: (email: string) => `Invite ready for ${email}. Send them this link yourself: it works once and lasts ${INVITE_DAYS} days, and it's shown only now.`,
   sendOnWhatsApp: "Send on WhatsApp",
   copyLabel: "Or copy the link",
-  flash: {
-    role: "Role changed.",
-    removed: "Removed from the team.",
-    bademail: "That doesn't look like an email address.",
-    member: "That person is already on the team.",
-    gone: "Nothing changed: that member has already changed or left.",
-    self: "You can't change your own role or remove yourself. Hand over ownership first.",
-  } as Record<string, string>,
+  fRole: "Role changed.",
+  fRemoved: "Removed from the team.",
+  fBademail: "That doesn't look like an email address.",
+  fMember: "That person is already on the team.",
+  fGone: "Nothing changed: that member has already changed or left.",
+  fSelf: "You can't change your own role or remove yourself. Hand over ownership first.",
 };
+type TeamCopy = { [K in keyof typeof en]: (typeof en)[K] extends (...a: infer A) => string ? (...a: A) => string : string };
+const hi: TeamCopy = {
+  title: "टीम",
+  sub: "कौन कंसोल खोल सकता है, और हर व्यक्ति क्या कर सकता है।",
+  backToSettings: "सेटिंग्स",
+  you: "आप",
+  invited: "निमंत्रण भेजा",
+  lastSeen: (when) => `आख़िरी बार खोला ${when}`,
+  neverSeen: "अभी तक कंसोल नहीं खोला",
+  roleLabel: "रोल",
+  changeRole: "रोल बदलें",
+  remove: "हटाएँ…",
+  removeWhy: (who) => `${who} अगले पेज से कंसोल नहीं खोल पाएँगे। उनके पुराने काम ऑडिट लॉग में रहेंगे।`,
+  removeYes: "टीम से हटाएँ",
+  transfer: "मालिक बनाएँ…",
+  transferWhy: (who) => `${who} मालिक बन जाएँगे, पैसे, सेटिंग्स और टीम के साथ। इसे सिर्फ़ नए मालिक बदल सकते हैं।`,
+  transferAs: "सौंपने के बाद मैं रहूँगा/रहूँगी",
+  transferYes: "मालिकाना सौंपें",
+  inviteTitle: "किसी को बुलाएँ",
+  email: "ईमेल पता",
+  name: "दिखाने वाला नाम (ज़रूरी नहीं)",
+  send: "निमंत्रण लिंक बनाएँ",
+  linkReady: (email) => `${email} के लिए निमंत्रण तैयार है। यह लिंक ख़ुद भेजें: यह एक बार चलता है, ${INVITE_DAYS} दिन तक, और सिर्फ़ अभी दिखेगा।`,
+  sendOnWhatsApp: "WhatsApp पर भेजें",
+  copyLabel: "या लिंक कॉपी करें",
+  fRole: "रोल बदल गया।",
+  fRemoved: "टीम से हटा दिया।",
+  fBademail: "यह ईमेल पता सही नहीं लगता।",
+  fMember: "यह व्यक्ति पहले से टीम में है।",
+  fGone: "कुछ नहीं बदला: यह सदस्य पहले ही बदल चुके हैं या जा चुके हैं।",
+  fSelf: "आप अपना रोल नहीं बदल सकते, न ख़ुद को हटा सकते। पहले मालिकाना सौंपें।",
+};
+const teamCopy = (locale: string | null | undefined) => (consoleLang(locale) === "hi" ? hi : en);
+const FLASH: Record<string, keyof TeamCopy> = { role: "fRole", removed: "fRemoved", bademail: "fBademail", member: "fMember", gone: "fGone", self: "fSelf" };
+// The invite message the owner sends themselves (WhatsApp, or copied anywhere), in English: the invited person's language isn't known.
+const inviteText = (business: string, role: string, email: string) =>
+  `You're invited to join ${business} on the booking console as ${role}. Open this link within ${INVITE_DAYS} days and sign in with ${email}. It works once:`;
 
 export const team = new Hono<{ Bindings: Env; Variables: ConsoleVars }>();
 
@@ -63,40 +99,47 @@ const who = (m: Pick<Member, "displayName" | "email">) => m.displayName || m.ema
 async function teamPage(c: ConsoleCtx, flash: string | null, status: 200 | 400 = 200, ready?: unknown) {
   const me = c.get("member");
   const jwt = c.get("jwt");
+  const T = teamCopy(me.locale);
+  const role = (r: Role) => roleName(r, me.locale);
   const members = await listMembers(c.env);
-  const rows = await Promise.all(
+  const cards = await Promise.all(
     members.map(async (m) => {
-      const chips = html`<div class="chips">${chip(S.roles[m.role])}${m.status === "invited" ? chip(T.invited, "amber") : ""}${m.id === me.id ? chip(T.you, "green") : ""}</div>`;
-      const seen = m.status === "invited" ? "" : html`<p class="small muted">${m.lastSeenAt ? T.lastSeen(ago(m.lastSeenAt)) : T.neverSeen}</p>`;
-      if (m.id === me.id || m.role === "OWNER") return html`<div class="card"><h3>${who(m)}</h3><p class="who">${m.email}</p>${chips}${seen}</div>`;
-      const roleForm = html`<form method="post" action="/app/settings/team/role"><input type="hidden" name="member" value="${m.id}">
-<input type="hidden" name="csrf" value="${await memberCsrf(jwt, me, `team-role:${m.id}`)}"><label class="small muted">${T.roleLabel}
-<select name="role">${INVITE_ROLES.map((r) => html`<option value="${r}"${r === m.role ? " selected" : ""}>${S.roles[r]}</option>`)}</select></label>
-<button type="submit">${T.changeRole}</button></form>`;
-      const remove = html`<details class="confirm danger"><summary>${T.remove}</summary><p class="why">${T.removeWhy(who(m))}</p>
-<form method="post" action="/app/settings/team/remove"><input type="hidden" name="member" value="${m.id}"><input type="hidden" name="csrf" value="${await memberCsrf(jwt, me, `team-remove:${m.id}`)}">
-<button class="danger solid" type="submit">${T.removeYes}</button></form></details>`;
+      const chips = html`<div class="chips">${statusChip(role(m.role), "plain")}${m.status === "invited" ? statusChip(T.invited, "attention") : ""}${m.id === me.id ? statusChip(T.you, "accent") : ""}</div>`;
+      const seen = m.status === "invited" ? "" : html`<p class="why">${m.lastSeenAt ? T.lastSeen(agoText(m.lastSeenAt, me.locale)) : T.neverSeen}</p>`;
+      const head = html`<h3>${who(m)}</h3><p class="why mail">${m.email}</p>${chips}${seen}`;
+      if (m.id === me.id || m.role === "OWNER") return html`<article class="card">${head}</article>`;
+      const roleForm = html`<form class="rolef" method="post" action="/app/settings/team/role"><input type="hidden" name="member" value="${m.id}">
+<input type="hidden" name="csrf" value="${await memberCsrf(jwt, me, `team-role:${m.id}`)}"><label class="fld"><span>${T.roleLabel}</span>
+<select name="role">${INVITE_ROLES.map((r) => html`<option value="${r}"${r === m.role ? raw(" selected") : ""}>${role(r)}</option>`)}</select></label>
+<button class="btn" type="submit">${T.changeRole}</button></form>`;
+      const remove = confirmStep({ label: T.remove, effect: T.removeWhy(who(m)), confirm: T.removeYes, post: { action: "/app/settings/team/remove", csrf: await memberCsrf(jwt, me, `team-remove:${m.id}`), fields: { member: String(m.id) } } });
       const transfer =
         m.status === "active"
-          ? html`<details class="confirm"><summary>${T.transfer}</summary><p class="why">${T.transferWhy(who(m))}</p>
+          ? html`<details class="confirm"><summary>${T.transfer}</summary><div class="panel"><p class="effect">${T.transferWhy(who(m))}</p>
 <form method="post" action="/app/settings/team/transfer"><input type="hidden" name="member" value="${m.id}"><input type="hidden" name="csrf" value="${await memberCsrf(jwt, me, `team-transfer:${m.id}`)}">
-<fieldset class="as"><legend class="small muted">${T.transferAs}</legend>${AFTER_HANDOVER.map(
-              (r, i) => html`<label><input type="radio" name="as" value="${r}"${i === 0 ? raw(" checked") : ""}> ${S.roles[r]}</label> `,
+<fieldset class="pick"><legend>${T.transferAs}</legend>${AFTER_HANDOVER.map(
+              (r, i) => html`<label><input type="radio" name="as" value="${r}"${i === 0 ? raw(" checked") : ""}> ${role(r)}</label>`,
             )}</fieldset>
-<button class="danger solid" type="submit">${T.transferYes}</button></form></details>`
+<button class="btn danger" type="submit">${T.transferYes}</button></form></div></details>`
           : "";
-      return html`<div class="card"><h3>${who(m)}</h3><p class="who">${m.email}</p>${chips}${seen}<div class="actions">${roleForm}${remove}${transfer}</div></div>`;
+      return html`<article class="card">${head}${roleForm}<div class="acts">${remove}${transfer}</div></article>`;
     }),
   );
-  const invite = html`<h2>${T.inviteTitle}</h2><div class="card"><form method="post" action="/app/settings/team/invite">
+  const invite = html`<div class="card"><form method="post" action="/app/settings/team/invite">
 <input type="hidden" name="csrf" value="${await memberCsrf(jwt, me, "team-invite")}">
-<p><label>${T.email}<br><input type="text" name="email" inputmode="email" autocomplete="off" required></label></p>
-<p><label>${T.name}<br><input type="text" name="name" maxlength="60" autocomplete="off"></label></p>
-<p><label>${T.roleLabel} <select name="role">${INVITE_ROLES.map((r) => html`<option value="${r}">${S.roles[r]}</option>`)}</select></label></p>
-<div class="actions"><button class="primary" type="submit">${T.send}</button></div></form></div>`;
-  const body = html`${header(T.title, T.sub)}<p class="small muted">${visibleTo("manage_team")}</p>${ready ?? ""}${rows}${invite}`;
-  return c.html(frame({ title: T.title, member: me, tab: "settings", body, flash, accent: c.get("accent") }), status);
+<label class="fld"><span>${T.email}</span><input type="text" name="email" inputmode="email" autocomplete="off" required></label>
+<label class="fld"><span>${T.name}</span><input type="text" name="name" maxlength="60" autocomplete="off"></label>
+<label class="fld"><span>${T.roleLabel}</span><select name="role">${INVITE_ROLES.map((r) => html`<option value="${r}">${role(r)}</option>`)}</select></label>
+<div class="acts"><button class="btn primary" type="submit">${T.send}</button></div></form></div>`;
+  const cc = consoleCopy(me.locale);
+  const body = html`${raw(EXTRA_CSS)}<style>${raw(TEAM_CSS)}</style><a class="crumb" href="/app/settings">← ${T.backToSettings}</a>
+<header class="screen"><h1>${T.title}</h1><p class="visible">${cc.visibleTo(role("OWNER"))}</p></header><p class="muted lead">${T.sub}</p>
+${ready ?? ""}${section(T.title, cards, members.length)}${section(T.inviteTitle, invite)}`;
+  return appPage(c, { active: "settings", title: T.title, body, flash, status, back: "/app/settings/team" });
 }
+const TEAM_CSS = `.crumb{display:inline-flex;align-items:center;min-height:48px;font-weight:500}.lead{margin:0 0 8px}.mail{overflow-wrap:anywhere}
+.rolef{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 12px;margin:16px 0 0}.rolef .fld{flex:1 1 200px;margin:0}.rolef .btn{flex:0 0 auto}
+.card .pick label{flex:1 1 160px}.ready input{width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px}`;
 
 // Only the owner reaches anything here (GET or POST).
 team.use("*", async (c, next) => {
@@ -104,7 +147,10 @@ team.use("*", async (c, next) => {
   await next();
 });
 
-team.get("/", (c) => teamPage(c, T.flash[c.req.query("m") ?? ""] ?? null));
+team.get("/", (c) => {
+  const code = FLASH[c.req.query("m") ?? ""];
+  return teamPage(c, code ? (teamCopy(c.get("member").locale)[code] as string) : null);
+});
 
 // A target member: another member of this workspace, not removed, not the owner, not me.
 async function targetOf(c: ConsoleCtx, raw: string | undefined): Promise<Member | "self" | null> {
@@ -123,7 +169,7 @@ team.post("/invite", async (c) => {
   const role = f.role as Role;
   const name = (f.name ?? "").trim().slice(0, 60) || null;
   if (!INVITE_ROLES.includes(role)) return c.text("Bad request", 400);
-  if (email.length > 254 || !EMAIL_RE.test(email)) return teamPage(c, T.flash.bademail, 400);
+  if (email.length > 254 || !EMAIL_RE.test(email)) return teamPage(c, teamCopy(me.locale).fBademail, 400);
   const now = Date.now();
   const at = iso(now);
   const token = randomToken();
@@ -148,10 +194,11 @@ team.post("/invite", async (c) => {
   const ws = await c.env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(WORKSPACE_ID).first<{ name: string }>();
   const link = `${c.env.PUBLIC_URL || new URL(c.req.url).origin}/app/invite/${token}`;
   // No email and no redirect: the link is shown once, on this response, and never put in this page's own URL.
-  const message = `${T.inviteText(ws?.name ?? "", S.roles[role], email)}\n${link}`;
-  const ready = html`<div class="card"><p>${T.linkReady(email)}</p>
-<div class="actions"><a class="btn primary" href="https://wa.me/?text=${encodeURIComponent(message)}" rel="noopener noreferrer" target="_blank">${T.sendOnWhatsApp}</a></div>
-<p><label class="small muted" for="invite-link">${T.copyLabel}</label><br><input type="text" id="invite-link" readonly value="${link}" style="width:100%"></p></div>`;
+  const message = `${inviteText(hasOwnName(ws?.name) ? ws!.name : "the team", S.roles[role], email)}\n${link}`;
+  const T = teamCopy(me.locale);
+  const ready = html`<div class="card attention ready" role="status"><p>${T.linkReady(email)}</p>
+<div class="acts"><a class="btn primary" href="https://wa.me/?text=${encodeURIComponent(message)}" rel="noopener noreferrer" target="_blank">${T.sendOnWhatsApp}</a></div>
+<label class="fld"><span>${T.copyLabel}</span><input type="text" id="invite-link" readonly value="${link}"></label></div>`;
   return teamPage(c, null, 200, ready);
 });
 

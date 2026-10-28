@@ -4,7 +4,7 @@
 // The old /admin pages keep their own shell further down (page(), CONSOLE_CSS), recoloured to the same palette, until ticket 25.
 // Colour is never the only signal: every status has a word. Times are always the business's time (Bengaluru).
 import { html, raw } from "hono/html";
-import { accentCss, type AccentName } from "./business";
+import { accentCss, hasOwnName, type AccentName } from "./business";
 import { consoleCopy, consoleLang, type ConsoleCopy } from "./console-copy";
 import { FONT_FACES } from "./fonts";
 import { formatIstLang, formatIstParts, istDay } from "./slots";
@@ -211,6 +211,10 @@ details.confirm .panel .btn{width:100%}
 .find input::placeholder{color:var(--muted);opacity:1}
 .me{color:var(--muted);font-size:16px;margin:0;padding:0 12px}
 .me b{display:block;color:var(--ink);font-weight:500}
+.main.plain{padding:24px 16px 48px}
+.plain .content{max-width:640px}
+.plain .brand{margin:0 0 32px}
+.plain .acts>form,.plain .acts>.btn{flex:0 0 auto}
 @media (min-width:900px){
 .tabbar,.topline{display:none}
 .shell{display:grid;grid-template-columns:272px minmax(0,1fr);min-height:100vh}
@@ -219,6 +223,7 @@ details.confirm .panel .btn{width:100%}
 .rail .foot{margin-top:auto;display:flex;flex-direction:column;gap:8px}
 .rail .foot .btn{justify-content:flex-start}
 .main{padding:40px 48px 64px}
+.main.plain{padding:64px 48px}
 .screen{margin-top:0}
 .acts>.btn,.acts>form,.acts>details{flex:0 0 auto}
 .acts>details[open]{flex:1 1 100%}
@@ -367,6 +372,7 @@ export function consoleFrame(o: FrameOpts) {
   const lang = consoleLang(o.locale);
   const c = consoleCopy(lang);
   const tabs = tabsFor(o.role);
+  const business = hasOwnName(o.business) ? o.business : c.brandNeutral; // the seeded default name is never shown
   const label = (t: TabId) => text(c, SCREENS[t].label);
   const badge = (t: TabId) => (o.badges?.[t] ? html`<span class="badge"><span class="vh">${c.waitingCount(o.badges[t] ?? 0)}: </span>${o.badges[t]}</span>` : "");
   const current = (t: TabId) => (t === o.active ? raw(' aria-current="page"') : "");
@@ -393,13 +399,23 @@ export function consoleFrame(o: FrameOpts) {
     : "";
 
   return html`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${o.title} · ${o.business}</title><style>${raw(FONT_FACES)}${raw(APP_CSS)}</style>${raw(accentCss(o.accent ?? "teal"))}</head><body>
+<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${o.title} · ${business}</title><style>${raw(FONT_FACES)}${raw(APP_CSS)}</style>${raw(accentCss(o.accent ?? "teal"))}</head><body>
 <a class="skip" href="#main">${c.skipToContent}</a>
 <div class="shell">
-<nav class="rail" aria-label="${c.navLabel}"><p class="brand">${o.business}</p>${search}<ul>${railTabs}</ul><div class="foot">${o.member ? html`<p class="me"><b>${o.member}</b>${roleName(o.role, lang)}</p>` : html`<p class="me">${roleName(o.role, lang)}</p>`}${switcher}</div></nav>
-<main class="main" id="main"><div class="content"><div class="topline"><p class="brand">${o.business}</p>${switcher}</div>${o.flash ? html`<p class="flash" role="status">${o.flash}</p>` : ""}${o.banners ?? ""}${o.body}</div></main>
+<nav class="rail" aria-label="${c.navLabel}"><p class="brand">${business}</p>${search}<ul>${railTabs}</ul><div class="foot">${o.member ? html`<p class="me"><b>${o.member}</b>${roleName(o.role, lang)}</p>` : html`<p class="me">${roleName(o.role, lang)}</p>`}${switcher}</div></nav>
+<main class="main" id="main"><div class="content"><div class="topline"><p class="brand">${business}</p>${switcher}</div>${o.flash ? html`<p class="flash" role="status">${o.flash}</p>` : ""}${o.banners ?? ""}${o.body}</div></main>
 </div>
 <nav class="tabbar" aria-label="${c.navLabel}">${bar}</nav>
+</body></html>`;
+}
+
+// A page with no tabs, on the same look: "No access" before sign-in, an invite to accept, "The console has moved". `body` is escaped html.
+export function plainFrame(o: { locale?: string | null; title: string; body: unknown; accent?: AccentName }) {
+  const lang = consoleLang(o.locale);
+  const c = consoleCopy(lang);
+  return html`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${o.title} · ${c.brandNeutral}</title><style>${raw(FONT_FACES)}${raw(APP_CSS)}</style>${raw(accentCss(o.accent ?? "teal"))}</head><body>
+<main class="main plain" id="main"><div class="content"><p class="brand">${c.brandNeutral}</p>${o.body}</div></main>
 </body></html>`;
 }
 

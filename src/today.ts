@@ -9,7 +9,7 @@ import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { FIRST_BUY } from "./amma";
 import { can, canAny, memberById, memberCsrf, type Member } from "./auth";
-import { chatTextHidden } from "./business";
+import { chatTextHidden, hasOwnName } from "./business";
 import { config } from "./config";
 import { auditStmt, languageCsrf, refused, S, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleCopy, consoleLang, type ConsoleLang } from "./console-copy";
@@ -23,7 +23,7 @@ import { iso, istDay } from "./slots";
 import { bookingsOpen } from "./switches";
 import {
   appointmentRow, banner, bookingChip, button, callLangText, clock, confirmStep, consoleFrame, dayName, emptyState, firstName,
-  forWhomText, last4, ledger, listRow, roleName, rows as rowList, screenHead, section, statusChip,
+  forWhomText, last4, ledger, listRow, roleName, rows as rowList, screenHead, section, statusChip, taskCard,
 } from "./ui";
 
 // ---------- Today's words, English and Hindi, in the shape of src/console-copy.ts (a later review moves them into the catalogue) ----------
@@ -384,10 +384,15 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
     if (await heartbeatStale(env, now)) banners.push(banner({ text: cc.bannerBot, fix: { label: cc.fixBot, href: "/app/settings" }, tone: "danger" }));
   }
 
+  // The owner's one quiet set-up task while the workspace still has the seeded name.
+  const ws = await env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>();
+  const nameTask = isOwner && !hasOwnName(ws?.name) ? html`<div class="setup">${taskCard({ title: cc.taskName, why: cc.taskNameWhy, primary: { label: cc.taskNameButton, href: "/app/settings#business", kind: "secondary" } })}</div>` : "";
+
   const body = html`${TODAY_CSS}${screenHead("today", m.locale)}
 ${safety.length ? section(cc.secSafety, safetyCards, safety.length) : ""}
 ${replies && waiting.length ? section(cc.secWaiting, waitingCards, waiting.length) : ""}
 ${approvals.length ? section(cc.secApprovals, approvals, approvals.length) : ""}
+${nameTask}
 ${section(cc.secUpNext, upNext, day.length)}
 ${section(cc.secLater, later)}
 ${loose.length + looseLinks.length ? section(cc.secLooseEnds, looseBody, loose.length + looseLinks.length) : ""}`;
@@ -395,7 +400,6 @@ ${loose.length + looseLinks.length ? section(cc.secLooseEnds, looseBody, loose.l
   const code = c.req.query("m") ?? "";
   const joined = ({ joined: S.invite.joined, transferred: S.transferred, transferred_p: S.transferredPractitioner } as Record<string, string>)[code];
   const flash = o.flash ?? (FLASH[code] ? (t[FLASH[code]] as string) : joined ?? null);
-  const ws = await env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>();
   return c.html(
     consoleFrame({
       role: m.role,

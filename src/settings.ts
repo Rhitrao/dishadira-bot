@@ -331,7 +331,7 @@ const actionText = (action: string, locale: string) =>
 
 // ---------- the page frame for the owner's screens (Payments uses it too) ----------
 // Form fields and small layouts the shared stylesheet doesn't have yet; inline, as the CSP allows inline styles.
-const EXTRA_CSS = `<style>
+export const EXTRA_CSS = `<style>
 .fld{display:block;margin:0 0 16px}.fld>span{display:block;font-weight:500;margin:0 0 4px}.fld .help{display:block;color:var(--muted);font-size:16px;margin:4px 0 0}
 .fld input[type=text],.fld select{width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px}
 .fld.bad input,.fld.bad select{border:2px solid var(--danger)}.fld .err{display:block;color:var(--danger);font-size:16px;margin:4px 0 0}
