@@ -460,12 +460,12 @@ describe("staff and safety messages", () => {
     expect(owner).toContain("synthetic helpline text");
   });
 
-  it("wiped text says so, and a chat with every text gone says who wrote and when stays", async () => {
+  it("wiped text collapses into one quiet line saying when and why it went (ticket 27)", async () => {
     const { a } = await three();
     await db.prepare("INSERT INTO messages (conversation_id, direction, kind, body, status, wiped_at) VALUES (?1, 'IN', 'text', NULL, 'SENT', ?2)").bind(a, iso(NOW - HOUR)).run();
     const body = await (await get(`/app/people/${a}`)).text();
-    expect(body).toContain("(text deleted)");
-    expect(body).toContain("The message text has been deleted. Who wrote, and when, stays.");
+    expect(body).toContain("1 message was deleted after 7 days, for privacy");
+    expect(body).not.toContain("(text deleted)");
   });
 });
 

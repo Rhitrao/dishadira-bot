@@ -148,12 +148,12 @@ export function redact(text: string): string {
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 // The last `historyMessages` messages that still have text, oldest first, up to and including message row `uptoId`. Messages that never went out
-// (SENDS was off) are left out, and so are templates. Consecutive messages from one side are joined; the first and the last must be the customer's.
+// (SENDS was off) are left out, and so are templates and the customer's taps (stored as the button's label). Consecutive messages from one side are joined; the first and the last must be the customer's.
 export async function recentMessages(db: D1Database, convId: number, uptoId: number): Promise<ChatMessage[]> {
   const { results } = await db
     .prepare(
       `SELECT direction, body FROM messages
-       WHERE conversation_id = ?1 AND id <= ?2 AND body IS NOT NULL AND body != '' AND kind != 'template' AND (direction = 'IN' OR status IN ('SENT', 'SENDING', 'UNKNOWN'))
+       WHERE conversation_id = ?1 AND id <= ?2 AND body IS NOT NULL AND body != '' AND kind NOT IN ('template', 'interactive', 'button') AND (direction = 'IN' OR status IN ('SENT', 'SENDING', 'UNKNOWN'))
        ORDER BY id DESC LIMIT ?3`,
     )
     .bind(convId, uptoId, config.ai.historyMessages)

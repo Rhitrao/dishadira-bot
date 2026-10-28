@@ -170,6 +170,13 @@ form{margin:0}
 .bubble.bot,.bubble.assistant{align-self:flex-end;background:var(--sunk);border-color:var(--sunk);border-bottom-right-radius:4px}
 .bubble.team{align-self:flex-end;background:var(--accent-tint);border-color:var(--accent-tint);border-bottom-right-radius:4px}
 .bubble.safety{align-self:flex-end;background:var(--danger-tint);border-color:var(--danger);border-bottom-right-radius:4px}
+.bubble.quiet{background:transparent;border:1px dashed var(--line)}
+.bubble.quiet>p:not(.by){color:var(--muted)}
+.wiped{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:16px;margin:4px 0;text-align:center}
+.wiped::before,.wiped::after{content:"";flex:1 1 24px;border-top:1px solid var(--line)}
+.earlier{margin:0 0 12px;text-align:center}
+.earlier a{display:inline-flex;align-items:center;min-height:48px;font-weight:500}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}
 details.confirm>summary{list-style:none;display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:10px 20px;border-radius:var(--r-sm);border:1px solid var(--danger);background:var(--surface);color:var(--danger);font-size:18px;font-weight:500;line-height:1.25;cursor:pointer;text-align:center}
 details.confirm>summary::-webkit-details-marker{display:none}
 details.confirm .panel{margin-top:8px;background:var(--danger-tint);border-radius:var(--r-sm);padding:16px}
@@ -309,11 +316,12 @@ export const rows = (items: unknown) => html`<div class="rows">${items}</div>`;
 // Conversation bubble: every message labelled. Assistant answers show the question type in small text.
 // Staff never see a safety message's text: pass hideSafety and the bubble says only that an owner is needed.
 export type From = "customer" | "bot" | "assistant" | "team" | "safety";
-export function bubble(o: { from: From; text: string; time: string; teamName?: string; kind?: string; hideSafety?: boolean; locale?: string | null }) {
+// `quiet`: a line about the message rather than its words (a tap, a photo, a template), drawn lighter.
+export function bubble(o: { from: From; text: string; time: string; teamName?: string; kind?: string; hideSafety?: boolean; locale?: string | null; quiet?: boolean }) {
   const c = consoleCopy(o.locale);
   const who = { customer: c.fromCustomer, bot: c.fromBot, assistant: c.fromAssistant, team: o.teamName || c.roleSTAFF, safety: c.fromSafety }[o.from];
   const body = o.from === "safety" && o.hideSafety ? c.safetyHidden : o.text;
-  return html`<div class="bubble ${o.from}"><p class="by">${who} · <time>${o.time}</time></p><p>${body}</p>${o.kind ? html`<p class="kind">${o.kind}</p>` : ""}</div>`;
+  return html`<div class="bubble ${o.from}${o.quiet ? " quiet" : ""}"><p class="by">${who} · <time>${o.time}</time></p><p>${body}</p>${o.kind ? html`<p class="kind">${o.kind}</p>` : ""}</div>`;
 }
 export const thread = (bubbles: unknown) => html`<div class="thread">${bubbles}</div>`;
 

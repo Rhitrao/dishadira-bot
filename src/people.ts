@@ -17,6 +17,7 @@ import { auditStmt, languageCsrf, type ConsoleCtx, type ConsoleVars } from "./co
 import { consoleCopy } from "./console-copy";
 import { rupees, serviceName } from "./copy";
 import type { Env } from "./env";
+import { collapseWiped, describe, earlierLink, isWiped, keptFor, SHOWN_SQL, THREAD_ALL, THREAD_LATEST, wipedLine } from "./chat";
 import { peopleCopy, type PeopleCopy } from "./people-copy";
 import { personState, quietActive, noSellActiveFor, ensureState } from "./noise";
 import { applyMoneyReceived } from "./requests";
@@ -309,19 +310,19 @@ const whatPaid = (p: PeopleCopy, r: { purpose: string; size: number | null }) =>
 // been paid for the same booking, and no request for it is already waiting.
 const canRecord = (r: PayRow) => (r.state === "PENDING" || r.state === "FAILED") && r.linkId !== null && r.paidSiblings === 0 && !r.asked;
 
-type Line = { dir: string; body: string | null; wipedAt: string | null; at: string; key: string | null; status: string; safety: number };
-async function chatOf(env: Env, convId: number): Promise<Line[]> {
+type Line = { dir: string; kind: string; body: string | null; wipedAt: string | null; at: string; key: string | null; status: string; safety: number };
+async function chatOf(env: Env, convId: number, limit: number): Promise<{ lines: Line[]; more: boolean }> {
   // safety = 1: a crisis or emergency message from the bot, or the customer's message that set it off.
   const { results } = await env.DB.prepare(
-    `SELECT m.direction AS dir, m.body, m.wiped_at AS wipedAt, m.created_at AS at, m.dedupe_key AS key, m.status,
+    `SELECT m.direction AS dir, m.kind, m.body, m.wiped_at AS wipedAt, m.created_at AS at, m.dedupe_key AS key, m.status,
        CASE WHEN m.direction = 'OUT' AND (m.dedupe_key LIKE '%:crisis' OR m.dedupe_key LIKE '%:emergency') THEN 1
             WHEN m.direction = 'IN' AND m.wa_message_id IS NOT NULL AND EXISTS (SELECT 1 FROM messages o WHERE o.dedupe_key IN (m.wa_message_id || ':crisis', m.wa_message_id || ':emergency')) THEN 1
             ELSE 0 END AS safety
-     FROM messages m WHERE m.conversation_id = ?1 ORDER BY m.id DESC LIMIT 40`,
+     FROM messages m WHERE m.conversation_id = ?1 AND ${SHOWN_SQL} ORDER BY m.id DESC LIMIT ?2`,
   )
-    .bind(convId)
+    .bind(convId, limit + 1)
     .all<Line>();
-  return results.reverse();
+  return { lines: results.slice(0, limit).reverse(), more: results.length > limit };
 }
 const fromOf = (l: Line): From =>
   l.dir === "IN" ? "customer" : l.safety ? "safety" : l.key?.startsWith("admin-reply:") || l.key?.startsWith("app-reply:") ? "team" : /:ai(-help)?$/.test(l.key ?? "") ? "assistant" : "bot";
@@ -400,26 +401,29 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
   if (can(m, "read_chat", target) !== "yes" || (isPractitioner(m) && !PRACTITIONER_CHAT)) chatHtml = emptyState(p.chatForCalls);
   else {
     const allHidden = await chatTextHidden(c.env.DB, m.role);
-    const lines = await chatOf(c.env, id);
+    const { lines, more } = await chatOf(c.env, id, c.req.query("chat") === "all" ? THREAD_ALL : THREAD_LATEST);
     const keepMin = retentionMinutes(c.env);
     const keep = keepMin >= 1440 ? p.keepDays(Math.round(keepMin / 1440)) : p.keepMinutes(keepMin);
-    const live = lines.some((l) => l.body !== null && !l.wipedAt);
+    const live = lines.some((l) => !isWiped(l));
     const deleteAt = person.lastUserAt ? iso(Date.parse(person.lastUserAt) + keepMin * MIN) : null;
     const note = !lines.length
       ? ""
       : live && deleteAt
         ? html`<p class="muted">${p.chatDeletedOn(keepMin >= 1440 ? dayName(deleteAt, loc) : when(p, deleteAt, loc))}. ${p.chatKept(keep)}</p>`
-        : lines.every((l) => l.wipedAt || l.body === null)
-          ? html`<p class="muted">${p.chatDeleted}</p>`
-          : html`<p class="muted">${p.chatKept(keep)}</p>`;
-    const bubbles = lines.map((l) => {
+        : html`<p class="muted">${p.chatKept(keep)}</p>`;
+    const kept = keptFor(c.env, loc);
+    const bubbles = collapseWiped(lines).map((it) => {
+      if ("wiped" in it) return wipedLine(it.wiped, it.earlier, kept, loc);
+      const l = it.line;
       const from = fromOf(l);
+      const d = describe(l, loc);
       const hidden = l.safety === 1 && can(m, "read_chat", { ...target, safety: true }) !== "yes";
-      const text = hidden ? cc.safetyHidden : l.wipedAt ? p.textRemoved : allHidden ? cc.chatTextHidden : l.body ?? p.noText;
-      const kind = l.dir === "OUT" && l.status === "FAILED" ? p.notDeliveredChip : l.dir === "OUT" && l.status === "SKIPPED" ? p.notSentChip : undefined;
-      return bubble({ from, text, time: when(p, l.at, loc), kind, hideSafety: hidden, locale: loc, teamName: l.key?.startsWith("admin-reply:") ? cc.roleOWNER : undefined });
+      const text = hidden ? cc.safetyHidden : allHidden ? cc.chatTextHidden : d.text;
+      const status = l.dir === "OUT" && l.status === "FAILED" ? p.notDeliveredChip : l.dir === "OUT" && l.status === "SKIPPED" ? p.notSentChip : undefined;
+      const kind = [allHidden || hidden ? undefined : d.note, status].filter(Boolean).join(" · ") || undefined;
+      return bubble({ from, text, time: when(p, l.at, loc), kind, hideSafety: hidden, locale: loc, quiet: d.tap && !hidden && !allHidden, teamName: l.key?.startsWith("admin-reply:") ? cc.roleOWNER : undefined });
     });
-    chatHtml = html`${note}${lines.length ? thread(bubbles) : emptyState(p.noMessages)}`;
+    chatHtml = html`${note}${more ? earlierLink(`${base}?chat=all#chat`, loc) : ""}${lines.length ? thread(bubbles) : emptyState(p.noMessages)}`;
   }
 
   // The safety panel, in plain words, one line per state, with the owner's buttons.
@@ -463,7 +467,7 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
   }
   if (owner) more.push(confirmWith({ label: p.removeData, effect: p.removeDataEffect, confirm: p.removeDataYes, action: `${base}/remove-data`, csrf: await token(c, `people-remove:${id}`), fields: reasonField(p, "remove-reason", draft.form === "remove" ? draft.reason : "") }));
 
-  const detail = html`${head}${section(p.secNext, next)}${section(p.secPackage, packHtml)}${payHtml}${section(p.secChat, chatHtml)}${section(p.secSafety, safetyHtml)}${
+  const detail = html`${head}${section(p.secNext, next)}${section(p.secPackage, packHtml)}${payHtml}<div id="chat">${section(p.secChat, chatHtml)}</div>${section(p.secSafety, safetyHtml)}${
     more.length ? section(p.secMore, html`<div class="acts">${more}</div>`) : ""
   }`;
   const list = listHtml({ m, p, rows: await listPeople(c.env, m, q, f, nowMs), q, f, openId: id, nowMs });

@@ -34,8 +34,8 @@ const message = z.object({
   text: z.object({ body: z.string() }).optional(),
   interactive: z
     .object({
-      button_reply: z.object({ id: z.string() }).optional(),
-      list_reply: z.object({ id: z.string() }).optional(),
+      button_reply: z.object({ id: z.string(), title: z.string().optional() }).optional(),
+      list_reply: z.object({ id: z.string(), title: z.string().optional() }).optional(),
     })
     .optional(),
   button: z.object({ payload: z.string().optional(), text: z.string().optional() }).optional(), // template quick-reply tap
@@ -249,9 +249,12 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
 
   const choice = m.interactive?.button_reply?.id ?? m.interactive?.list_reply?.id ?? null;
   const text = m.type === "text" ? (m.text?.body ?? "") : null;
+  // A tap is stored as the label of the button or list row (our own words), so the console can say "Tapped: …"; the chat wipe removes it
+  // like any text, and the assistant never reads it (src/ai.ts leaves taps out).
+  const tapLabel = (m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? m.button?.text)?.slice(0, 100) || null;
   await db
     .prepare("INSERT OR IGNORE INTO messages (conversation_id, direction, wa_message_id, kind, body, status, created_at) VALUES (?1, 'IN', ?2, ?3, ?4, 'RECEIVED', ?5)")
-    .bind(conv.id, m.id, m.type, text, at)
+    .bind(conv.id, m.id, m.type, text ?? tapLabel, at)
     .run();
   const mine = await db.prepare("SELECT id FROM messages WHERE wa_message_id = ?1").bind(m.id).first<{ id: number }>();
 
