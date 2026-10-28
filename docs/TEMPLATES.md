@@ -32,7 +32,7 @@ Thank you, we have received your payment. Shantha Rao will call you on {{1}} at 
 |---|---|---|
 | {{1}} | Day of the call | Tue, 6 Oct |
 | {{2}} | Time of the call (India time) | 2:00 pm |
-| {{3}} | The business number Amma calls from | +91 00000 00000 |
+| {{3}} | The business number Amma calls from | +91 63661 99009 |
 
 ## 2. session_offer
 
@@ -149,7 +149,7 @@ Seven more templates, one per template above, with the same variables in the sam
 हमें आपका भुगतान मिल गया है। शांता राव जी {{1}} को {{2}} बजे {{3}} से आपको कॉल करेंगी। वह नंबर सिर्फ़ उनकी कॉल के लिए है, इसलिए मैसेज यहीं भेजें।
 ```
 
-Samples: {{1}} मंगल, 6 अक्टूबर · {{2}} दोपहर 2:00 · {{3}} +91 00000 00000
+Samples: {{1}} मंगल, 6 अक्टूबर · {{2}} दोपहर 2:00 · {{3}} +91 63661 99009
 
 ### 2. session_offer_hi
 
