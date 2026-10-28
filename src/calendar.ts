@@ -188,6 +188,7 @@ async function calendarPage(c: ConsoleCtx) {
   const [entries, busy] = await Promise.all([entriesBetween(c.env, from, to, scope, nowMs), busyBetween(c.env, from, to, nowMs)]);
 
   const step = view === "week" ? 7 : 1;
+  const anchor = view === "week" ? days[0] : d; // a week moves Monday to Monday
   const here = (o: Partial<{ view: CalView; d: string; p: number | null }>) => link({ view, d, p: picked, ...o });
   const todayYmd = istDay(nowMs);
   const showingToday = days.includes(todayYmd);
@@ -195,9 +196,9 @@ async function calendarPage(c: ConsoleCtx) {
     (v) => html`<a href="${here({ view: v, d: v === view ? d : showingToday ? todayYmd : days[0] })}"${v === view ? raw(' class="on" aria-current="page"') : ""}>${v === "day" ? cc.calDay : cc.calWeek}</a>`,
   )}</nav>`;
   const nav = html`<nav class="calnav" aria-label="${cc.calViewLabel}">
-<a class="btn arrow" href="${here({ d: addDays(d, -step) })}" aria-label="${view === "week" ? cc.calPrevWeek : cc.calPrevDay}" title="${view === "week" ? cc.calPrevWeek : cc.calPrevDay}">‹</a>
+<a class="btn arrow" href="${here({ d: addDays(anchor, -step) })}" aria-label="${view === "week" ? cc.calPrevWeek : cc.calPrevDay}" title="${view === "week" ? cc.calPrevWeek : cc.calPrevDay}">‹</a>
 <a class="btn${showingToday ? " primary" : ""}" href="${here({ d: todayYmd })}"${showingToday ? raw(' aria-current="date"') : ""}>${cc.calToday}</a>
-<a class="btn arrow" href="${here({ d: addDays(d, step) })}" aria-label="${view === "week" ? cc.calNextWeek : cc.calNextDay}" title="${view === "week" ? cc.calNextWeek : cc.calNextDay}">›</a></nav>`;
+<a class="btn arrow" href="${here({ d: addDays(anchor, step) })}" aria-label="${view === "week" ? cc.calNextWeek : cc.calNextDay}" title="${view === "week" ? cc.calNextWeek : cc.calNextDay}">›</a></nav>`;
   const filter =
     all && team.length > 1
       ? html`<nav class="seg who" aria-label="${cc.calWhose}">${[{ id: null as number | null, name: cc.calEveryone }, ...team].map(
