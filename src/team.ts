@@ -137,7 +137,7 @@ async function teamPage(c: ConsoleCtx, flash: string | null, status: 200 | 400 =
 ${ready ?? ""}${section(T.title, cards, members.length)}${section(T.inviteTitle, invite)}`;
   return appPage(c, { active: "settings", title: T.title, body, flash, status, back: "/app/settings/team" });
 }
-const TEAM_CSS = `.crumb{display:inline-flex;align-items:center;min-height:48px;font-weight:500}.lead{margin:0 0 8px}.mail{overflow-wrap:anywhere}
+const TEAM_CSS = `.lead{margin:0 0 8px}.card .fld{max-width:560px}.rolef .fld{max-width:360px}.mail{overflow-wrap:anywhere}
 .rolef{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 12px;margin:16px 0 0}.rolef .fld{flex:1 1 200px;margin:0}.rolef .btn{flex:0 0 auto}
 .card .pick label{flex:1 1 160px}.ready input{width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px}`;
 

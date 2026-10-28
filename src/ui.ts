@@ -109,6 +109,8 @@ p{margin:8px 0}
 .skip{position:absolute;left:-9999px;top:8px}
 .skip:focus{left:16px;z-index:30;background:var(--surface);color:var(--ink);padding:12px 16px;border-radius:var(--r-sm)}
 .muted{color:var(--muted)}
+.nw{white-space:nowrap}
+.crumb,a.tap{display:inline-flex;align-items:center;min-height:48px;font-weight:500}
 .num{font-size:20px;font-weight:600}
 .main{padding:8px 16px calc(104px + env(safe-area-inset-bottom));min-width:0}
 .content{max-width:1200px;margin:0 auto}
@@ -145,7 +147,7 @@ form{margin:0}
 .chip.danger{background:var(--danger-tint);color:var(--danger)}
 .chip.done{background:var(--done-tint);color:var(--done)}
 .ledger{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:0 20px;margin:0 0 12px}
-.appt{display:grid;grid-template-columns:5.2em minmax(0,1fr);gap:12px 16px;padding:16px 0;border-top:1px solid var(--line)}
+.appt{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px 16px;padding:16px 0;border-top:1px solid var(--line)}
 .appt:first-child{border-top:0}
 .appt .time{font-size:20px;font-weight:600;line-height:1.3;padding-right:12px;border-right:1px solid var(--line);white-space:nowrap}
 .appt .who{font-size:20px;font-weight:600;line-height:1.3;margin:0}
@@ -158,6 +160,9 @@ form{margin:0}
 .rows{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:0 0 12px}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;padding:12px 20px;border-top:1px solid var(--line);color:var(--ink);text-decoration:none}
 .row:first-child{border-top:0}
+.row{flex-wrap:wrap}
+.row>div:first-child{flex:1 1 220px;min-width:0}
+span.d{white-space:nowrap}
 .row .t{font-weight:600;margin:0}
 .row .s{color:var(--muted);margin:0}
 .row.on{background:var(--accent-tint);box-shadow:inset 4px 0 0 var(--accent)}
@@ -184,6 +189,7 @@ details.confirm .effect{margin:0 0 12px}
 details.confirm .panel .btn{width:100%}
 .empty{border:1px dashed var(--muted);border-radius:var(--r);padding:20px;margin:0 0 12px;color:var(--muted)}
 .empty p{margin:0}
+.empty p+p{margin-top:12px}
 .empty a{display:inline-flex;align-items:center;min-height:48px;font-weight:500}
 .banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:12px 16px;border-radius:var(--r);margin:0 0 12px;background:var(--attention-tint);border:1px solid var(--attention)}
 .banner.danger{background:var(--danger-tint);border-color:var(--danger)}
@@ -285,16 +291,21 @@ export function button(a: Action) {
   return html`<form method="post" action="${a.post.action}"><input type="hidden" name="csrf" value="${a.post.csrf}">${fields}<button class="${cls}" type="submit">${a.label}</button></form>`;
 }
 
+// "Asha …4821" with the last 4 digits kept on one line with their ellipsis (escaped text in, html out).
+export const keep4 = (s: string) => s.split(/(…\d{4})/).map((p, i) => (i % 2 ? html`<span class="nw">${p}</span>` : html`${p}`));
+
 // Task card: what to do, why and how long it has waited, one primary button, at most one secondary link.
 export function taskCard(o: { title: string; why: string; tone?: "danger" | "attention" | "plain"; chip?: unknown; primary: Action; secondary?: { label: string; href: string } }) {
-  return html`<article class="card ${o.tone ?? "plain"}"><h3>${o.title}</h3><p class="why">${o.why}</p>${o.chip ?? ""}
+  return html`<article class="card ${o.tone ?? "plain"}"><h3>${keep4(o.title)}</h3><p class="why">${keep4(o.why)}</p>${o.chip ?? ""}
 <div class="acts">${button({ ...o.primary, kind: o.primary.kind ?? "primary" })}${o.secondary ? html`<a class="link" href="${o.secondary.href}">${o.secondary.label}</a>` : ""}</div></article>`;
 }
 
 // Appointment row: time, first name and last 4 digits, the service, who it's for and the call language, the status in words,
 // and a Call or Open action. `extra` (the outcome buttons, "Saved. Undo until …") goes under the row. Rows sit inside ledger().
 export function appointmentRow(o: { time: string; name: string; waId?: string | null; service: string; details?: string[]; status?: unknown; action?: Action; extra?: unknown }) {
-  const meta = [o.service, ...(o.details ?? [])].filter(Boolean).join(" · ");
+  // Short parts ("15-minute call") never break inside; a long one ("Waiting for payment until 2:32 pm") may.
+  const parts = [o.service, ...(o.details ?? [])].filter(Boolean);
+  const meta = parts.map((p, i) => html`${i ? " · " : ""}<span${p.length <= 22 ? raw(' class="nw"') : ""}>${p}</span>`);
   return html`<div class="appt"><div class="time">${o.time}</div><div><p class="who">${o.name}${o.waId ? html` <span class="d">${last4(o.waId)}</span>` : ""}</p><p class="meta">${meta}</p></div>
 <div class="side">${o.status ?? ""}${o.action ? button(o.action) : ""}</div><div class="extra">${o.extra ?? ""}</div></div>`;
 }
@@ -310,7 +321,7 @@ export const callLangText = (lang: string | null | undefined, locale?: string | 
 
 // A row in a list that opens an item (Inbox, People, Payments). `on` marks the item open in the detail pane.
 export const listRow = (o: { href: string; title: string; sub?: string; end?: unknown; on?: boolean }) =>
-  html`<a class="row${o.on ? " on" : ""}" href="${o.href}"${o.on ? raw(' aria-current="true"') : ""}><div><p class="t">${o.title}</p>${o.sub ? html`<p class="s">${o.sub}</p>` : ""}</div>${o.end ?? ""}</a>`;
+  html`<a class="row${o.on ? " on" : ""}" href="${o.href}"${o.on ? raw(' aria-current="true"') : ""}><div><p class="t">${keep4(o.title)}</p>${o.sub ? html`<p class="s">${o.sub}</p>` : ""}</div>${o.end ?? ""}</a>`;
 export const rows = (items: unknown) => html`<div class="rows">${items}</div>`;
 
 // Conversation bubble: every message labelled. Assistant answers show the question type in small text.

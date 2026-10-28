@@ -26,7 +26,7 @@ import { sendMessage, sendOrTemplate, templateVariant, type Out } from "./send";
 import { availableSlots, formatIstLang, generateSlots, holdSlot, iso, istDay, istMinutes, nextWorkingDays, PRACTITIONER_SQL, spreadTimes, type Slot, type SlotKind } from "./slots";
 import { bookingsOpen } from "./switches";
 import { collapseWiped, describe, earlierLink, keptFor, SHOWN_SQL, THREAD_ALL, THREAD_LATEST, wipedLine } from "./chat";
-import { bubble, clock, consoleFrame, dayName, firstName, forWhomText, last4, listDetail, listRow, rows, screenHead, section, statusChip, emptyState, thread, type From } from "./ui";
+import { bubble, clock, keep4, consoleFrame, dayName, firstName, forWhomText, last4, listDetail, listRow, rows, screenHead, section, statusChip, emptyState, thread, type From } from "./ui";
 
 const MIN = 60_000;
 const HOUR = 3_600_000;
@@ -137,7 +137,11 @@ details.done .panel .btn{width:100%;margin-top:12px}
 .note-line{color:var(--muted);margin:0 0 12px}
 .replyf{margin:0 0 12px}
 .replyf .acts{margin-top:12px}
-.nextsteps{margin:0 0 8px}
+.nextsteps{margin:0 0 8px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.nextsteps>*{min-width:0}
+.nextsteps .btn,.nextsteps summary.btn{width:100%;height:100%}
+.nextsteps>details[open]{grid-column:1/-1}
+@media (min-width:900px){.nextsteps{display:flex}.nextsteps .btn,.nextsteps summary.btn{width:auto;height:auto}}
 .ibx .card .why{margin:4px 0 0}
 .wide-only{display:none}
 @media (min-width:900px){.wide-only{display:inline-flex}}
@@ -182,7 +186,7 @@ async function renderScreen(c: ConsoleCtx, o: { view: View; openId?: number; det
       href: `/app/inbox/${ch.id}${o.view === "all" ? "" : `?v=${o.view}`}`,
       title: customerName(ch, locale),
       sub: `${why(ch, ic)} · ${ic.waited(ago(now - Date.parse(since(ch)), ic))}`,
-      end: html`<div class="chips">${statusChip(replyLine(ch, locale, now), inWindow(ch, now) ? "plain" : "attention")}${claim}</div>`,
+      end: html`<div class="chips">${statusChip(inWindow(ch, now) ? replyLine(ch, locale, now) : ic.windowClosedShort, inWindow(ch, now) ? "plain" : "attention")}${claim}</div>`,
       on: ch.id === o.openId,
     });
   });
@@ -277,7 +281,7 @@ async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: st
   const ic = inboxCopy(locale);
   const r = rights(m, ch);
   const live = claimLive(ch, now);
-  const head = html`<article class="card${isSafety(ch) ? " danger" : ""}"><h2 class="who-h">${customerName(ch, locale)}</h2>
+  const head = html`<article class="card${isSafety(ch) ? " danger" : ""}"><h2 class="who-h">${keep4(customerName(ch, locale))}</h2>
 <p class="why">${why(ch, ic)} · ${ic.waited(ago(now - Date.parse(since(ch)), ic))}</p>
 <div class="chips">${statusChip(replyLine(ch, locale, now), inWindow(ch, now) ? "plain" : "attention")}${isSafety(ch) ? statusChip(ic.whySafety, "danger") : ""}</div></article>`;
   const notes: unknown[] = [];
@@ -363,7 +367,7 @@ async function bookHtml(c: ConsoleCtx, ch: Chat) {
   const lang = consoleLang(locale);
   const ic = inboxCopy(locale);
   const r = rights(m, ch);
-  const parts: unknown[] = [html`<p class="wide-only"><a href="/app/inbox/${ch.id}">← ${ic.backToChat}</a></p><h2 class="who-h">${customerName(ch, locale)}</h2>`];
+  const parts: unknown[] = [html`<p class="wide-only"><a class="crumb" href="/app/inbox/${ch.id}">← ${ic.backToChat}</a></p><h2 class="who-h">${customerName(ch, locale)}</h2>`];
   const st = await personState(c.env.DB, ch.id);
   if (noSellActiveFor(st, now)) parts.push(html`<p class="card attention">${ic.noSell(dayName(st.noSellUntil!, locale))}</p>`);
   else {
@@ -383,7 +387,7 @@ async function bookHtml(c: ConsoleCtx, ch: Chat) {
 <fieldset><legend>${ic.serviceLabel}</legend><div class="opts">${svc}</div></fieldset><fieldset><legend>${ic.forWhomLabel}</legend><div class="opts">${who}</div></fieldset>
 <fieldset><legend>${ic.timeLabel}</legend></fieldset>${timeFieldsets(days, locale, "time")}
 ${payable ? html`<fieldset><legend>${ic.payLabel}</legend><div class="opts stack">${pays}</div></fieldset>` : html`<p class="muted">${ic.linkNeedsWindow}</p>`}
-${r.cashYes ? html`<p class="muted">${ic.ownerCash} <a href="/app/people/${ch.id}">${ic.openTheirPage}</a></p>` : ""}
+${r.cashYes ? html`<p class="muted">${ic.ownerCash} <a class="tap" href="/app/people/${ch.id}">${ic.openTheirPage}</a></p>` : ""}
 ${payable ? html`<button class="btn primary" type="submit">${ic.holdButton}</button>` : ""}</form>`
           : emptyState(ic.noTimes),
       ),

@@ -100,30 +100,41 @@ const practitioners = (env: Env, m: Member) =>
 // ---------- the page ----------
 const CAL_CSS = `
 .seg{display:flex;flex-wrap:wrap;gap:8px;margin:0}
-.seg a{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:500}
+.seg a{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:500}
 .seg a.on{background:var(--ink);border-color:var(--ink);color:var(--paper)}
 .calbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}
-.calnav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.calnav .btn{padding:10px 16px}
+.calnav{display:flex;align-items:center;gap:4px;flex-wrap:nowrap}
+.calnav .btn{padding:10px 14px}
 .calnav .arrow{min-width:48px;padding:10px 12px}
 .range{font-size:20px;font-weight:600;margin:0 0 4px}
 .calnote{color:var(--muted);margin:0 0 4px}
 .cday{margin:24px 0 0}
-.cday h2.sec{margin:0 0 12px}
-.cday h2.sec a{color:inherit;text-decoration:none}
+.cday h2.sec{margin:0 0 12px;padding-bottom:0;align-items:center}
+.cday h2.sec>span{display:inline-flex;align-items:center;gap:8px;min-height:48px}
+.cday h2.sec a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;min-height:48px}
 .cday h2.sec a:hover{text-decoration:underline}
 .cday .chip{text-transform:none;letter-spacing:0}
-.free{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin:0 0 4px;color:var(--muted)}
-.free b{color:var(--done);font-weight:600}
-.closed{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;color:var(--muted);border-top:1px solid var(--line);padding:12px 0;margin:0}
+.free{margin:0 0 4px;color:var(--muted)}
+.free b{color:var(--ink);font-weight:500}
+.closed{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px;min-height:48px;color:var(--muted);border-top:1px solid var(--line);padding:4px 0;margin:0}
+.closed a{color:var(--ink);text-decoration:none}
+.cday+.closed{margin-top:24px}
 .closed+.closed{border-top-style:dashed}
 .closed b{color:var(--ink);font-weight:500}
 .cday .ledger{margin-bottom:8px}
+.cday .appt .side{justify-content:space-between}
+.cday .appt .side .btn{flex:0 0 auto}
 @media (min-width:900px){.calbar{flex-wrap:nowrap}}
 `;
 
 const link = (o: { view: CalView; d: string; p: number | null }) => `/app/calendar?view=${o.view}&d=${o.d}${o.p !== null ? `&p=${o.p}` : ""}`;
 const rangeText = (r: Range, locale: string) => `${clock(r.from, locale)} – ${clock(r.to, locale)}`;
+// "Free: 2:30 pm – 3:30 pm · 4:15 pm – 7:00 pm": the label quiet, each range in ink and on one line.
+const keepTimes = (line: string) => {
+  const [label, ...rest] = line.split(": ");
+  if (!rest.length) return html`${line}`;
+  return html`${label}: ${rest.join(": ").split(" · ").map((x, i) => html`${i ? " · " : ""}<b class="nw">${x}</b>`)}`;
+};
 const isWorkingDay = (ymd: string) => generateSlots(ymd, "CALL").length > 0;
 
 function entryRow(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, string> | null) {
@@ -154,15 +165,20 @@ function dayBlock(o: { ymd: string; entries: Entry[]; busy: { startUtc: string; 
   if (!working && !o.entries.length) {
     return html`<p class="closed"><b>${label}</b><span>${cc.calClosed}</span></p>`;
   }
+  const past0 = Date.parse(dayStartUtc(addDays(ymd, 1))) <= o.nowMs;
+  if (o.view === "week" && !o.entries.length && past0) {
+    return html`<p class="closed"><b><a class="tap" href="${link({ view: "day", d: ymd, p: o.p })}">${label}</a></b><span>${cc.calNothing}</span></p>`;
+  }
   const slots = generateSlots(ymd, "CALL");
   const hours = slots.length ? cc.calOpen(clock(slots[0].startUtc, lang), clock(slots.at(-1)!.endUtc, lang)) : cc.calClosed;
   const past = Date.parse(dayStartUtc(addDays(ymd, 1))) <= o.nowMs;
   const free = freeRanges(ymd, o.busy, o.nowMs);
-  const freeLine = past || !working ? "" : free.length ? html`<p class="free"><b>${cc.calFree(free.map((r) => rangeText(r, lang)).join(", "))}</b></p>` : html`<p class="free">${cc.calNoFree}</p>`;
+  const freeLine =
+    past || !working ? "" : free.length ? html`<p class="free">${keepTimes(cc.calFree(free.map((r) => rangeText(r, lang)).join(" · ")))}</p>` : html`<p class="free">${cc.calNoFree}</p>`;
   const title = o.view === "week" ? html`<a href="${link({ view: "day", d: ymd, p: o.p })}">${label}</a>` : html`${label}`;
   const count = o.entries.length ? cc.calBooked(o.entries.length) : cc.calNothing;
   return html`<section class="cday" id="d-${ymd}"><h2 class="sec"><span>${title}${today ? html` ${statusChip(cc.calToday, "accent")}` : ""}</span><span class="n">${count}</span></h2>
-${o.entries.length ? ledger(o.entries.map((e) => entryRow(e, m, cc, o.many))) : ""}${freeLine}<p class="calnote">${hours}</p></section>`;
+${o.entries.length ? ledger(o.entries.map((e) => entryRow(e, m, cc, o.many))) : ""}${freeLine}${o.view === "day" ? html`<p class="calnote">${hours}</p>` : ""}</section>`;
 }
 
 async function calendarPage(c: ConsoleCtx) {
@@ -219,7 +235,7 @@ async function calendarPage(c: ConsoleCtx) {
 
   const body = html`<style>${raw(CAL_CSS)}</style>${screenHead("calendar", m.locale)}
 <div class="calbar">${viewSeg}${nav}</div>${filter ? html`<div class="calbar">${filter}</div>` : ""}
-<p class="range">${rangeLabel}</p><p class="calnote">${hoursText(lang)} ${cc.calPhase2}</p>
+${view === "week" ? html`<p class="range">${rangeLabel}</p>` : ""}<p class="calnote">${hoursText(lang)} ${cc.calPhase2}</p>
 ${empty}${blocks}`;
   return appPage(c, { active: "calendar", title: cc.tabCalendar, body, back: here({}) });
 }

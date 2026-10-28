@@ -23,7 +23,7 @@ import { iso, istDay } from "./slots";
 import { bookingsOpen } from "./switches";
 import {
   appointmentRow, banner, bookingChip, button, callLangText, clock, confirmStep, consoleFrame, dayName, emptyState, firstName,
-  forWhomText, last4, ledger, listRow, roleName, rows as rowList, screenHead, section, statusChip, taskCard,
+  forWhomText, last4, ledger, listRow, roleName, rows as rowList, screenHead, section, statusChip, taskCard, keep4,
 } from "./ui";
 
 // ---------- Today's words, English and Hindi, in the shape of src/console-copy.ts (a later review moves them into the catalogue) ----------
@@ -301,9 +301,9 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
   const safetyCards = safety.map((s) => {
     const person = who(s.name, s.waId, t);
     if (!seesSafety(m))
-      return html`<article class="card danger"><h3>${cc.safetyHidden}</h3><p class="why">${person} · ${at(s.createdAt, now, m.locale)}</p><div class="acts">${button({ label: t.openPage, href: `/app/people/${s.convId}`, kind: "primary" })}</div></article>`;
+      return html`<article class="card danger"><h3>${cc.safetyHidden}</h3><p class="why">${keep4(person)} · ${at(s.createdAt, now, m.locale)}</p><div class="acts">${button({ label: t.openPage, href: `/app/people/${s.convId}`, kind: "primary" })}</div></article>`;
     const href = canAny(m, "reply_chat") ? `/app/inbox/${s.convId}` : `/app/people/${s.convId}`;
-    return html`<article class="card danger"><h3>${s.kind === "CRISIS" ? t.safetyCrisis(person) : t.safetyEmergency(person)}</h3>
+    return html`<article class="card danger"><h3>${keep4(s.kind === "CRISIS" ? t.safetyCrisis(person) : t.safetyEmergency(person))}</h3>
 <p class="why">${at(s.createdAt, now, m.locale)} · ${cc.safetySent}</p><div class="acts">${button({ label: cc.openChat, href, kind: "danger" })}</div></article>`;
   });
 
@@ -327,7 +327,7 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
         can(m, "reply_chat") === "yes"
           ? button({ label: cc.handBack, post: { action: "/app/today/handback", csrf: await memberCsrf(c.get("jwt"), m, `handback:${w.convId}`), fields: { conv: String(w.convId) } } })
           : "";
-      return html`<article class="card attention"><h3>${t.replyTo(who(w.name, w.waId, t))}</h3><p class="why">${why}</p>${textHidden ? html`<p class="muted">${cc.chatTextHidden}.</p>` : ""}
+      return html`<article class="card attention"><h3>${keep4(t.replyTo(who(w.name, w.waId, t)))}</h3><p class="why">${why}</p>${textHidden ? html`<p class="muted">${cc.chatTextHidden}.</p>` : ""}
 <div class="acts">${button({ label: cc.reply, href: `/app/inbox/${w.convId}`, kind: "primary" })}${handBack}</div></article>`;
     }),
   );
@@ -464,7 +464,7 @@ async function approvalCards(c: ConsoleCtx, reqs: RequestRow[], now: number) {
         csrf: await memberCsrf(c.get("jwt"), m, `decide:${r.id}:${decision}`),
         fields: { request: String(r.id), decision },
       });
-      return html`<article class="card attention"><h3>${title}</h3><p class="why">${why}</p>
+      return html`<article class="card attention"><h3>${keep4(title)}</h3><p class="why">${why}</p>
 <div class="acts">${confirmStep({ label: `${cc.approve}…`, effect, confirm: yes, post: await post("APPROVED") })}${button({ label: cc.decline, post: await post("DECLINED") })}</div></article>`;
     }),
   ).then((cards) => cards.filter(Boolean));

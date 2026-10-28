@@ -13,6 +13,7 @@ const page = async (path: string, as = OWNER) => {
   expect(res.status, path).toBe(200);
   return decode(await res.text());
 };
+const plain = (s: string) => s.replace(/<[^>]+>/g, "");
 const id = async (email: string) => (await h.member(email))!.id;
 
 // A paid call (or a held one) at an IST time, on a practitioner's calendar.
@@ -70,7 +71,7 @@ describe("week and day views", () => {
     expect(body).toContain(`href="/app/people/${late}"`);
     expect(body).toContain("15-minute call");
     expect(body).toContain("Confirmed");
-    expect(body).toContain("Free: 2:00 pm – 2:30 pm, 2:45 pm – 4:00 pm, 4:15 pm – 7:00 pm"); // Thursday
+    expect(plain(body)).toContain("Free: 2:00 pm – 2:30 pm · 2:45 pm – 4:00 pm · 4:15 pm – 7:00 pm"); // Thursday
     expect(body).toContain("Calls are Monday to Friday, 2 pm to 7 pm (India time).");
     expect(body).toContain("Changing working hours and time off comes in a later release.");
     expect(body).toContain('href="/app/calendar?view=week&d=2026-10-19"'); // previous week
@@ -105,7 +106,7 @@ describe("week and day views", () => {
     expect(body).toContain("Held");
     expect(body).toContain("Waiting for payment until 1:45 pm");
     expect(body).not.toContain("Gone");
-    expect(body).toContain("Free: 2:00 pm – 3:00 pm, 3:15 pm – 7:00 pm");
+    expect(plain(body)).toContain("Free: 2:00 pm – 3:00 pm · 3:15 pm – 7:00 pm");
   });
 
   it("a weekend day says plainly that it isn't a working day", async () => {
