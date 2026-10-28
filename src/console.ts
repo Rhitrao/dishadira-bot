@@ -1,12 +1,13 @@
 // The role-based console under /app (docs/CONSOLE-PRD.md), behind CONSOLE_V2. Same rules as /admin: Access JWT verified by the
 // Worker, POST-only changes, Origin + per-form CSRF, escaped output, no-store, the strict CSP and no scripts. Membership is the gate:
 // a verified email without an active membership sees "No access". Every tab, screen and button asks can() / canAny() (src/auth.ts).
-// Ticket 19 builds the frame, the role-filtered tabs (screens are placeholders until tickets 21-24) and the team page (src/team.ts).
-// The page still uses today's stylesheet from src/ui.ts; ticket 21 moves it onto the new design system and the string catalogue.
+// Every page, refusals and the invite included, is drawn on the design system in src/ui.ts (consoleFrame, or plainFrame with no tabs).
 import { Hono, type Context } from "hono";
-import { html, raw } from "hono/html";
-import { activeMember, canAny, csrf, memberCsrf, ROLES, seedMembers, sha256Hex, touchMember, verifiedEmail, WORKSPACE_ID, type Action, type Member, type Role } from "./auth";
-import { accentOf, accentCss, type AccentName } from "./business";
+import { html } from "hono/html";
+import { activeMember, csrf, memberCsrf, seedMembers, sha256Hex, touchMember, verifiedEmail, WORKSPACE_ID, type Action, type Member, type Role } from "./auth";
+import { accentOf, type AccentName } from "./business";
+import { calendar } from "./calendar";
+import { consoleCopy } from "./console-copy";
 import type { Env } from "./env";
 import { iso } from "./slots";
 import { inbox } from "./inbox";
@@ -15,32 +16,16 @@ import { people } from "./people";
 import { settings } from "./settings";
 import { team } from "./team";
 import { today } from "./today";
-import { CONSOLE_CSS, header } from "./ui";
+import { CONSOLE_CSP, consoleFrame, emptyState, plainFrame, type TabId } from "./ui";
 
-export type ConsoleVars = { jwt: string; email: string; member: Member; accent: AccentName }; // accent: Settings → Business, read once per request
+// accent and business (the workspace name): Settings → Business, read once per request
+export type ConsoleVars = { jwt: string; email: string; member: Member; accent: AccentName; business: string };
 export type ConsoleCtx = Context<{ Bindings: Env; Variables: ConsoleVars }>;
 
-// Console words added by ticket 19, in one place so they can move to the string catalogue (src/console-copy.ts, ticket 20).
+// Invite and hand-over words from ticket 19 (the invite page is seen before the person is a member, so it is in English).
 export const S = {
-  brand: "Console",
-  noAccessTitle: "No access",
-  noAccess: "This email address isn't a member of this business. Ask the owner to invite you, then open the invite link they send you.",
-  notForRole: "Your role can't open this page.",
-  backToToday: "Back to Today",
-  comingSoon: "This screen comes in the next release.",
-  visibleTo: "Visible to",
   roles: { OWNER: "Owner", PRACTITIONER: "Practitioner", STAFF: "Staff" } as Record<Role, string>,
-  tabs: { today: "Today", inbox: "Inbox", calendar: "Calendar", people: "People", payments: "Payments", settings: "Settings" },
-  questions: {
-    today: "What needs me now?",
-    inbox: "Who is waiting for a reply?",
-    calendar: "When am I booked or free?",
-    people: "Who is this customer?",
-    payments: "Is the money right?",
-    settings: "How does the business run?",
-  },
-  settingsTeam: "Team",
-  settingsTeamWhy: "Invite people, set their roles, remove members.",
+  noAccessLong: "This email address isn't a member of this business. Ask the owner to invite you, then open the invite link they send you.",
   transferred: "Ownership handed over. You're now Staff.",
   transferredPractitioner: "Ownership handed over. You're now a Practitioner.",
   invite: {
@@ -55,50 +40,51 @@ export const S = {
   },
 };
 
-type TabId = keyof typeof S.tabs;
 // Each tab is shown only to the roles whose permission row allows it, so a practitioner sees three tabs: Today, Calendar, People.
-export const TABS: { id: TabId; href: string; action: Action; icon: string }[] = [
-  { id: "today", href: "/app", action: "view_today", icon: "◷" },
-  { id: "inbox", href: "/app/inbox", action: "reply_chat", icon: "✉" },
-  { id: "calendar", href: "/app/calendar", action: "view_calendar", icon: "▦" },
-  { id: "people", href: "/app/people", action: "view_people", icon: "☺" },
-  { id: "payments", href: "/app/payments", action: "see_money", icon: "₹" },
-  { id: "settings", href: "/app/settings", action: "business_settings", icon: "⚙" },
+// (The frame in src/ui.ts draws them; this list is the permission each one needs.)
+export const TABS: { id: TabId; href: string; action: Action }[] = [
+  { id: "today", href: "/app", action: "view_today" },
+  { id: "inbox", href: "/app/inbox", action: "reply_chat" },
+  { id: "calendar", href: "/app/calendar", action: "view_calendar" },
+  { id: "people", href: "/app/people", action: "view_people" },
+  { id: "payments", href: "/app/payments", action: "see_money" },
+  { id: "settings", href: "/app/settings", action: "business_settings" },
 ];
-export const tabsFor = (m: Member) => TABS.filter((t) => canAny(m, t.action));
 
-// "Visible to: Owner, Staff", from the same permission table.
-export const visibleTo = (action: Action) => `${S.visibleTo}: ${ROLES.filter((r) => canAny({ id: 0, workspaceId: 0, email: "", displayName: null, role: r, locale: "en", status: "active" }, action)).map((r) => S.roles[r]).join(", ")}`;
-
-const CSP = "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; form-action 'self'; frame-ancestors 'none'";
 const secure = (res: Response) => {
   res.headers.set("Cache-Control", "no-store");
-  res.headers.set("Content-Security-Policy", CSP);
+  res.headers.set("Content-Security-Policy", CONSOLE_CSP);
   return res;
 };
 
-// The page frame: the stylesheet, the member's tabs and the flash line. `body` is already-escaped html.
-export function frame(opts: { title: string; member: Member | null; tab: TabId | null; body: unknown; flash?: string | null; accent?: AccentName }) {
-  const tabs = opts.member
-    ? tabsFor(opts.member).map(
-        (t) => html`<a href="${t.href}" class="${t.id === opts.tab ? "on" : ""}"${t.id === opts.tab ? raw(' aria-current="page"') : ""}><span class="i" aria-hidden="true">${t.icon}</span><span>${S.tabs[t.id]}</span></a>`,
-      )
-    : [];
-  const lang = opts.member?.locale === "hi" ? "hi" : "en";
-  return html`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${opts.title} · ${S.brand}</title><style>${raw(CONSOLE_CSS)}</style>${raw(accentCss(opts.accent ?? "teal"))}</head><body>
-${tabs.length ? html`<nav class="tabs" aria-label="${S.brand}"><span class="brand">${S.brand}</span>${tabs}</nav>` : ""}
-<div class="wrap">${opts.flash ? html`<p class="flash" role="status">${opts.flash}</p>` : ""}${opts.body}</div></body></html>`;
+// A screen for a signed-in member on the console's frame: the workspace name and accent (read once per request in the middleware
+// below), the member's tabs and the language switch.
+export async function appPage(c: ConsoleCtx, o: { active: TabId | null; title: string; body: unknown; flash?: string | null; back?: string; status?: 200 | 400 | 403 | 404 | 409 | 500 | 503 }) {
+  const m = c.get("member");
+  return c.html(
+    consoleFrame({
+      role: m.role, locale: m.locale, active: o.active, title: o.title, body: o.body, business: c.get("business") ?? "", member: m.displayName || undefined,
+      flash: o.flash ?? null, language: { csrf: await languageCsrf(c.get("jwt"), m), back: o.back ?? "/app" }, accent: c.get("accent"),
+    }),
+    o.status ?? 200,
+  );
 }
 
+// Someone signed in whose email isn't an active member: no tabs, nothing about the business, English and Hindi.
 export const noAccess = async (c: Context) => {
   console.log("app: no access"); // never the email
-  return secure(await c.html(frame({ title: S.noAccessTitle, member: null, tab: null, body: html`${header(S.noAccessTitle, "")}<p>${S.noAccess}</p>` }), 403));
+  const en = consoleCopy("en");
+  const hi = consoleCopy("hi");
+  const body = html`<header class="screen"><h1>${en.noAccess}</h1></header><div class="empty"><p>${S.noAccessLong}</p><p lang="hi">${hi.noAccessBody}</p></div>`;
+  return secure(await c.html(plainFrame({ title: en.noAccess, body }), 403));
 };
 
 // A role that can't do this: the same refusal for a hand-made POST as for a page the tabs never showed.
-export const refused = (c: ConsoleCtx) =>
-  c.html(frame({ title: S.noAccessTitle, member: c.get("member"), tab: null, accent: c.get("accent"), body: html`${header(S.noAccessTitle, "")}<p>${S.notForRole}</p><p><a class="btn" href="/app">${S.backToToday}</a></p>` }), 403);
+export const refused = async (c: ConsoleCtx) => {
+  const cc = consoleCopy(c.get("member").locale);
+  const body = html`<header class="screen"><h1>${cc.noAccess}</h1></header>${emptyState(cc.notForRole, { label: cc.backToToday, href: "/app" })}`;
+  return appPage(c, { active: null, title: cc.noAccess, body, status: 403 });
+};
 
 // An audit row: who (the member), what, on what, and why. Returned unrun so it joins the change's batch, right after the change:
 // it is written only if that statement changed a row (SQLite's changes()), so the log never records something that didn't happen.
@@ -125,27 +111,36 @@ consoleApp.use("*", async (c, next) => {
     if (!m) return noAccess(c);
     c.set("member", m);
     c.set("accent", await accentOf(c.env.DB).catch((): AccentName => "teal"));
+    const ws = await c.env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>().catch(() => null);
+    c.set("business", ws?.name ?? "");
     await touchMember(c.env, m).catch(() => undefined);
   }
   await next();
+  // A bare-text refusal from a screen (an old form's token, a bad field, an unknown address) is shown on the console's own look.
+  const status = c.res.status;
+  if (c.get("member") && (status === 400 || status === 403 || status === 404) && (c.res.headers.get("Content-Type") ?? "").startsWith("text/plain")) {
+    c.res = undefined;
+    c.res = await errorPage(c, status);
+  }
   secure(c.res);
 });
 
-// ---- the screens: placeholders until tickets 21-24 build them, each behind its own permission row ----
-const placeholder = (id: TabId) => async (c: ConsoleCtx) => {
-  const tab = TABS.find((t) => t.id === id)!;
-  const m = c.get("member");
-  if (!canAny(m, tab.action)) return refused(c);
-  const extra =
-    id === "settings" && canAny(m, "manage_team")
-      ? html`<h2>${S.tabs.settings}</h2><div class="list"><a class="li" href="/app/settings/team"><span class="main"><b>${S.settingsTeam}</b><div class="muted">${S.settingsTeamWhy}</div></span><span class="go" aria-hidden="true">›</span></a></div>`
-      : html`<p class="muted">${S.comingSoon}</p>`;
-  const flash = id === "today" ? (({ joined: S.invite.joined, transferred: S.transferred, transferred_p: S.transferredPractitioner }) as Record<string, string>)[c.req.query("m") ?? ""] ?? null : null;
-  return c.html(frame({ title: S.tabs[id], member: m, tab: id, flash, accent: c.get("accent"), body: html`${header(S.tabs[id], S.questions[id])}<p class="small muted">${visibleTo(tab.action)}</p>${extra}` }));
-};
+async function errorPage(c: ConsoleCtx, status: 400 | 403 | 404 | 500) {
+  const cc = consoleCopy(c.get("member").locale);
+  const text = { 400: cc.errBad, 403: cc.errForm, 404: cc.notFound, 500: cc.errServer }[status];
+  const body = html`<header class="screen"><h1>${status === 404 ? cc.notFound : cc.errTitle}</h1></header>${emptyState(text, { label: cc.backToToday, href: "/app" })}`;
+  return appPage(c, { active: null, title: status === 404 ? cc.notFound : cc.errTitle, body, status });
+}
+consoleApp.onError(async (_e, c) => {
+  console.error("app: unhandled error", c.req.method, c.req.routePath); // the route only: error text can carry user data
+  if (!c.get("member")) return c.text("error", 500);
+  return secure(await errorPage(c, 500));
+});
+
+// ---- the screens, each behind its own permission row ----
 consoleApp.route("/", today); // Today (ticket 21, src/today.ts): GET /app and its POSTs under /app/today/*
 consoleApp.route("/inbox", inbox); // ticket 22: src/inbox.ts
-consoleApp.get("/calendar", placeholder("calendar"));
+consoleApp.route("/calendar", calendar); // ticket 27: src/calendar.ts
 consoleApp.route("/people", people); // ticket 23: the list and /app/people/<id> (src/people.ts)
 consoleApp.route("/payments", payments); // ticket 24 (src/payments.ts)
 consoleApp.route("/settings/team", team);
@@ -203,16 +198,16 @@ function inviteProblem(inv: InviteRow | null, email: string, nowMs: number): { t
 }
 
 const invitePage = (c: ConsoleCtx, body: unknown, status: 200 | 403 | 404 | 410 = 200) =>
-  c.html(frame({ title: S.invite.title, member: null, tab: null, body: html`${header(S.invite.title, "")}${body}` }), status);
+  c.html(plainFrame({ title: S.invite.title, body: html`<header class="screen"><h1>${S.invite.title}</h1></header>${body}` }), status);
 
 consoleApp.get("/invite/:token", async (c) => {
   const { hash, inv } = await inviteFor(c);
   const problem = inviteProblem(inv, c.get("email"), Date.now());
-  if (problem) return invitePage(c, html`<p>${problem.text}</p>`, problem.status);
+  if (problem) return invitePage(c, emptyState(problem.text), problem.status);
   const token = await csrf(c.get("jwt"), `invite:${hash}`);
   return invitePage(
     c,
-    html`<p>${S.invite.asRole(S.roles[inv!.role])}</p><form method="post" action="/app/invite/${c.req.param("token")}"><input type="hidden" name="csrf" value="${token}"><button class="primary" type="submit">${S.invite.accept}</button></form>`,
+    html`<div class="card"><p>${S.invite.asRole(S.roles[inv!.role])}</p><div class="acts"><form method="post" action="/app/invite/${c.req.param("token")}"><input type="hidden" name="csrf" value="${token}"><button class="btn primary" type="submit">${S.invite.accept}</button></form></div></div>`,
   );
 });
 
@@ -220,7 +215,7 @@ consoleApp.post("/invite/:token", async (c) => {
   const { hash, inv } = await inviteFor(c);
   const now = Date.now();
   const problem = inviteProblem(inv, c.get("email"), now);
-  if (problem) return invitePage(c, html`<p>${problem.text}</p>`, problem.status);
+  if (problem) return invitePage(c, emptyState(problem.text), problem.status);
   const f = await c.req.parseBody();
   if (f.csrf !== (await csrf(c.get("jwt"), `invite:${hash}`))) return c.text("Forbidden", 403);
   const at = iso(now);
@@ -235,6 +230,6 @@ consoleApp.post("/invite/:token", async (c) => {
        SELECT ?1, 'invite_accepted', 'member:' || id, role, workspace_id, id FROM members WHERE workspace_id = ?2 AND email = ?1 AND changes() > 0`,
     ).bind(inv!.email, WORKSPACE_ID),
   ]);
-  if (!res[1].meta.changes) return invitePage(c, html`<p>${S.invite.used}</p>`, 410);
+  if (!res[1].meta.changes) return invitePage(c, emptyState(S.invite.used), 410);
   return c.redirect("/app?m=joined", 303);
 });

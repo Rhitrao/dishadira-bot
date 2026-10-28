@@ -5,6 +5,7 @@
 import type { Context, Next } from "hono";
 import { html } from "hono/html";
 import type { Env } from "./env";
+import { CONSOLE_CSP, plainFrame } from "./ui";
 
 export const consoleV2 = (env: { CONSOLE_V2?: string } | undefined) => env?.CONSOLE_V2 === "true";
 
@@ -42,12 +43,13 @@ async function packagePage(env: Env, id: number): Promise<string> {
 }
 
 // Both languages on one page: this runs before sign-in, so the member's language isn't known yet. [Hindi to be read by a Hindi speaker.]
-const movedPage = (to: string) => html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The console has moved</title><style>body{font:19px/1.5 system-ui,sans-serif;max-width:36rem;margin:0 auto;padding:24px 16px;background:#fff;color:#1a1a1a}
-a{display:inline-block;min-height:48px;line-height:48px;padding:0 20px;border-radius:8px;background:#1d4d3f;color:#fff;text-decoration:none}</style></head>
-<body><h1>The console has moved</h1><p>Nothing was changed. Please do this again in the new console.</p>
-<p lang="hi">कंसोल नई जगह पर है। कुछ नहीं बदला गया। कृपया नए कंसोल में फिर से करें।</p>
-<p><a href="${to}">Open the new console · नया कंसोल खोलें</a></p></body></html>`;
+// On the console's own look (src/ui.ts plainFrame) and its CSP, which allows the self-hosted fonts.
+const movedPage = (to: string) =>
+  plainFrame({
+    title: "The console has moved",
+    body: html`<header class="screen"><h1>The console has moved</h1></header><div class="card"><p>Nothing was changed. Please do this again in the new console.</p>
+<p lang="hi">कंसोल नई जगह पर है। कुछ नहीं बदला गया। कृपया नए कंसोल में फिर से करें।</p><div class="acts"><a class="btn primary" href="${to}">Open the new console · नया कंसोल खोलें</a></div></div>`,
+  });
 
 // Middleware for /admin and /amma (src/index.ts), before their own sign-in check: nothing here reads or changes anything private.
 export async function switchOver(c: Context<{ Bindings: Env }>, next: Next) {
@@ -59,6 +61,6 @@ export async function switchOver(c: Context<{ Bindings: Env }>, next: Next) {
   }
   return c.html(movedPage(appPathFor(url.pathname)), 410, {
     "Cache-Control": "no-store",
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+    "Content-Security-Policy": CONSOLE_CSP,
   });
 }

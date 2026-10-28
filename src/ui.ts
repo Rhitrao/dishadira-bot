@@ -1,10 +1,10 @@
 // The console's design system: a calm ledger. Warm paper, dark ink, one accent colour, generous space and large type (docs/CONSOLE-PRD.md,
 // "Design system"). Server-rendered HTML only, no scripts. The /app console uses consoleFrame() and the components below, with CONSOLE_CSP
 // (today's strict CSP plus `font-src 'self'` for the self-hosted fonts in src/fonts.ts). All its words come from src/console-copy.ts.
-// The old /admin pages keep their own shell further down (page(), CONSOLE_CSS), recoloured to the same palette, until ticket 25.
+// The old /admin and /amma pages keep their own shell further down (page(), CONSOLE_CSS) until they are removed; nothing under /app uses it.
 // Colour is never the only signal: every status has a word. Times are always the business's time (Bengaluru).
 import { html, raw } from "hono/html";
-import { accentCss, type AccentName } from "./business";
+import { accentCss, hasOwnName, type AccentName } from "./business";
 import { consoleCopy, consoleLang, type ConsoleCopy } from "./console-copy";
 import { FONT_FACES } from "./fonts";
 import { formatIstLang, formatIstParts, istDay } from "./slots";
@@ -109,6 +109,8 @@ p{margin:8px 0}
 .skip{position:absolute;left:-9999px;top:8px}
 .skip:focus{left:16px;z-index:30;background:var(--surface);color:var(--ink);padding:12px 16px;border-radius:var(--r-sm)}
 .muted{color:var(--muted)}
+.nw{white-space:nowrap}
+.crumb,a.tap{display:inline-flex;align-items:center;min-height:48px;font-weight:500}
 .num{font-size:20px;font-weight:600}
 .main{padding:8px 16px calc(104px + env(safe-area-inset-bottom));min-width:0}
 .content{max-width:1200px;margin:0 auto}
@@ -145,7 +147,7 @@ form{margin:0}
 .chip.danger{background:var(--danger-tint);color:var(--danger)}
 .chip.done{background:var(--done-tint);color:var(--done)}
 .ledger{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:0 20px;margin:0 0 12px}
-.appt{display:grid;grid-template-columns:5.2em minmax(0,1fr);gap:12px 16px;padding:16px 0;border-top:1px solid var(--line)}
+.appt{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px 16px;padding:16px 0;border-top:1px solid var(--line)}
 .appt:first-child{border-top:0}
 .appt .time{font-size:20px;font-weight:600;line-height:1.3;padding-right:12px;border-right:1px solid var(--line);white-space:nowrap}
 .appt .who{font-size:20px;font-weight:600;line-height:1.3;margin:0}
@@ -158,6 +160,9 @@ form{margin:0}
 .rows{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:0 0 12px}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;padding:12px 20px;border-top:1px solid var(--line);color:var(--ink);text-decoration:none}
 .row:first-child{border-top:0}
+.row{flex-wrap:wrap}
+.row>div:first-child{flex:1 1 220px;min-width:0}
+span.d{white-space:nowrap}
 .row .t{font-weight:600;margin:0}
 .row .s{color:var(--muted);margin:0}
 .row.on{background:var(--accent-tint);box-shadow:inset 4px 0 0 var(--accent)}
@@ -170,6 +175,13 @@ form{margin:0}
 .bubble.bot,.bubble.assistant{align-self:flex-end;background:var(--sunk);border-color:var(--sunk);border-bottom-right-radius:4px}
 .bubble.team{align-self:flex-end;background:var(--accent-tint);border-color:var(--accent-tint);border-bottom-right-radius:4px}
 .bubble.safety{align-self:flex-end;background:var(--danger-tint);border-color:var(--danger);border-bottom-right-radius:4px}
+.bubble.quiet{background:transparent;border:1px dashed var(--line)}
+.bubble.quiet>p:not(.by){color:var(--muted)}
+.wiped{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:16px;margin:4px 0;text-align:center}
+.wiped::before,.wiped::after{content:"";flex:1 1 24px;border-top:1px solid var(--line)}
+.earlier{margin:0 0 12px;text-align:center}
+.earlier a{display:inline-flex;align-items:center;min-height:48px;font-weight:500}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}
 details.confirm>summary{list-style:none;display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:10px 20px;border-radius:var(--r-sm);border:1px solid var(--danger);background:var(--surface);color:var(--danger);font-size:18px;font-weight:500;line-height:1.25;cursor:pointer;text-align:center}
 details.confirm>summary::-webkit-details-marker{display:none}
 details.confirm .panel{margin-top:8px;background:var(--danger-tint);border-radius:var(--r-sm);padding:16px}
@@ -177,6 +189,7 @@ details.confirm .effect{margin:0 0 12px}
 details.confirm .panel .btn{width:100%}
 .empty{border:1px dashed var(--muted);border-radius:var(--r);padding:20px;margin:0 0 12px;color:var(--muted)}
 .empty p{margin:0}
+.empty p+p{margin-top:12px}
 .empty a{display:inline-flex;align-items:center;min-height:48px;font-weight:500}
 .banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:12px 16px;border-radius:var(--r);margin:0 0 12px;background:var(--attention-tint);border:1px solid var(--attention)}
 .banner.danger{background:var(--danger-tint);border-color:var(--danger)}
@@ -211,6 +224,10 @@ details.confirm .panel .btn{width:100%}
 .find input::placeholder{color:var(--muted);opacity:1}
 .me{color:var(--muted);font-size:16px;margin:0;padding:0 12px}
 .me b{display:block;color:var(--ink);font-weight:500}
+.main.plain{padding:24px 16px 48px}
+.plain .content{max-width:640px}
+.plain .brand{margin:0 0 32px}
+.plain .acts>form,.plain .acts>.btn{flex:0 0 auto}
 @media (min-width:900px){
 .tabbar,.topline{display:none}
 .shell{display:grid;grid-template-columns:272px minmax(0,1fr);min-height:100vh}
@@ -219,6 +236,7 @@ details.confirm .panel .btn{width:100%}
 .rail .foot{margin-top:auto;display:flex;flex-direction:column;gap:8px}
 .rail .foot .btn{justify-content:flex-start}
 .main{padding:40px 48px 64px}
+.main.plain{padding:64px 48px}
 .screen{margin-top:0}
 .acts>.btn,.acts>form,.acts>details{flex:0 0 auto}
 .acts>details[open]{flex:1 1 100%}
@@ -273,16 +291,21 @@ export function button(a: Action) {
   return html`<form method="post" action="${a.post.action}"><input type="hidden" name="csrf" value="${a.post.csrf}">${fields}<button class="${cls}" type="submit">${a.label}</button></form>`;
 }
 
+// "Asha …4821" with the last 4 digits kept on one line with their ellipsis (escaped text in, html out).
+export const keep4 = (s: string) => s.split(/(…\d{4})/).map((p, i) => (i % 2 ? html`<span class="nw">${p}</span>` : html`${p}`));
+
 // Task card: what to do, why and how long it has waited, one primary button, at most one secondary link.
 export function taskCard(o: { title: string; why: string; tone?: "danger" | "attention" | "plain"; chip?: unknown; primary: Action; secondary?: { label: string; href: string } }) {
-  return html`<article class="card ${o.tone ?? "plain"}"><h3>${o.title}</h3><p class="why">${o.why}</p>${o.chip ?? ""}
+  return html`<article class="card ${o.tone ?? "plain"}"><h3>${keep4(o.title)}</h3><p class="why">${keep4(o.why)}</p>${o.chip ?? ""}
 <div class="acts">${button({ ...o.primary, kind: o.primary.kind ?? "primary" })}${o.secondary ? html`<a class="link" href="${o.secondary.href}">${o.secondary.label}</a>` : ""}</div></article>`;
 }
 
 // Appointment row: time, first name and last 4 digits, the service, who it's for and the call language, the status in words,
 // and a Call or Open action. `extra` (the outcome buttons, "Saved. Undo until …") goes under the row. Rows sit inside ledger().
 export function appointmentRow(o: { time: string; name: string; waId?: string | null; service: string; details?: string[]; status?: unknown; action?: Action; extra?: unknown }) {
-  const meta = [o.service, ...(o.details ?? [])].filter(Boolean).join(" · ");
+  // Short parts ("15-minute call") never break inside; a long one ("Waiting for payment until 2:32 pm") may.
+  const parts = [o.service, ...(o.details ?? [])].filter(Boolean);
+  const meta = parts.map((p, i) => html`${i ? " · " : ""}<span${p.length <= 22 ? raw(' class="nw"') : ""}>${p}</span>`);
   return html`<div class="appt"><div class="time">${o.time}</div><div><p class="who">${o.name}${o.waId ? html` <span class="d">${last4(o.waId)}</span>` : ""}</p><p class="meta">${meta}</p></div>
 <div class="side">${o.status ?? ""}${o.action ? button(o.action) : ""}</div><div class="extra">${o.extra ?? ""}</div></div>`;
 }
@@ -304,11 +327,12 @@ export const rows = (items: unknown) => html`<div class="rows">${items}</div>`;
 // Conversation bubble: every message labelled. Assistant answers show the question type in small text.
 // Staff never see a safety message's text: pass hideSafety and the bubble says only that an owner is needed.
 export type From = "customer" | "bot" | "assistant" | "team" | "safety";
-export function bubble(o: { from: From; text: string; time: string; teamName?: string; kind?: string; hideSafety?: boolean; locale?: string | null }) {
+// `quiet`: a line about the message rather than its words (a tap, a photo, a template), drawn lighter.
+export function bubble(o: { from: From; text: string; time: string; teamName?: string; kind?: string; hideSafety?: boolean; locale?: string | null; quiet?: boolean }) {
   const c = consoleCopy(o.locale);
   const who = { customer: c.fromCustomer, bot: c.fromBot, assistant: c.fromAssistant, team: o.teamName || c.roleSTAFF, safety: c.fromSafety }[o.from];
   const body = o.from === "safety" && o.hideSafety ? c.safetyHidden : o.text;
-  return html`<div class="bubble ${o.from}"><p class="by">${who} · <time>${o.time}</time></p><p>${body}</p>${o.kind ? html`<p class="kind">${o.kind}</p>` : ""}</div>`;
+  return html`<div class="bubble ${o.from}${o.quiet ? " quiet" : ""}"><p class="by">${who} · <time>${o.time}</time></p><p>${body}</p>${o.kind ? html`<p class="kind">${o.kind}</p>` : ""}</div>`;
 }
 export const thread = (bubbles: unknown) => html`<div class="thread">${bubbles}</div>`;
 
@@ -367,6 +391,7 @@ export function consoleFrame(o: FrameOpts) {
   const lang = consoleLang(o.locale);
   const c = consoleCopy(lang);
   const tabs = tabsFor(o.role);
+  const business = hasOwnName(o.business) ? o.business : c.brandNeutral; // the seeded default name is never shown
   const label = (t: TabId) => text(c, SCREENS[t].label);
   const badge = (t: TabId) => (o.badges?.[t] ? html`<span class="badge"><span class="vh">${c.waitingCount(o.badges[t] ?? 0)}: </span>${o.badges[t]}</span>` : "");
   const current = (t: TabId) => (t === o.active ? raw(' aria-current="page"') : "");
@@ -393,13 +418,23 @@ export function consoleFrame(o: FrameOpts) {
     : "";
 
   return html`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${o.title} · ${o.business}</title><style>${raw(FONT_FACES)}${raw(APP_CSS)}</style>${raw(accentCss(o.accent ?? "teal"))}</head><body>
+<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${o.title} · ${business}</title><style>${raw(FONT_FACES)}${raw(APP_CSS)}</style>${raw(accentCss(o.accent ?? "teal"))}</head><body>
 <a class="skip" href="#main">${c.skipToContent}</a>
 <div class="shell">
-<nav class="rail" aria-label="${c.navLabel}"><p class="brand">${o.business}</p>${search}<ul>${railTabs}</ul><div class="foot">${o.member ? html`<p class="me"><b>${o.member}</b>${roleName(o.role, lang)}</p>` : html`<p class="me">${roleName(o.role, lang)}</p>`}${switcher}</div></nav>
-<main class="main" id="main"><div class="content"><div class="topline"><p class="brand">${o.business}</p>${switcher}</div>${o.flash ? html`<p class="flash" role="status">${o.flash}</p>` : ""}${o.banners ?? ""}${o.body}</div></main>
+<nav class="rail" aria-label="${c.navLabel}"><p class="brand">${business}</p>${search}<ul>${railTabs}</ul><div class="foot">${o.member ? html`<p class="me"><b>${o.member}</b>${roleName(o.role, lang)}</p>` : html`<p class="me">${roleName(o.role, lang)}</p>`}${switcher}</div></nav>
+<main class="main" id="main"><div class="content"><div class="topline"><p class="brand">${business}</p>${switcher}</div>${o.flash ? html`<p class="flash" role="status">${o.flash}</p>` : ""}${o.banners ?? ""}${o.body}</div></main>
 </div>
 <nav class="tabbar" aria-label="${c.navLabel}">${bar}</nav>
+</body></html>`;
+}
+
+// A page with no tabs, on the same look: "No access" before sign-in, an invite to accept, "The console has moved". `body` is escaped html.
+export function plainFrame(o: { locale?: string | null; title: string; body: unknown; accent?: AccentName }) {
+  const lang = consoleLang(o.locale);
+  const c = consoleCopy(lang);
+  return html`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${o.title} · ${c.brandNeutral}</title><style>${raw(FONT_FACES)}${raw(APP_CSS)}</style>${raw(accentCss(o.accent ?? "teal"))}</head><body>
+<main class="main plain" id="main"><div class="content"><p class="brand">${c.brandNeutral}</p>${o.body}</div></main>
 </body></html>`;
 }
 

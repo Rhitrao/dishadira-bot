@@ -147,3 +147,9 @@ export function accentCss(name: AccentName): string {
   const a = ACCENTS[name];
   return `<style>:root{--accent:${a.light};--accent-tint:${a.lightTint}}@media (prefers-color-scheme:dark){:root{--accent:${a.dark};--accent-tint:${a.darkTint}}}</style>`;
 }
+
+// ---- the business name ----
+// The name migration 0010 gives workspace 1 until the owner sets one in Settings → Business. While it is still this (or empty), the page
+// frame shows a neutral label and the owner gets one task on Today to add the real name.
+export const SEEDED_WORKSPACE_NAME = "My business";
+export const hasOwnName = (name: string | null | undefined) => Boolean(name?.trim()) && name!.trim() !== SEEDED_WORKSPACE_NAME;

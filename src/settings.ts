@@ -323,7 +323,7 @@ function targetText(target: string, locale: string) {
   const m = /^([a-z]+):(\d+)$/.exec(target);
   const t = m ? TARGET_WORDS[m[1]] : undefined;
   if (!m || !t) return html`${target}`;
-  return t.href ? html`<a href="${t.href}${m[2]}">${t[l]} ${m[2]}</a>` : html`${t[l]} ${m[2]}`;
+  return t.href ? html`<a class="tap" href="${t.href}${m[2]}">${t[l]} ${m[2]}</a>` : html`${t[l]} ${m[2]}`;
 }
 
 const actionText = (action: string, locale: string) =>
@@ -331,7 +331,7 @@ const actionText = (action: string, locale: string) =>
 
 // ---------- the page frame for the owner's screens (Payments uses it too) ----------
 // Form fields and small layouts the shared stylesheet doesn't have yet; inline, as the CSP allows inline styles.
-const EXTRA_CSS = `<style>
+export const EXTRA_CSS = `<style>
 .fld{display:block;margin:0 0 16px}.fld>span{display:block;font-weight:500;margin:0 0 4px}.fld .help{display:block;color:var(--muted);font-size:16px;margin:4px 0 0}
 .fld input[type=text],.fld select{width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px}
 .fld.bad input,.fld.bad select{border:2px solid var(--danger)}.fld .err{display:block;color:var(--danger);font-size:16px;margin:4px 0 0}
@@ -564,7 +564,7 @@ ${line(w.lastOut, at(lastOut?.at), "plain", null)}
 ${line(w.notDelivered, String(failed?.n ?? 0), failed?.n ? "attention" : "done", failed?.n ? w.check : w.ok)}
 ${line(w.aiToday, `${ai?.n ?? 0} / ${config.ai.aiRepliesPerDayTotal}`, aiHigh ? "attention" : "done", aiHigh ? w.check : w.ok)}
 ${line(w.lastAlert, mailState === "FAILED" ? html`${at(mailAt)}<br>${w.alertFailed}` : at(mailAt), mailState === "FAILED" ? "danger" : "done", mailState === "FAILED" ? w.problem : w.ok)}
-${line(w.payChecks, html`${pays?.n ?? 0}${pays?.n ? html` · <a href="/app/payments">${w.openPayments}</a>` : ""}`, pays?.n ? "danger" : "done", pays?.n ? w.problem : w.ok)}
+${line(w.payChecks, html`${pays?.n ?? 0}${pays?.n ? html` · <a class="tap" href="/app/payments">${w.openPayments}</a>` : ""}`, pays?.n ? "danger" : "done", pays?.n ? w.problem : w.ok)}
 </dl></div>`;
 }
 
@@ -731,7 +731,7 @@ settings.get("/audit", async (c) => {
       )}</div>`
     : emptyState(who || what ? w.noMatch : w.noAudit, who || what ? { label: w.everyone, href: "/app/settings/audit" } : { label: w.backToSettings, href: "/app/settings" });
   const q = new URLSearchParams({ ...(who ? { who } : {}), ...(what ? { what } : {}), before: String(page.at(-1)?.id ?? 0) });
-  const body = html`${screenHead("settings", lang)}<p><a href="/app/settings">← ${w.backToSettings}</a></p>
+  const body = html`${screenHead("settings", lang)}<p><a class="crumb" href="/app/settings">← ${w.backToSettings}</a></p>
 ${section(w.auditTitle, html`<p class="note">${w.auditSub}</p>${filters}${list}${more ? html`<div class="acts"><a class="btn" href="/app/settings/audit?${q.toString()}">${w.older}</a></div>` : ""}`)}`;
   return ownerPage(c, { active: "settings", title: w.auditTitle, body, back: "/app/settings/audit" });
 });

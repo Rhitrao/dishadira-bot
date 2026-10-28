@@ -9,7 +9,7 @@ import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { FIRST_BUY } from "./amma";
 import { can, canAny, memberById, memberCsrf, type Member } from "./auth";
-import { chatTextHidden } from "./business";
+import { chatTextHidden, hasOwnName } from "./business";
 import { config } from "./config";
 import { auditStmt, languageCsrf, refused, S, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleCopy, consoleLang, type ConsoleLang } from "./console-copy";
@@ -23,7 +23,7 @@ import { iso, istDay } from "./slots";
 import { bookingsOpen } from "./switches";
 import {
   appointmentRow, banner, bookingChip, button, callLangText, clock, confirmStep, consoleFrame, dayName, emptyState, firstName,
-  forWhomText, last4, ledger, listRow, roleName, rows as rowList, screenHead, section, statusChip,
+  forWhomText, last4, ledger, listRow, roleName, rows as rowList, screenHead, section, statusChip, taskCard, keep4,
 } from "./ui";
 
 // ---------- Today's words, English and Hindi, in the shape of src/console-copy.ts (a later review moves them into the catalogue) ----------
@@ -301,9 +301,9 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
   const safetyCards = safety.map((s) => {
     const person = who(s.name, s.waId, t);
     if (!seesSafety(m))
-      return html`<article class="card danger"><h3>${cc.safetyHidden}</h3><p class="why">${person} · ${at(s.createdAt, now, m.locale)}</p><div class="acts">${button({ label: t.openPage, href: `/app/people/${s.convId}`, kind: "primary" })}</div></article>`;
+      return html`<article class="card danger"><h3>${cc.safetyHidden}</h3><p class="why">${keep4(person)} · ${at(s.createdAt, now, m.locale)}</p><div class="acts">${button({ label: t.openPage, href: `/app/people/${s.convId}`, kind: "primary" })}</div></article>`;
     const href = canAny(m, "reply_chat") ? `/app/inbox/${s.convId}` : `/app/people/${s.convId}`;
-    return html`<article class="card danger"><h3>${s.kind === "CRISIS" ? t.safetyCrisis(person) : t.safetyEmergency(person)}</h3>
+    return html`<article class="card danger"><h3>${keep4(s.kind === "CRISIS" ? t.safetyCrisis(person) : t.safetyEmergency(person))}</h3>
 <p class="why">${at(s.createdAt, now, m.locale)} · ${cc.safetySent}</p><div class="acts">${button({ label: cc.openChat, href, kind: "danger" })}</div></article>`;
   });
 
@@ -327,7 +327,7 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
         can(m, "reply_chat") === "yes"
           ? button({ label: cc.handBack, post: { action: "/app/today/handback", csrf: await memberCsrf(c.get("jwt"), m, `handback:${w.convId}`), fields: { conv: String(w.convId) } } })
           : "";
-      return html`<article class="card attention"><h3>${t.replyTo(who(w.name, w.waId, t))}</h3><p class="why">${why}</p>${textHidden ? html`<p class="muted">${cc.chatTextHidden}.</p>` : ""}
+      return html`<article class="card attention"><h3>${keep4(t.replyTo(who(w.name, w.waId, t)))}</h3><p class="why">${why}</p>${textHidden ? html`<p class="muted">${cc.chatTextHidden}.</p>` : ""}
 <div class="acts">${button({ label: cc.reply, href: `/app/inbox/${w.convId}`, kind: "primary" })}${handBack}</div></article>`;
     }),
   );
@@ -384,10 +384,15 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
     if (await heartbeatStale(env, now)) banners.push(banner({ text: cc.bannerBot, fix: { label: cc.fixBot, href: "/app/settings" }, tone: "danger" }));
   }
 
+  // The owner's one quiet set-up task while the workspace still has the seeded name.
+  const ws = await env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>();
+  const nameTask = isOwner && !hasOwnName(ws?.name) ? html`<div class="setup">${taskCard({ title: cc.taskName, why: cc.taskNameWhy, primary: { label: cc.taskNameButton, href: "/app/settings#business", kind: "secondary" } })}</div>` : "";
+
   const body = html`${TODAY_CSS}${screenHead("today", m.locale)}
 ${safety.length ? section(cc.secSafety, safetyCards, safety.length) : ""}
 ${replies && waiting.length ? section(cc.secWaiting, waitingCards, waiting.length) : ""}
 ${approvals.length ? section(cc.secApprovals, approvals, approvals.length) : ""}
+${nameTask}
 ${section(cc.secUpNext, upNext, day.length)}
 ${section(cc.secLater, later)}
 ${loose.length + looseLinks.length ? section(cc.secLooseEnds, looseBody, loose.length + looseLinks.length) : ""}`;
@@ -395,7 +400,6 @@ ${loose.length + looseLinks.length ? section(cc.secLooseEnds, looseBody, loose.l
   const code = c.req.query("m") ?? "";
   const joined = ({ joined: S.invite.joined, transferred: S.transferred, transferred_p: S.transferredPractitioner } as Record<string, string>)[code];
   const flash = o.flash ?? (FLASH[code] ? (t[FLASH[code]] as string) : joined ?? null);
-  const ws = await env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>();
   return c.html(
     consoleFrame({
       role: m.role,
@@ -460,7 +464,7 @@ async function approvalCards(c: ConsoleCtx, reqs: RequestRow[], now: number) {
         csrf: await memberCsrf(c.get("jwt"), m, `decide:${r.id}:${decision}`),
         fields: { request: String(r.id), decision },
       });
-      return html`<article class="card attention"><h3>${title}</h3><p class="why">${why}</p>
+      return html`<article class="card attention"><h3>${keep4(title)}</h3><p class="why">${why}</p>
 <div class="acts">${confirmStep({ label: `${cc.approve}…`, effect, confirm: yes, post: await post("APPROVED") })}${button({ label: cc.decline, post: await post("DECLINED") })}</div></article>`;
     }),
   ).then((cards) => cards.filter(Boolean));

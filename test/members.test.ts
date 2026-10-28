@@ -472,7 +472,7 @@ describe("change role and remove", () => {
     const staffId = (await memberRow(STAFF))!.id;
     const pracId = (await memberRow(PRAC))!.id;
     const page = await (await get("/app/settings/team")).text();
-    const removeForm = new RegExp(`action="/app/settings/team/remove"><input type="hidden" name="member" value="${staffId}"><input type="hidden" name="csrf" value="([0-9a-f]+)"`).exec(page)![1];
+    const removeForm = new RegExp(`action="/app/settings/team/remove"><input type="hidden" name="csrf" value="([0-9a-f]+)"><input type="hidden" name="member" value="${staffId}"`).exec(page)![1];
     await post("/app/settings/team/transfer", { member: String(pracId), csrf: await tokenFor(OWNER, `team-transfer:${pracId}`) });
     expect((await post("/app/settings/team/remove", { member: String(staffId), csrf: removeForm })).status).toBe(403);
     expect((await memberRow(STAFF))!.status).toBe("active");

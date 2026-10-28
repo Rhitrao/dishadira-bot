@@ -25,7 +25,8 @@ import { razorpay } from "./pay/razorpay";
 import { sendMessage, sendOrTemplate, templateVariant, type Out } from "./send";
 import { availableSlots, formatIstLang, generateSlots, holdSlot, iso, istDay, istMinutes, nextWorkingDays, PRACTITIONER_SQL, spreadTimes, type Slot, type SlotKind } from "./slots";
 import { bookingsOpen } from "./switches";
-import { bubble, clock, consoleFrame, dayName, firstName, forWhomText, last4, listDetail, listRow, rows, screenHead, section, statusChip, emptyState, thread, type From } from "./ui";
+import { collapseWiped, describe, earlierLink, keptFor, SHOWN_SQL, THREAD_ALL, THREAD_LATEST, wipedLine } from "./chat";
+import { bubble, clock, keep4, consoleFrame, dayName, firstName, forWhomText, last4, listDetail, listRow, rows, screenHead, section, statusChip, emptyState, thread, type From } from "./ui";
 
 const MIN = 60_000;
 const HOUR = 3_600_000;
@@ -133,6 +134,15 @@ details.done .panel .btn{width:100%;margin-top:12px}
 .opts input{width:20px;height:20px;margin:0;accent-color:var(--accent);flex:none}
 .opts label:has(input:checked){border-color:var(--accent);background:var(--accent-tint)}
 .pick .btn{width:100%}
+.note-line{color:var(--muted);margin:0 0 12px}
+.replyf{margin:0 0 12px}
+.replyf .acts{margin-top:12px}
+.nextsteps{margin:0 0 8px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.nextsteps>*{min-width:0}
+.nextsteps .btn,.nextsteps summary.btn{width:100%;height:100%}
+.nextsteps>details[open]{grid-column:1/-1}
+@media (min-width:900px){.nextsteps{display:flex}.nextsteps .btn,.nextsteps summary.btn{width:auto;height:auto}}
+.ibx .card .why{margin:4px 0 0}
 .wide-only{display:none}
 @media (min-width:900px){.wide-only{display:inline-flex}}
 `;
@@ -176,7 +186,7 @@ async function renderScreen(c: ConsoleCtx, o: { view: View; openId?: number; det
       href: `/app/inbox/${ch.id}${o.view === "all" ? "" : `?v=${o.view}`}`,
       title: customerName(ch, locale),
       sub: `${why(ch, ic)} · ${ic.waited(ago(now - Date.parse(since(ch)), ic))}`,
-      end: html`<div class="chips">${statusChip(replyLine(ch, locale, now), inWindow(ch, now) ? "plain" : "danger")}${claim}</div>`,
+      end: html`<div class="chips">${statusChip(inWindow(ch, now) ? replyLine(ch, locale, now) : ic.windowClosedShort, inWindow(ch, now) ? "plain" : "attention")}${claim}</div>`,
       on: ch.id === o.openId,
     });
   });
@@ -208,18 +218,21 @@ function sender(key: string | null): Sender {
   return { from: "bot" };
 }
 
-async function threadHtml(env: Env, ch: Chat, m: Member, nowMs: number) {
+async function threadHtml(env: Env, ch: Chat, m: Member, nowMs: number, all: boolean) {
   const locale = m.locale;
   const ic = inboxCopy(locale);
   const cc = consoleCopy(locale);
-  const lines = (
+  const limit = all ? THREAD_ALL : THREAD_LATEST;
+  const rowsDesc = (
     await env.DB.prepare(
       `SELECT id, direction AS dir, wa_message_id AS waMsg, body, wiped_at AS wipedAt, created_at AS at, dedupe_key AS key, status, kind FROM messages
-       WHERE conversation_id = ?1 AND NOT (direction = 'OUT' AND body IS NULL) ORDER BY id DESC LIMIT 40`,
+       WHERE conversation_id = ?1 AND ${SHOWN_SQL} ORDER BY id DESC LIMIT ?2`,
     )
-      .bind(ch.id)
+      .bind(ch.id, limit + 1)
       .all<Line>()
-  ).results.reverse();
+  ).results;
+  const more = rowsDesc.length > limit;
+  const lines = rowsDesc.slice(0, limit).reverse();
   if (!lines.length) return emptyState(ic.noMessages);
   // The customer's own message that set off a safety message is hidden from staff too: its id is the safety message's key without the suffix.
   const safetyIn = new Set(lines.filter((l) => l.dir === "OUT" && /:(crisis|emergency)$/.test(l.key ?? "")).map((l) => (l.key ?? "").replace(/:(crisis|emergency)$/, "")));
@@ -235,26 +248,32 @@ async function threadHtml(env: Env, ch: Chat, m: Member, nowMs: number) {
   const seeSafety = rights(m, ch).seeSafety;
   // The owner can hide chat text from staff (Settings → Privacy): every bubble keeps who and when, and says the text is hidden.
   const allHidden = await chatTextHidden(env.DB, m.role);
-  return thread(
-    lines.map((l) => {
-      const time = when(l.at, locale, nowMs);
-      if (l.dir === "IN") {
-        const text = l.wipedAt ? ic.textRemoved : !seeSafety && l.waMsg && safetyIn.has(l.waMsg) ? ic.safetyInHidden : allHidden ? cc.chatTextHidden : (l.body ?? "");
-        return bubble({ from: "customer", text, time, locale });
-      }
-      const s = sender(l.key);
-      const text = l.wipedAt ? ic.textRemoved : allHidden ? cc.chatTextHidden : s.followUp || l.body === "template:follow_up" ? ic.followUpBubble : l.body?.startsWith("template:") ? ic.templateBubble : (l.body ?? "");
-      const label = s.from === "assistant" ? ai.find((a) => a.at <= l.at && Date.parse(l.at) - Date.parse(a.at) < MIN) : undefined;
-      const labelText = label ? ((ic as Record<string, unknown>)[`label_${label.detail}`] as string | undefined) : undefined;
-      const status = l.status === "FAILED" ? cc.notDelivered : l.status === "SKIPPED" ? ic.chipNotSent : "";
-      const kind = [labelText, status].filter(Boolean).join(" · ") || undefined;
-      const teamName = s.owner ? ic.ownerBeforeRoles : s.memberId !== undefined ? names.get(s.memberId) : undefined;
-      return bubble({ from: s.from, text, time, teamName, kind, hideSafety: !seeSafety, locale });
-    }),
-  );
+  const kept = keptFor(env, locale);
+  const items = collapseWiped(lines).map((it) => {
+    if ("wiped" in it) return wipedLine(it.wiped, it.earlier, kept, locale);
+    const l = it.line;
+    const time = when(l.at, locale, nowMs);
+    const d = describe(l, locale);
+    if (l.dir === "IN") {
+      const hiddenSafety = !seeSafety && l.waMsg && safetyIn.has(l.waMsg);
+      const text = hiddenSafety ? ic.safetyInHidden : allHidden ? cc.chatTextHidden : d.text;
+      return bubble({ from: "customer", text, time, locale, quiet: d.tap && !hiddenSafety && !allHidden });
+    }
+    const s = sender(l.key);
+    const followUp = s.followUp || l.body === "template:follow_up";
+    const text = allHidden ? cc.chatTextHidden : followUp ? ic.followUpBubble : d.text;
+    const label = s.from === "assistant" ? ai.find((a) => a.at <= l.at && Date.parse(l.at) - Date.parse(a.at) < MIN) : undefined;
+    const labelText = label ? ((ic as Record<string, unknown>)[`label_${label.detail}`] as string | undefined) : undefined;
+    const status = l.status === "FAILED" ? cc.notDelivered : l.status === "SKIPPED" ? ic.chipNotSent : "";
+    const kind = [labelText, allHidden ? "" : d.note, status].filter(Boolean).join(" · ") || undefined;
+    const teamName = s.owner ? ic.ownerBeforeRoles : s.memberId !== undefined ? names.get(s.memberId) : undefined;
+    return bubble({ from: s.from, text, time, teamName, kind, hideSafety: !seeSafety, locale, quiet: (d.tap || followUp) && !allHidden });
+  });
+  return html`${more ? earlierLink(`/app/inbox/${ch.id}?all=1#chat`, locale) : ""}${thread(items)}`;
 }
 
-// The open chat: who, why, the claim, the thread, the reply box (or the follow-up), then the actions.
+// The open chat, top to bottom: who and why (the reply window said once, here), the claim, then what to do (the reply box or the
+// follow-up, Assign to me, Book or move, Hand back, Done), then the thread, latest last.
 async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: string; warn?: string } = {}) {
   const m = c.get("member");
   const now = Date.now();
@@ -262,40 +281,35 @@ async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: st
   const ic = inboxCopy(locale);
   const r = rights(m, ch);
   const live = claimLive(ch, now);
-  const head = html`<article class="card${isSafety(ch) ? " danger" : ""}"><h2 class="who-h">${customerName(ch, locale)}</h2>
-<div class="chips">${statusChip(why(ch, ic), isSafety(ch) ? "danger" : "attention")}${statusChip(ic.waited(ago(now - Date.parse(since(ch)), ic)))}${statusChip(replyLine(ch, locale, now), inWindow(ch, now) ? "plain" : "danger")}</div></article>`;
+  const head = html`<article class="card${isSafety(ch) ? " danger" : ""}"><h2 class="who-h">${keep4(customerName(ch, locale))}</h2>
+<p class="why">${why(ch, ic)} · ${ic.waited(ago(now - Date.parse(since(ch)), ic))}</p>
+<div class="chips">${statusChip(replyLine(ch, locale, now), inWindow(ch, now) ? "plain" : "attention")}${isSafety(ch) ? statusChip(ic.whySafety, "danger") : ""}</div></article>`;
   const notes: unknown[] = [];
   if (!ch.waiting) notes.push(html`<p class="card">${ic.notInInbox}</p>`);
   else if (isSafety(ch) && !r.act) notes.push(html`<p class="card danger">${ic.safetyForOwner}</p>`);
   if (o.warn) notes.push(html`<p class="card attention" role="alert">${o.warn}</p>`);
   else if (live && ch.claimedBy !== m.id) notes.push(html`<p class="card attention" role="status">${ic.claimWarning(ch.claimer ?? "", ago(now - Date.parse(ch.claimedAt!), ic))}</p>`);
-  else if (live) notes.push(html`<p class="card" role="status">${ic.claimYours(clock(iso(Date.parse(ch.claimedAt!) + config.inbox.claimMinutes * MIN), locale))}</p>`);
+  else if (live) notes.push(html`<p class="note-line" role="status">${ic.claimYours(clock(iso(Date.parse(ch.claimedAt!) + config.inbox.claimMinutes * MIN), locale))}</p>`);
 
   let reply: unknown = "";
   if (r.act && inWindow(ch, now)) {
     const seen = otherClaim(ch, m, now) ? String(ch.claimedBy) : "";
-    reply = section(
-      ic.secReply,
-      html`<form method="post" action="/app/inbox/${ch.id}/reply">${hidden("csrf", await token(c, m, "reply", ch.id))}${hidden("seen", seen)}
-<label class="field" for="reply-text">${ic.replyLabel}</label><textarea id="reply-text" name="text" rows="4" maxlength="1000" required placeholder="${ic.replyPlaceholder}">${o.text ?? ""}</textarea>
-<div class="acts"><button class="btn primary" type="submit">${ic.sendReply}</button></div></form>`,
-    );
+    reply = html`<form class="card replyf" method="post" action="/app/inbox/${ch.id}/reply">${hidden("csrf", await token(c, m, "reply", ch.id))}${hidden("seen", seen)}
+<label class="field" for="reply-text">${ic.replyLabel}</label><textarea id="reply-text" name="text" rows="3" maxlength="1000" required placeholder="${ic.replyPlaceholder}">${o.text ?? ""}</textarea>
+<div class="acts"><button class="btn primary" type="submit">${ic.sendReply}</button></div></form>`;
   } else if (r.act) {
-    // WhatsApp's window has closed: only the approved follow-up can go, in the language the customer will get it in.
+    // WhatsApp's window has closed (the header says so): only the approved follow-up can go, in the language the customer will get it in.
     const v = templateVariant(FOLLOW_UP as Extract<Out, { type: "template" }>, ch.locale);
     const words = FOLLOW_UP_TEXT[v.language === "hi" ? "hi" : "en"];
-    reply = section(
-      ic.secReply,
-      html`<div class="card attention"><p><b>${ic.windowClosed}</b></p>${
-        v.approved
-          ? html`<p>${ic.followUpIntro}</p><p class="quote" lang="${v.language}">${words}</p><div class="acts">${await postButton(c, m, ch.id, "follow-up", ic.sendFollowUp, "primary")}</div>`
-          : html`<p class="quote" lang="${v.language}">${words}</p><p class="muted">${ic.followUpNotApproved}</p>`
-      }</div>`,
-    );
+    reply = html`<div class="card replyf">${
+      v.approved
+        ? html`<p>${ic.followUpIntro}</p><p class="quote" lang="${v.language}">${words}</p><div class="acts">${await postButton(c, m, ch.id, "follow-up", ic.sendFollowUp, "primary")}</div>`
+        : html`<p class="quote" lang="${v.language}">${words}</p><p class="muted">${ic.followUpNotApproved}</p>`
+    }</div>`;
   }
 
-  if (r.act && !live) notes.push(html`<div class="acts">${await postButton(c, m, ch.id, "assign", ic.assignToMe, "primary")}</div>`);
   const acts: unknown[] = [];
+  if (r.act && !live) acts.push(await postButton(c, m, ch.id, "assign", ic.assignToMe));
   if (r.book) acts.push(html`<a class="btn" href="/app/inbox/${ch.id}/book">${ic.bookOrMove}</a>`);
   if (r.act && ch.mode === "HUMAN") acts.push(await postButton(c, m, ch.id, "hand-back", ic.handBack));
   if (r.act)
@@ -303,7 +317,8 @@ async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: st
       html`<details class="done"${o.note !== undefined ? raw(" open") : ""}><summary class="btn">${ic.done}</summary><form class="panel" method="post" action="/app/inbox/${ch.id}/done">${hidden("csrf", await token(c, m, "done", ch.id))}
 <label class="field" for="done-note">${ic.doneNote}</label><input id="done-note" type="text" name="note" maxlength="200" required placeholder="${ic.donePlaceholder}" value="${o.note ?? ""}"><p class="muted">${ic.doneWhy}</p><button class="btn primary" type="submit">${ic.doneButton}</button></form></details>`,
     );
-  return html`${head}${notes}${section(ic.secChat, await threadHtml(c.env, ch, m, now))}${reply}${acts.length ? section(ic.secMore, html`<div class="acts">${acts}</div>`) : ""}`;
+  const all = c.req.query("all") === "1";
+  return html`${head}${notes}${reply}${acts.length ? html`<div class="acts nextsteps" aria-label="${ic.secMore}">${acts}</div>` : ""}<div id="chat">${section(ic.secChat, await threadHtml(c.env, ch, m, now, all))}</div>`;
 }
 
 // ---------- book or move for them ----------
@@ -352,7 +367,7 @@ async function bookHtml(c: ConsoleCtx, ch: Chat) {
   const lang = consoleLang(locale);
   const ic = inboxCopy(locale);
   const r = rights(m, ch);
-  const parts: unknown[] = [html`<p class="wide-only"><a href="/app/inbox/${ch.id}">← ${ic.backToChat}</a></p><h2 class="who-h">${customerName(ch, locale)}</h2>`];
+  const parts: unknown[] = [html`<p class="wide-only"><a class="crumb" href="/app/inbox/${ch.id}">← ${ic.backToChat}</a></p><h2 class="who-h">${customerName(ch, locale)}</h2>`];
   const st = await personState(c.env.DB, ch.id);
   if (noSellActiveFor(st, now)) parts.push(html`<p class="card attention">${ic.noSell(dayName(st.noSellUntil!, locale))}</p>`);
   else {
@@ -372,7 +387,7 @@ async function bookHtml(c: ConsoleCtx, ch: Chat) {
 <fieldset><legend>${ic.serviceLabel}</legend><div class="opts">${svc}</div></fieldset><fieldset><legend>${ic.forWhomLabel}</legend><div class="opts">${who}</div></fieldset>
 <fieldset><legend>${ic.timeLabel}</legend></fieldset>${timeFieldsets(days, locale, "time")}
 ${payable ? html`<fieldset><legend>${ic.payLabel}</legend><div class="opts stack">${pays}</div></fieldset>` : html`<p class="muted">${ic.linkNeedsWindow}</p>`}
-${r.cashYes ? html`<p class="muted">${ic.ownerCash} <a href="/app/people/${ch.id}">${ic.openTheirPage}</a></p>` : ""}
+${r.cashYes ? html`<p class="muted">${ic.ownerCash} <a class="tap" href="/app/people/${ch.id}">${ic.openTheirPage}</a></p>` : ""}
 ${payable ? html`<button class="btn primary" type="submit">${ic.holdButton}</button>` : ""}</form>`
           : emptyState(ic.noTimes),
       ),
