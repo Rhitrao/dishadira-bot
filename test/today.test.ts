@@ -345,7 +345,7 @@ describe("role views", () => {
     expect(html).toContain("Possible medical emergency: Ravi");
     expect(html).toContain("The safety message was sent");
     expect(html).toContain(`href="/app/inbox/${mine.conv}"`);
-    expect(html).toContain("Reply to Leela …1111");
+    expect(html.replace(/<[^>]+>/g, "")).toContain("Reply to Leela …1111"); // the last 4 digits sit in a no-wrap span (ticket 27)
     expect(html).toContain("Asked for a person, 2 h ago. Reply by Tue, 6 Oct, 12:05 pm.");
     expect(formFor(html, "/app/today/handback")).toBeTruthy();
     expect(html).toContain("Refund ₹99 to Asha");

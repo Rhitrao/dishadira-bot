@@ -141,6 +141,7 @@ describe("logging", () => {
     expect(calls.sort()).toEqual(
       [
         'src/console.ts: console.log("app: no access");',
+        'src/console.ts: console.error("app: unhandled error", c.req.method, c.req.routePath);',
         'src/index.ts: console.error("unhandled error", c.req.method, c.req.routePath);',
         'src/mail.ts: console.log("email failed", (e as { code?: string }).code ?? "error");',
         'src/mail.ts: console.log("email skipped: not configured");',

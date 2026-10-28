@@ -89,7 +89,8 @@ describe("the Inbox thread", () => {
     const list = closed.slice(closed.indexOf('class="ld-list"'), closed.indexOf('class="ld-detail"'));
     const phrase = "WhatsApp only allows a follow-up message now";
     expect(pane.split(phrase)).toHaveLength(2);
-    expect(list.split(phrase)).toHaveLength(2);
+    expect(list.split("Follow-up message only")).toHaveLength(2); // the list row says it in short
+    expect(list).not.toContain(phrase);
     expect(closed).not.toContain(`chip danger">${phrase}`);
   });
 

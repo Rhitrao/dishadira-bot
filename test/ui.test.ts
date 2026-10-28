@@ -208,7 +208,7 @@ describe("components", () => {
     const row = str(appointmentRow({ time: "2:00 pm", name: "Priya", waId: "919800004821", service: "Healing", details: ["For family"] }));
     expect(row).toContain("…4821");
     expect(row).not.toContain("98000");
-    expect(row).toContain("Healing · For family");
+    expect(row.replace(/<[^>]+>/g, "")).toContain("Healing · For family"); // each part in its own span (ticket 27: short parts never break)
   });
 
   it("staff never see a safety message's text", () => {

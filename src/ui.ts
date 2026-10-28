@@ -1,7 +1,7 @@
 // The console's design system: a calm ledger. Warm paper, dark ink, one accent colour, generous space and large type (docs/CONSOLE-PRD.md,
 // "Design system"). Server-rendered HTML only, no scripts. The /app console uses consoleFrame() and the components below, with CONSOLE_CSP
 // (today's strict CSP plus `font-src 'self'` for the self-hosted fonts in src/fonts.ts). All its words come from src/console-copy.ts.
-// The old /admin pages keep their own shell further down (page(), CONSOLE_CSS), recoloured to the same palette, until ticket 25.
+// The old /admin and /amma pages keep their own shell further down (page(), CONSOLE_CSS) until they are removed; nothing under /app uses it.
 // Colour is never the only signal: every status has a word. Times are always the business's time (Bengaluru).
 import { html, raw } from "hono/html";
 import { accentCss, hasOwnName, type AccentName } from "./business";
@@ -321,7 +321,7 @@ export const callLangText = (lang: string | null | undefined, locale?: string | 
 
 // A row in a list that opens an item (Inbox, People, Payments). `on` marks the item open in the detail pane.
 export const listRow = (o: { href: string; title: string; sub?: string; end?: unknown; on?: boolean }) =>
-  html`<a class="row${o.on ? " on" : ""}" href="${o.href}"${o.on ? raw(' aria-current="true"') : ""}><div><p class="t">${keep4(o.title)}</p>${o.sub ? html`<p class="s">${o.sub}</p>` : ""}</div>${o.end ?? ""}</a>`;
+  html`<a class="row${o.on ? " on" : ""}" href="${o.href}"${o.on ? raw(' aria-current="true"') : ""}><div><p class="t">${o.title}</p>${o.sub ? html`<p class="s">${o.sub}</p>` : ""}</div>${o.end ?? ""}</a>`;
 export const rows = (items: unknown) => html`<div class="rows">${items}</div>`;
 
 // Conversation bubble: every message labelled. Assistant answers show the question type in small text.
