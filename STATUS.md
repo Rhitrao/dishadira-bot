@@ -48,7 +48,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 22 Inbox (PR https://github.com/Rhitrao/dishadira-bot/pull/35)
 - [ ] 24 Payments, Settings and the audit log (PR https://github.com/Rhitrao/dishadira-bot/pull/36; no migration)
 - [ ] 25 Switch over (PR https://github.com/Rhitrao/dishadira-bot/pull/38; CONSOLE_V2 "true" on test only)
-- [ ] 27 Calendar and a console polish pass (PR: see the branch `t27-calendar-polish`)
+- [ ] 27 Calendar and a console polish pass (PR https://github.com/Rhitrao/dishadira-bot/pull/39)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
