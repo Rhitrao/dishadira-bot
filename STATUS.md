@@ -49,7 +49,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 24 Payments, Settings and the audit log (PR https://github.com/Rhitrao/dishadira-bot/pull/36; no migration)
 - [ ] 25 Switch over (PR https://github.com/Rhitrao/dishadira-bot/pull/38; CONSOLE_V2 "true" on test only)
 - [x] 27 Calendar and a console polish pass (PR https://github.com/Rhitrao/dishadira-bot/pull/39, merged)
-- [ ] 28 One cron per Worker, so test and live fit the Workers Free limit of 5 (PR: see the branch `t28-one-cron`)
+- [ ] 28 One cron per Worker, so test and live fit the Workers Free limit of 5 (PR https://github.com/Rhitrao/dishadira-bot/pull/41)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
