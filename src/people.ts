@@ -5,21 +5,21 @@
 //  - A practitioner sees only customers booked with them, and nothing about money.
 //  - Phone numbers show as the last 4 digits everywhere; the full number only through the audited reveal, with a reason.
 //  - Opening a person page is audited (PERSON_OPENED), as the PRD asks.
-//  - Staff never see the text of a safety message (crisis or emergency), the customer's or the bot's.
-//  - Practitioners don't see the chat at all: CONTRACT.md says the practitioner "never sees chats" and it outranks the PRD's table
-//    (written under "Blocked" in STATUS.md for the owner to decide).
+//  - Staff never see the text of a safety message (crisis or emergency), the customer's or the bot's; and no chat text at all when the
+//    owner has turned "Staff read chats" off in Settings (src/business.ts chatTextHidden).
+//  - Practitioners read the chat of their own customers, read-only (CONTRACT v6, decided 27 Oct 2026); never anyone else's.
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { can, canAny, memberCsrf, WORKSPACE_ID, type Member, type Target } from "./auth";
 import { config } from "./config";
+import { chatTextHidden } from "./business";
 import { auditStmt, languageCsrf, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleCopy } from "./console-copy";
 import { rupees, serviceName } from "./copy";
 import type { Env } from "./env";
-import { applyStatus, type Applied } from "./pay/apply";
-import { razorpay } from "./pay/razorpay";
 import { peopleCopy, type PeopleCopy } from "./people-copy";
 import { personState, quietActive, noSellActiveFor, ensureState } from "./noise";
+import { applyMoneyReceived } from "./requests";
 import { iso } from "./slots";
 import {
   appointmentRow, bookingChip, bubble, callLangText, clock, consoleFrame, dayName, emptyState, firstName, forWhomText, last4, ledger, listDetail,
@@ -29,7 +29,7 @@ import { retentionMinutes, wipePersonStmts } from "./wipe";
 
 export const people = new Hono<{ Bindings: Env; Variables: ConsoleVars }>();
 
-const PRACTITIONER_CHAT = false; // see the header: CONTRACT.md wins until the owner decides
+const PRACTITIONER_CHAT = true; // own customers only, read-only (can(read_chat) is "own" for a practitioner); see the header
 const LIST_LIMIT = 60;
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -202,7 +202,7 @@ async function frameFor(c: ConsoleCtx, o: { title: string; body: unknown; flash?
   const ws = await c.env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId ?? WORKSPACE_ID).first<{ name: string }>();
   return consoleFrame({
     role: m.role, locale: m.locale, active: "people", title: o.title, business: ws?.name ?? "", member: m.displayName ?? undefined,
-    flash: o.flash, query: o.q, language: { csrf: await languageCsrf(c.get("jwt"), m), back: o.back },
+    flash: o.flash, query: o.q, language: { csrf: await languageCsrf(c.get("jwt"), m), back: o.back }, accent: c.get("accent"),
     body: html`<style>${raw(PEOPLE_CSS)}</style>${o.body}`,
   });
 }
@@ -394,10 +394,12 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
     payHtml = section(p.secPayments, pays.length ? rows(items) : emptyState(p.noPayments));
   }
 
-  // The chat, with the date its text is deleted. Staff never see a safety message's text; practitioners don't see the chat.
+  // The chat, with the date its text is deleted. Staff never see a safety message's text (nor any text when the owner hides it);
+  // a practitioner reads their own customer's chat, and there is nothing here to reply with.
   let chatHtml: unknown;
-  if (isPractitioner(m) && !PRACTITIONER_CHAT) chatHtml = emptyState(p.chatForCalls);
+  if (can(m, "read_chat", target) !== "yes" || (isPractitioner(m) && !PRACTITIONER_CHAT)) chatHtml = emptyState(p.chatForCalls);
   else {
+    const allHidden = await chatTextHidden(c.env.DB, m.role);
     const lines = await chatOf(c.env, id);
     const keepMin = retentionMinutes(c.env);
     const keep = keepMin >= 1440 ? p.keepDays(Math.round(keepMin / 1440)) : p.keepMinutes(keepMin);
@@ -413,7 +415,7 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
     const bubbles = lines.map((l) => {
       const from = fromOf(l);
       const hidden = l.safety === 1 && can(m, "read_chat", { ...target, safety: true }) !== "yes";
-      const text = hidden ? cc.safetyHidden : l.wipedAt ? p.textRemoved : l.body ?? p.noText;
+      const text = hidden ? cc.safetyHidden : l.wipedAt ? p.textRemoved : allHidden ? cc.chatTextHidden : l.body ?? p.noText;
       const kind = l.dir === "OUT" && l.status === "FAILED" ? p.notDeliveredChip : l.dir === "OUT" && l.status === "SKIPPED" ? p.notSentChip : undefined;
       return bubble({ from, text, time: when(p, l.at, loc), kind, hideSafety: hidden, locale: loc, teamName: l.key?.startsWith("admin-reply:") ? cc.roleOWNER : undefined });
     });
@@ -654,20 +656,4 @@ async function askOwner(c: ConsoleCtx, kind: "BLOCK" | "MARK_PAID", target: stri
     auditStmt(c, `REQUEST_${kind}`, target, amountPaise ? rupees(amountPaise) : "", reason),
   ]);
   return { to: res.meta.changes ? "asked" : "already" };
-}
-
-// Money received outside Razorpay, applied as a paid link would be: the payment becomes PAID and the booking (call, session or package
-// credits) follows, with the customer's confirmation. Only for a link sent and not paid, and only if nothing else is paid for the same
-// booking, so the duplicate-payment refund (which goes to Razorpay) can never be set off by money Razorpay never had.
-// Exported so the owner's approval of a staff request (ticket 21) can run the same code.
-export async function applyMoneyReceived(env: Env, paymentId: number): Promise<Applied | "NOT_OPEN"> {
-  const pay = await env.DB.prepare(
-    `SELECT p.id, p.provider_link_id AS linkId, p.amount_paise AS amount, p.state,
-       (SELECT COUNT(*) FROM payments q WHERE q.purpose = p.purpose AND q.target_id = p.target_id AND q.state IN ${PAID_LIKE}) AS paidSiblings
-     FROM payments p WHERE p.id = ?1`,
-  )
-    .bind(paymentId)
-    .first<{ id: number; linkId: string | null; amount: number; state: string; paidSiblings: number }>();
-  if (!pay || !pay.linkId || !["PENDING", "FAILED"].includes(pay.state) || pay.paidSiblings > 0) return "NOT_OPEN";
-  return applyStatus(env, razorpay(env), { linkId: pay.linkId, status: "PAID", paidPaise: pay.amount, currency: config.currency });
 }

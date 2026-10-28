@@ -102,6 +102,7 @@ const en = {
   fromAssistant: "Assistant",
   fromSafety: "Safety message",
   safetyHidden: "A safety message. An owner is needed.",
+  chatTextHidden: "Chat text is hidden by the owner",
 
   // Banners: only for things that affect everyone, each with its fix
   bannerPaused: "Bookings are paused",
@@ -213,6 +214,7 @@ const hi: ConsoleCopy = {
   fromAssistant: "असिस्टेंट",
   fromSafety: "सुरक्षा संदेश",
   safetyHidden: "सुरक्षा संदेश। मालिक की ज़रूरत है।",
+  chatTextHidden: "मालिक ने चैट का टेक्स्ट छिपा रखा है",
 
   bannerPaused: "बुकिंग रुकी हुई है",
   fixPaused: "बुकिंग चालू करें",

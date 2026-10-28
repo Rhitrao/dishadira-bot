@@ -119,6 +119,11 @@ export async function staffReadsChat(db: D1Database): Promise<boolean> {
   const r = await db.prepare("SELECT value FROM settings WHERE key = ?1").bind(KEYS.staffReadChat).first<{ value: string }>();
   return r?.value !== "false";
 }
+// Whether a member's console shows chat text: staff only while the owner allows it. Owners and practitioners (their own customers, by
+// can()) are not affected; safety messages are a separate, stricter rule (can(member, "read_chat", { safety: true })).
+export async function chatTextHidden(db: D1Database, role: string): Promise<boolean> {
+  return role === "STAFF" && !(await staffReadsChat(db));
+}
 
 // ---- the console's accent colour ----
 // A small fixed set, each checked for contrast in light and dark (test/settings.test.ts), so no choice makes text unreadable.

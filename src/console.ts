@@ -6,6 +6,7 @@
 import { Hono, type Context } from "hono";
 import { html, raw } from "hono/html";
 import { activeMember, canAny, csrf, memberCsrf, ROLES, seedMembers, sha256Hex, touchMember, verifiedEmail, WORKSPACE_ID, type Action, type Member, type Role } from "./auth";
+import { accentOf, accentCss, type AccentName } from "./business";
 import type { Env } from "./env";
 import { iso } from "./slots";
 import { inbox } from "./inbox";
@@ -16,14 +17,14 @@ import { team } from "./team";
 import { today } from "./today";
 import { CONSOLE_CSS, header } from "./ui";
 
-export type ConsoleVars = { jwt: string; email: string; member: Member };
+export type ConsoleVars = { jwt: string; email: string; member: Member; accent: AccentName }; // accent: Settings → Business, read once per request
 export type ConsoleCtx = Context<{ Bindings: Env; Variables: ConsoleVars }>;
 
 // Console words added by ticket 19, in one place so they can move to the string catalogue (src/console-copy.ts, ticket 20).
 export const S = {
   brand: "Console",
   noAccessTitle: "No access",
-  noAccess: "This email address isn't a member of this business. Ask the owner to invite you, then open the link in the invite email.",
+  noAccess: "This email address isn't a member of this business. Ask the owner to invite you, then open the invite link they send you.",
   notForRole: "Your role can't open this page.",
   backToToday: "Back to Today",
   comingSoon: "This screen comes in the next release.",
@@ -41,6 +42,7 @@ export const S = {
   settingsTeam: "Team",
   settingsTeamWhy: "Invite people, set their roles, remove members.",
   transferred: "Ownership handed over. You're now Staff.",
+  transferredPractitioner: "Ownership handed over. You're now a Practitioner.",
   invite: {
     title: "Join the team",
     asRole: (role: string) => `You're invited to join as ${role}.`,
@@ -76,7 +78,7 @@ const secure = (res: Response) => {
 };
 
 // The page frame: the stylesheet, the member's tabs and the flash line. `body` is already-escaped html.
-export function frame(opts: { title: string; member: Member | null; tab: TabId | null; body: unknown; flash?: string | null }) {
+export function frame(opts: { title: string; member: Member | null; tab: TabId | null; body: unknown; flash?: string | null; accent?: AccentName }) {
   const tabs = opts.member
     ? tabsFor(opts.member).map(
         (t) => html`<a href="${t.href}" class="${t.id === opts.tab ? "on" : ""}"${t.id === opts.tab ? raw(' aria-current="page"') : ""}><span class="i" aria-hidden="true">${t.icon}</span><span>${S.tabs[t.id]}</span></a>`,
@@ -84,7 +86,7 @@ export function frame(opts: { title: string; member: Member | null; tab: TabId |
     : [];
   const lang = opts.member?.locale === "hi" ? "hi" : "en";
   return html`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${opts.title} · ${S.brand}</title><style>${raw(CONSOLE_CSS)}</style></head><body>
+<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${opts.title} · ${S.brand}</title><style>${raw(CONSOLE_CSS)}</style>${raw(accentCss(opts.accent ?? "teal"))}</head><body>
 ${tabs.length ? html`<nav class="tabs" aria-label="${S.brand}"><span class="brand">${S.brand}</span>${tabs}</nav>` : ""}
 <div class="wrap">${opts.flash ? html`<p class="flash" role="status">${opts.flash}</p>` : ""}${opts.body}</div></body></html>`;
 }
@@ -96,7 +98,7 @@ export const noAccess = async (c: Context) => {
 
 // A role that can't do this: the same refusal for a hand-made POST as for a page the tabs never showed.
 export const refused = (c: ConsoleCtx) =>
-  c.html(frame({ title: S.noAccessTitle, member: c.get("member"), tab: null, body: html`${header(S.noAccessTitle, "")}<p>${S.notForRole}</p><p><a class="btn" href="/app">${S.backToToday}</a></p>` }), 403);
+  c.html(frame({ title: S.noAccessTitle, member: c.get("member"), tab: null, accent: c.get("accent"), body: html`${header(S.noAccessTitle, "")}<p>${S.notForRole}</p><p><a class="btn" href="/app">${S.backToToday}</a></p>` }), 403);
 
 // An audit row: who (the member), what, on what, and why. Returned unrun so it joins the change's batch, right after the change:
 // it is written only if that statement changed a row (SQLite's changes()), so the log never records something that didn't happen.
@@ -122,6 +124,7 @@ consoleApp.use("*", async (c, next) => {
     const m = await activeMember(c.env, email);
     if (!m) return noAccess(c);
     c.set("member", m);
+    c.set("accent", await accentOf(c.env.DB).catch((): AccentName => "teal"));
     await touchMember(c.env, m).catch(() => undefined);
   }
   await next();
@@ -137,8 +140,8 @@ const placeholder = (id: TabId) => async (c: ConsoleCtx) => {
     id === "settings" && canAny(m, "manage_team")
       ? html`<h2>${S.tabs.settings}</h2><div class="list"><a class="li" href="/app/settings/team"><span class="main"><b>${S.settingsTeam}</b><div class="muted">${S.settingsTeamWhy}</div></span><span class="go" aria-hidden="true">›</span></a></div>`
       : html`<p class="muted">${S.comingSoon}</p>`;
-  const flash = id === "today" ? (({ joined: S.invite.joined, transferred: S.transferred }) as Record<string, string>)[c.req.query("m") ?? ""] ?? null : null;
-  return c.html(frame({ title: S.tabs[id], member: m, tab: id, flash, body: html`${header(S.tabs[id], S.questions[id])}<p class="small muted">${visibleTo(tab.action)}</p>${extra}` }));
+  const flash = id === "today" ? (({ joined: S.invite.joined, transferred: S.transferred, transferred_p: S.transferredPractitioner }) as Record<string, string>)[c.req.query("m") ?? ""] ?? null : null;
+  return c.html(frame({ title: S.tabs[id], member: m, tab: id, flash, accent: c.get("accent"), body: html`${header(S.tabs[id], S.questions[id])}<p class="small muted">${visibleTo(tab.action)}</p>${extra}` }));
 };
 consoleApp.route("/", today); // Today (ticket 21, src/today.ts): GET /app and its POSTs under /app/today/*
 consoleApp.route("/inbox", inbox); // ticket 22: src/inbox.ts

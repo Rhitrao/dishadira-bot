@@ -118,6 +118,11 @@ const en = {
   moved: (when: string) => `Moved to ${when}. They were told on WhatsApp.`,
   movedQuiet: (when: string) => `Moved to ${when}. WhatsApp's window has closed, so tell them on the call.`,
   moveRefused: "That session can't be moved to that time: it starts too soon, it was already moved once, or the time was taken.",
+  callWord: (price: string) => `${price} call`,
+  moveCallRule: "A call can be moved once, free, before it starts. After a move, a missed call isn't offered another time.",
+  callMovedOnce: "This call was already moved once, so it can't move again.",
+  callMoved: (when: string) => `Moved to ${when}. They get a WhatsApp message with the new time.`,
+  callMoveRefused: "That call can't be moved: it has started, it was already moved once, or it has changed.",
 
   // The email when a chat has waited 2 working hours (no customer text, no name)
   mailSubject: "A chat is still waiting for a reply",
@@ -251,6 +256,11 @@ const hi: InboxCopy = {
   moved: (when) => `${when} पर ले जाया गया। उन्हें WhatsApp पर बता दिया गया।`,
   movedQuiet: (when) => `${when} पर ले जाया गया। WhatsApp की अवधि ख़त्म हो चुकी है, इसलिए कॉल पर बता दें।`,
   moveRefused: "उस सेशन को उस समय पर नहीं ले जा सकते: वह बहुत जल्दी शुरू हो रहा है, उसका समय पहले ही एक बार बदला जा चुका है, या वह समय ले लिया गया।",
+  callWord: (price) => `${price} वाली कॉल`,
+  moveCallRule: "कॉल शुरू होने से पहले उसका समय एक बार, मुफ़्त, बदला जा सकता है। समय बदलने के बाद कॉल छूट जाए तो नया समय नहीं मिलता।",
+  callMovedOnce: "इस कॉल का समय पहले ही एक बार बदला जा चुका है, अब नहीं बदल सकता।",
+  callMoved: (when) => `${when} पर ले जाया गया। उन्हें WhatsApp पर नया समय भेज दिया गया है।`,
+  callMoveRefused: "यह कॉल नहीं बदली जा सकती: वह शुरू हो चुकी है, उसका समय पहले ही एक बार बदला जा चुका है, या वह बदल गई है।",
 
   mailSubject: "एक चैट अभी भी जवाब का इंतज़ार कर रही है",
   mailBody: (link) => `एक ग्राहक 2 कामकाजी घंटों से टीम के जवाब का इंतज़ार कर रहा है।\n\nखोलें: ${link}`,

@@ -266,34 +266,45 @@ export async function rescheduleChoice(env: Env, choice: string | null, convId: 
     return true;
   }
   const introId = Number(m[1]);
-  const intro = await db
-    .prepare("SELECT state, reschedule_count AS rc, slot_id AS slotId FROM intros WHERE id = ?1 AND conversation_id = ?2")
-    .bind(introId, conv.id)
-    .first<{ state: string; rc: number; slotId: number | null }>();
-  if (!intro || intro.state !== "MISSED" || intro.rc !== 0) {
+  const res = await moveCall(db, { convId: conv.id, introId, startUtc: m[2], from: "MISSED", nowMs: Date.now() });
+  if (res === "NOT_AVAILABLE") {
     await send({ type: "text", text: cp.rescheduleNotAvailable }, "na");
     return true;
   }
-  const hold = await holdSlot(db, { kind: "CALL", startUtc: m[2], ownerId: conv.id, nowMs: Date.now() });
-  if (!hold.ok) {
-    await send({ type: "text", text: hold.reason === "ALREADY_HOLDING" ? cp.alreadyHolding : cp.slotTaken }, "taken");
+  if (res !== "MOVED") {
+    await send({ type: "text", text: res === "ALREADY_HOLDING" ? cp.alreadyHolding : cp.slotTaken }, "taken");
     return true;
   }
-  const slot = await db.prepare("SELECT id FROM slots WHERE kind = 'CALL' AND start_utc = ?1 AND owner_id = ?2").bind(m[2], conv.id).first<{ id: number }>();
   const now = nowIso();
-  // One transaction: intro -> RESCHEDULED (only the first tap wins), new slot BOOKED, old slot freed.
-  const [moved] = await db.batch([
-    db.prepare("UPDATE intros SET state = 'RESCHEDULED', slot_id = ?2, reschedule_count = 1, updated_at = ?3 WHERE id = ?1 AND state = 'MISSED' AND reschedule_count = 0").bind(introId, slot?.id ?? 0, now),
-    db.prepare("UPDATE slots SET state = 'BOOKED', hold_until = NULL WHERE id = ?1 AND owner_id = ?2 AND state = 'HELD' AND EXISTS (SELECT 1 FROM intros WHERE id = ?3 AND slot_id = ?1 AND state = 'RESCHEDULED')").bind(slot?.id ?? 0, conv.id, introId),
-    db.prepare("UPDATE slots SET state = 'HELD', hold_until = ?2 WHERE id = ?1 AND id != ?3 AND state = 'BOOKED' AND EXISTS (SELECT 1 FROM intros WHERE id = ?4 AND slot_id = ?3 AND state = 'RESCHEDULED')").bind(intro.slotId ?? 0, now, slot?.id ?? 0, introId),
-  ]);
-  if (!moved.meta.changes) {
-    await db.prepare("UPDATE slots SET hold_until = ?2 WHERE id = ?1 AND state = 'HELD'").bind(slot?.id ?? 0, now).run(); // lost a double tap
-    await send({ type: "text", text: cp.rescheduleNotAvailable }, "na");
-    return true;
-  }
   await db.prepare("INSERT INTO audit_log (at, actor, action, target, detail) VALUES (?1, 'system', 'RESCHEDULED', ?2, ?3)").bind(now, `intro:${introId}`, m[2]).run();
   const p = formatIstLang(m[2], langOf(conv.locale));
   await send({ type: "text", text: cp.rescheduled(p.day, p.time, config.businessNumber) }, "done");
   return true;
+}
+
+// The one free move of a ₹99 call, shared by the missed-call reschedule above (from MISSED) and the Inbox's "Book or move for them"
+// (from PAID, a call that hasn't started; ticket 26). The same guarded hold, then one batch: the call -> RESCHEDULED with
+// reschedule_count 1 (only if it is still in `from` and has never moved, so a double tap or a second move changes nothing), the new
+// slot BOOKED, the old one freed. A call moved once can't move again, and a second miss closes it with no refund, as before.
+export type CallMove = "MOVED" | "NOT_AVAILABLE" | "ALREADY_HOLDING" | "TAKEN";
+export async function moveCall(db: D1Database, o: { convId: number; introId: number; startUtc: string; from: "MISSED" | "PAID"; nowMs: number }): Promise<CallMove> {
+  const intro = await db
+    .prepare("SELECT state, reschedule_count AS rc, slot_id AS slotId FROM intros WHERE id = ?1 AND conversation_id = ?2")
+    .bind(o.introId, o.convId)
+    .first<{ state: string; rc: number; slotId: number | null }>();
+  if (!intro || intro.state !== o.from || intro.rc !== 0) return "NOT_AVAILABLE";
+  const hold = await holdSlot(db, { kind: "CALL", startUtc: o.startUtc, ownerId: o.convId, nowMs: o.nowMs });
+  if (!hold.ok) return hold.reason === "ALREADY_HOLDING" ? "ALREADY_HOLDING" : "TAKEN";
+  const slot = await db.prepare("SELECT id FROM slots WHERE kind = 'CALL' AND start_utc = ?1 AND owner_id = ?2").bind(o.startUtc, o.convId).first<{ id: number }>();
+  const now = iso(o.nowMs);
+  const [moved] = await db.batch([
+    db.prepare("UPDATE intros SET state = 'RESCHEDULED', slot_id = ?2, reschedule_count = 1, updated_at = ?3 WHERE id = ?1 AND state = ?4 AND reschedule_count = 0").bind(o.introId, slot?.id ?? 0, now, o.from),
+    db.prepare("UPDATE slots SET state = 'BOOKED', hold_until = NULL WHERE id = ?1 AND owner_id = ?2 AND state = 'HELD' AND EXISTS (SELECT 1 FROM intros WHERE id = ?3 AND slot_id = ?1 AND state = 'RESCHEDULED')").bind(slot?.id ?? 0, o.convId, o.introId),
+    db.prepare("UPDATE slots SET state = 'HELD', hold_until = ?2 WHERE id = ?1 AND id != ?3 AND state = 'BOOKED' AND EXISTS (SELECT 1 FROM intros WHERE id = ?4 AND slot_id = ?3 AND state = 'RESCHEDULED')").bind(intro.slotId ?? 0, now, slot?.id ?? 0, o.introId),
+  ]);
+  if (!moved.meta.changes) {
+    await db.prepare("UPDATE slots SET hold_until = ?2 WHERE id = ?1 AND state = 'HELD'").bind(slot?.id ?? 0, now).run(); // lost a double tap
+    return "NOT_AVAILABLE";
+  }
+  return "MOVED";
 }

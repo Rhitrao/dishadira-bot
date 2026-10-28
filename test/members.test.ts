@@ -38,6 +38,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   emails = [];
+  links = [];
   emailDown = false;
   tokens = new Map();
   ({ db, close } = await newDb());
@@ -76,10 +77,15 @@ async function withStaff() {
   await get("/app");
   await db.prepare("INSERT INTO members (workspace_id, email, role, status) VALUES (1, ?1, 'STAFF', 'active')").bind(STAFF).run();
 }
+// Invites are not emailed (CONTRACT v6): the owner's page shows the one-time link once. `links` keeps each one, in order.
+let links: string[] = [];
 async function invite(email: string, role: Role = "STAFF") {
   const page = await (await get("/app/settings/team")).text();
   const csrf = csrfFrom(page, "/app/settings/team/invite")!;
-  return post("/app/settings/team/invite", { csrf, email, role });
+  const res = await post("/app/settings/team/invite", { csrf, email, role });
+  const tok = linkIn(await res.clone().text());
+  if (tok) links.push(tok);
+  return res;
 }
 const linkIn = (text: string) => /\/app\/invite\/([A-Za-z0-9_-]+)/.exec(text)?.[1];
 async function accept(tok: string, as: string) {
@@ -306,15 +312,22 @@ describe("team: only the owner, for the page and every POST", () => {
 });
 
 describe("invites", () => {
-  it("sends a one-time link by email; the invitee has no access until they accept it; everything is audited", async () => {
+  it("shows a one-time link to send by hand (WhatsApp or copy), never an email; no access until it's accepted; audited", async () => {
     await get("/app");
     const res = await invite(STAFF, "STAFF");
-    expect(res.status).toBe(303);
-    expect(res.headers.get("Location")).toBe("/app/settings/team?m=invited");
-    expect(emails).toHaveLength(1);
-    expect(emails[0].to).toBe(STAFF);
-    expect(emails[0].text).toContain("as Staff");
-    const tok = linkIn(emails[0].text)!;
+    expect(res.status).toBe(200);
+    const shown = await res.text();
+    expect(emails).toHaveLength(0);
+    const tok = links[0];
+    const link = `${ORIGIN}/app/invite/${tok}`;
+    expect(shown).toContain(`readonly value="${link}"`);
+    const wa = /href="(https:\/\/wa\.me\/\?text=[^"]+)"/.exec(shown)![1].replace(/&amp;/g, "&");
+    const message = decodeURIComponent(wa.slice("https://wa.me/?text=".length));
+    expect(message).toContain("as Staff");
+    expect(message).toContain(STAFF);
+    expect(message.endsWith(`\n${link}`)).toBe(true);
+    expect(shown).toContain("Send on WhatsApp");
+    expect(await (await get("/app/settings/team")).text()).not.toContain(tok); // shown only once
     expect(tok.length).toBeGreaterThan(40);
     expect(await db.prepare("SELECT token_hash FROM invites").first("token_hash")).not.toContain(tok); // only the hash is stored
     expect((await memberRow(STAFF))!.status).toBe("invited");
@@ -339,7 +352,7 @@ describe("invites", () => {
   it("works once: a second accept is refused", async () => {
     await get("/app");
     await invite(STAFF);
-    const tok = linkIn(emails[0].text)!;
+    const tok = links[0];
     expect((await accept(tok, STAFF)).status).toBe(303);
     const again = await accept(tok, STAFF);
     expect(again.status).toBe(410);
@@ -350,7 +363,7 @@ describe("invites", () => {
   it("expires after 7 days", async () => {
     await get("/app");
     await invite("late@example.test");
-    const tok = linkIn(emails[0].text)!;
+    const tok = links[0];
     vi.setSystemTime(NOW + 7 * 86_400_000 + 60_000);
     const res = await accept(tok, "late@example.test");
     expect(res.status).toBe(410);
@@ -360,13 +373,13 @@ describe("invites", () => {
     vi.setSystemTime(NOW);
     await invite("late@example.test");
     vi.setSystemTime(NOW + 6 * 86_400_000);
-    expect((await accept(linkIn(emails[1].text)!, "late@example.test")).status).toBe(303);
+    expect((await accept(links[1], "late@example.test")).status).toBe(303);
   });
 
   it("only works for the email it was sent to, and a bad link says so", async () => {
     await get("/app");
     await invite(STAFF);
-    const tok = linkIn(emails[0].text)!;
+    const tok = links[0];
     const res = await accept(tok, OTHER);
     expect(res.status).toBe(403);
     expect(await res.text()).toContain("different email address");
@@ -378,11 +391,11 @@ describe("invites", () => {
     await get("/app");
     await invite(STAFF);
     await invite(STAFF, "PRACTITIONER");
-    const [first, second] = emails.map((e) => linkIn(e.text)!);
+    const [first, second] = links;
     expect((await accept(first, STAFF)).status).toBe(410);
     expect((await memberRow(STAFF))!.role).toBe("PRACTITIONER");
     await invite("third@example.test");
-    const third = linkIn(emails[2].text)!;
+    const third = links[2];
     const id = (await memberRow("third@example.test"))!.id;
     expect((await post("/app/settings/team/remove", { member: String(id), csrf: await tokenFor(OWNER, `team-remove:${id}`) })).status).toBe(303);
     expect((await accept(third, "third@example.test")).status).toBe(410);
@@ -402,14 +415,13 @@ describe("invites", () => {
     expect((await memberRow(OWNER))!.role).toBe("OWNER");
   });
 
-  it("if the email doesn't go, the owner sees the link once on the page", async () => {
+  it("works the same with email down: nothing is ever emailed for an invite", async () => {
     await get("/app");
     emailDown = true;
     const res = await invite(STAFF);
     expect(res.status).toBe(200);
-    const tok = linkIn(await res.text())!;
-    expect(tok).toBeTruthy();
-    expect((await accept(tok, STAFF)).status).toBe(303);
+    expect(links[0]).toBeTruthy();
+    expect((await accept(links[0], STAFF)).status).toBe(303);
   });
 
   it("a removed member can be invited back", async () => {
@@ -417,7 +429,7 @@ describe("invites", () => {
     const id = (await memberRow(STAFF))!.id;
     await post("/app/settings/team/remove", { member: String(id), csrf: await tokenFor(OWNER, `team-remove:${id}`) });
     await invite(STAFF, "PRACTITIONER");
-    expect((await accept(linkIn(emails[0].text)!, STAFF)).status).toBe(303);
+    expect((await accept(links[0], STAFF)).status).toBe(303);
     expect(await memberRow(STAFF)).toMatchObject({ id, role: "PRACTITIONER", status: "active" });
   });
 });
@@ -486,16 +498,16 @@ describe("exactly one owner", () => {
     expect(page).toContain(`name="member" value="${(await memberRow(STAFF))!.id}"`);
   });
 
-  it("hands ownership over: one owner after, the old owner becomes Staff, audited", async () => {
+  it("hands ownership over: one owner after, the old owner becomes Staff when they choose it, audited", async () => {
     await withStaff();
     const ownerId = (await memberRow(OWNER))!.id;
     const staffId = (await memberRow(STAFF))!.id;
-    const res = await post("/app/settings/team/transfer", { member: String(staffId), csrf: await tokenFor(OWNER, `team-transfer:${staffId}`) });
+    const res = await post("/app/settings/team/transfer", { member: String(staffId), as: "STAFF", csrf: await tokenFor(OWNER, `team-transfer:${staffId}`) });
     expect(res.headers.get("Location")).toBe("/app?m=transferred");
     expect(await (await get("/app?m=transferred", OWNER)).text()).toContain("Ownership handed over");
     expect((await roles()).filter((r) => r.role === "OWNER")).toEqual([{ email: STAFF, role: "OWNER", status: "active" }]);
     expect((await memberRow(OWNER))!.role).toBe("STAFF");
-    expect(await audits("ownership_transferred")).toEqual([{ actor: OWNER, memberId: ownerId, ws: 1, target: `member:${staffId}`, detail: `from member:${ownerId}` }]);
+    expect(await audits("ownership_transferred")).toEqual([{ actor: OWNER, memberId: ownerId, ws: 1, target: `member:${staffId}`, detail: `from member:${ownerId}, now STAFF` }]);
     expect((await get("/app/settings/team", OWNER)).status).toBe(403);
     expect((await get("/app/settings/team", STAFF)).status).toBe(200);
     // The same hand-over sent twice changes nothing more.

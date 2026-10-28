@@ -38,6 +38,14 @@ export async function applyStatus(env: Env, provider: PaymentProvider, ev: PaySt
   return "NOOP"; // ACTIVE / unknown: nothing to do yet
 }
 
+// Money received outside Razorpay (CONTRACT "Flow invariants": the owner records it, or approves a staff member's request): the same
+// steps as a verified paid link, by payment id, for the exact amount of the row. Only an open payment moves; see src/requests.ts.
+export async function applyReceived(env: Env, provider: PaymentProvider, paymentId: number): Promise<Applied> {
+  const pay = await env.DB.prepare("SELECT id, purpose, target_id, state, amount_paise, created_at FROM payments WHERE id = ?1").bind(paymentId).first<Payment>();
+  if (!pay || !["CREATING", "PENDING", "FAILED"].includes(pay.state)) return "NOOP";
+  return applyPaid(env, provider, pay, { linkId: "", status: "PAID", paidPaise: pay.amount_paise, currency: config.currency });
+}
+
 // Link expired or cancelled with no payment: payment FAILED, intro/session EXPIRED, hold freed.
 async function closeUnpaid(env: Env, pay: Payment): Promise<Applied> {
   const db = env.DB;
