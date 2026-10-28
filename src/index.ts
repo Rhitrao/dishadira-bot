@@ -16,6 +16,8 @@ import { mailOpenRequests } from "./requests";
 import { sendReminders } from "./remind";
 import { runDigest } from "./report";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat, returnStaleHumans } from "./watch";
+import { istDay, iso } from "./slots";
+import { sendsOn } from "./switches";
 import { switchOver } from "./switchover";
 import { wipeChats } from "./wipe";
 import { receiveWebhook, verifyWebhook } from "./whatsapp";
@@ -49,23 +51,46 @@ app.route("/amma", amma);
 app.route("/admin", admin);
 app.route("/app", consoleApp); // the role-based console, behind CONSOLE_V2 (a 404 while it is off)
 
+// One cron per Worker: the Workers Free plan allows 5 cron triggers per account, and test and live share the account.
 export const RECONCILE_CRON = "*/2 * * * *";
 
-export const DIGEST_CRON = "30 15 * * *";
+// The two daily jobs ride on the 2-minute cron. Each runs once per IST day, on the first tick at or after its time (so a missed
+// tick only delays it by 2 minutes); the day's claim is one settings row, released if the job fails so the next tick tries again.
+export const DAILY_JOBS = [
+  { key: "reminders", at: "18:30", needsSends: true, run: (env: Env) => sendReminders(env) },
+  { key: "digest", at: "21:00", needsSends: false, run: (env: Env) => runDigest(env) },
+] as const;
 
-export const REMINDER_CRON = "0 13 * * *"; // 18:30 IST
+export async function runDailyJobs(env: Env, nowMs: number): Promise<string[]> {
+  const ran: string[] = [];
+  const day = istDay(nowMs);
+  for (const job of DAILY_JOBS) {
+    if (nowMs < Date.parse(`${day}T${job.at}:00+05:30`)) continue;
+    // While sends are paused, reminders are not claimed, so resuming sends the same evening still sends them.
+    if (job.needsSends && !(await sendsOn(env))) continue;
+    const key = `daily:${job.key}:${day}`;
+    const claim = await env.DB.prepare("INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?1, 'ran', ?2)").bind(key, iso(nowMs)).run();
+    if (!claim.meta.changes) continue;
+    try {
+      await job.run(env);
+      ran.push(job.key);
+    } catch {
+      await env.DB.prepare("DELETE FROM settings WHERE key = ?1").bind(key).run().catch(() => undefined);
+    }
+  }
+  return ran;
+}
 
-// Cloudflare calls scheduled() for each cron in wrangler.toml: every 2 minutes (jobs + heartbeat), 6:30pm IST (reminders) and 9pm IST (digest).
-const scheduled = async (event: { cron: string }, env: Env) => {
-  await loadPrices(env);
-  if (event.cron === DIGEST_CRON) return runDigest(env).catch(() => undefined);
-  if (event.cron === REMINDER_CRON) return sendReminders(env).then(() => undefined, () => undefined);
+// Cloudflare calls scheduled() every 2 minutes: the heartbeat, the jobs, then the daily reminders (6:30 pm IST) and digest (9 pm IST).
+const scheduled = async (event: { cron: string; scheduledTime?: number }, env: Env) => {
   if (event.cron !== RECONCILE_CRON) return;
+  await loadPrices(env);
   const provider = razorpay(env);
   await recordHeartbeat(env).catch(() => 0);
   // One failing job must not stop the others; each is safe to run again.
   for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);
   for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests]) await job(env).catch(() => 0);
+  await runDailyJobs(env, event.scheduledTime ?? Date.now()).catch(() => undefined);
 };
 
 export default Object.assign(app, { scheduled });

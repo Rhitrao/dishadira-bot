@@ -52,11 +52,9 @@ describe("wrangler environments", () => {
       expect(section(name)).toMatch(/^enabled\s*=\s*true\s*$/m);
     }
   });
-  it("both environments carry the three crons, including 18:30 IST reminders", () => {
+  it("each environment has exactly one cron, every 2 minutes (the Workers Free plan allows 5 per account; the daily jobs ride on it)", () => {
     for (const name of ["triggers", "env.test.triggers", "env.live.triggers"]) {
-      expect(section(name)).toContain('"0 13 * * *"');
-      expect(section(name)).toContain('"30 15 * * *"');
-      expect(section(name)).toContain('"*/2 * * * *"');
+      expect(section(name)).toMatch(/^crons = \["\*\/2 \* \* \* \*"\]$/m);
     }
   });
   it("the email binding is repeated for each environment", () => {

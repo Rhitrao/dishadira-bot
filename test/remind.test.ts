@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { D1Database } from "@cloudflare/workers-types";
-import app from "../src/index";
+import app, { runDailyJobs } from "../src/index";
 import { config } from "../src/config";
 import { sendReminders } from "../src/remind";
 import { generateSlots } from "../src/slots";
@@ -15,6 +15,8 @@ let fetchMock: ReturnType<typeof vi.fn>;
 const templates = config.templates as unknown as Record<string, { approved: boolean; hi: { name: string; approved: boolean } }>;
 const env = (o: Record<string, string> = {}) => ({ DB: db, SENDS: "true", WA_TOKEN: "tok", WA_PHONE_ID: "1000", ...o }) as never;
 const sent = () => fetchMock.mock.calls.map((c) => JSON.parse((c[1] as { body: string }).body));
+const scheduled = (ev: { cron: string; scheduledTime?: number }, e: unknown) =>
+  (app as unknown as { scheduled: (ev: { cron: string; scheduledTime?: number }, e: unknown) => Promise<void> }).scheduled(ev, e);
 const count = async (sql: string) => (await db.prepare(sql).first<{ n: number }>())!.n;
 
 beforeEach(async () => {
@@ -52,13 +54,52 @@ async function session(conv: number, ymd: string, i: number, state = "CONFIRMED"
 }
 
 describe("day-before reminders", () => {
-  it("the cron at 13:00 UTC runs the reminders, once", async () => {
+  it("the 2-minute cron runs the reminders on its first tick at or after 6:30 pm IST, once a day", async () => {
     const conv = await person(true);
     await call(conv, "2026-10-06", 0);
     const e = env({ RAZORPAY_KEY_ID: "a", RAZORPAY_KEY_SECRET: "b" });
-    await (app as unknown as { scheduled: (ev: { cron: string }, e: unknown) => Promise<void> }).scheduled({ cron: "0 13 * * *" }, e);
+    const tick = (ms: number) => scheduled({ cron: "*/2 * * * *", scheduledTime: ms }, e);
+    await tick(NOW - 2 * 60_000); // 6:28 pm: too early
+    expect(sent()).toHaveLength(0);
+    await tick(NOW); // 6:30 pm
     expect(sent()).toHaveLength(1);
+    await tick(NOW + 2 * 60_000); // 6:32 pm: already done today
+    expect(sent()).toHaveLength(1);
+    expect(await count("SELECT COUNT(*) AS n FROM settings WHERE key = 'daily:reminders:2026-10-05'")).toBe(1);
     expect(config.windowHours).toBe(24);
+  });
+
+  it("a missed 6:30 pm tick only delays the reminders to the next one", async () => {
+    await call(await person(true), "2026-10-06", 0);
+    await scheduled({ cron: "*/2 * * * *", scheduledTime: NOW + 6 * 60_000 }, env());
+    expect(sent()).toHaveLength(1);
+  });
+
+  it("while sends are paused nothing is claimed, so resuming the same evening still sends", async () => {
+    await call(await person(true), "2026-10-06", 0);
+    await setSetting(db, "SENDS", "false");
+    expect(await runDailyJobs(env(), NOW)).toEqual([]);
+    expect(await count("SELECT COUNT(*) AS n FROM settings WHERE key LIKE 'daily:%'")).toBe(0);
+    await db.prepare("DELETE FROM settings WHERE key = 'SENDS'").run();
+    expect(await runDailyJobs(env(), NOW + 30 * 60_000)).toEqual(["reminders"]);
+    expect(sent()).toHaveLength(1);
+  });
+
+  it("the 9 pm digest runs once a day on the same cron, and old cron names do nothing", async () => {
+    expect(await runDailyJobs(env(), NOW + 2 * 3_600_000)).toEqual(["reminders"]); // 8:30 pm
+    expect(await runDailyJobs(env(), NOW + 2.5 * 3_600_000)).toEqual(["digest"]); // 9 pm
+    expect(await runDailyJobs(env(), NOW + 2.6 * 3_600_000)).toEqual([]);
+    expect(await runDailyJobs(env(), NOW + 24 * 3_600_000)).toEqual(["reminders"]); // the next day
+    await scheduled({ cron: "0 13 * * *", scheduledTime: NOW + 48 * 3_600_000 }, env());
+    expect(await count("SELECT COUNT(*) AS n FROM settings WHERE key LIKE 'daily:%:2026-10-07'")).toBe(0);
+  });
+
+  it("a failed job gives its claim back, so the next tick tries again", async () => {
+    await call(await person(true), "2026-10-06", 0);
+    const broken = { ...(env() as object), DB: new Proxy(db, { get: (t, k) => (k === "prepare" ? (sql: string) => (/FROM intros/.test(sql) ? (() => { throw new Error("db down"); })() : t.prepare(sql)) : Reflect.get(t, k)) }) } as never;
+    expect(await runDailyJobs(broken, NOW)).toEqual([]);
+    expect(await count("SELECT COUNT(*) AS n FROM settings WHERE key LIKE 'daily:%'")).toBe(0);
+    expect(await runDailyJobs(env(), NOW + 2 * 60_000)).toEqual(["reminders"]);
   });
 
   it("sends free text inside 24h and the template outside, for calls and sessions tomorrow only", async () => {

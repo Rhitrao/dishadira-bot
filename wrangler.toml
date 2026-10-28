@@ -19,8 +19,9 @@ database_id = "00000000-0000-0000-0000-000000000000"
 enabled = true
 
 [triggers]
-# 18:30 IST reminders (13:00 UTC); 9pm IST digest (15:30 UTC); and payment reconciliation, outcomes, refunds and the heartbeat every 2 minutes.
-crons = ["0 13 * * *", "30 15 * * *", "*/2 * * * *"]
+# One cron per Worker (the Workers Free plan allows 5 per account). Every 2 minutes: payment reconciliation, outcomes, refunds,
+# the heartbeat, and the once-a-day 6:30 pm IST reminders and 9 pm IST digest (src/index.ts, runDailyJobs).
+crons = ["*/2 * * * *"]
 
 # Runtime flags at safe defaults. Only Rohit changes these, outside a coding session.
 [vars]
@@ -52,7 +53,7 @@ database_id = "75c61d91-e1b4-43ce-a0a7-29fcbd2966b9"
 migrations_dir = "migrations"
 
 [env.test.triggers]
-crons = ["0 13 * * *", "30 15 * * *", "*/2 * * * *"]
+crons = ["*/2 * * * *"]
 
 [env.test.observability]
 enabled = true
@@ -80,7 +81,7 @@ database_id = "fbda8944-e733-49c2-ac09-5d38e4dddab7"
 migrations_dir = "migrations"
 
 [env.live.triggers]
-crons = ["0 13 * * *", "30 15 * * *", "*/2 * * * *"]
+crons = ["*/2 * * * *"]
 
 [env.live.observability]
 enabled = true
