@@ -209,9 +209,10 @@ describe("Hindi reminders (ticket 11)", () => {
     expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'TEMPLATE_UNAPPROVED'")).toBe(2);
   });
 
-  it("every template has a Hindi version in the registry with its own flag, off by default", () => {
+  it("every template has a Hindi version in the registry with its own flag (off at the start of each test, test/setup.ts)", () => {
     for (const [name, t] of Object.entries(config.templates)) {
-      expect(t.hi.name, name).toBe(`${name}_hi`);
+      // _hi, or _hind for the four re-created after their first copies were filed under English (docs/TEMPLATES.md)
+      expect([`${name}_hi`, `${name}_hind`], name).toContain(t.hi.name);
       expect(t.hi.language).toBe("hi");
       expect(t.hi.approved, name).toBe(false);
     }
