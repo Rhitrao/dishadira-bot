@@ -8,16 +8,17 @@ const sample: Record<string, (c: Copy, lang: Lang) => string> = {
   timesFor: (c) => c.timesFor("{day}"),
   sessionTimesFor: (c) => c.sessionTimesFor("{day}"),
   callAlreadyBooked: (c) => c.callAlreadyBooked("{day}", "{time}"),
-  payBody: (c) => c.payBody("{day}", "{time}"),
+  payBody: (c) => c.payBody("{day}", "{time}", "{until}", "{link}"),
   confirmed: (c, lang) => c.confirmed("{day}", "{time}", lang, "{number}"),
-  sessionPayBody: (c) => c.sessionPayBody("{day}", "{time}"),
+  sessionPayBody: (c) => c.sessionPayBody("{day}", "{time}", "{until}", "{link}"),
   sessionConfirmed: (c) => c.sessionConfirmed("{day}", "{time}"),
   rescheduled: (c) => c.rescheduled("{day}", "{time}", "{number}"),
   reminderCall: (c) => c.reminderCall("{day}", "{time}"),
   reminderSession: (c) => c.reminderSession("{day}", "{time}"),
   alreadyBookedStart: (c) => c.alreadyBookedStart("{day}", "{time}"),
   reprompt: (c) => c.reprompt("{hint}"),
-  packPayBody: (c) => c.packPayBody(10, "{price}"),
+  packPayBody: (c) => c.packPayBody(10, "{price}", "{until}", "{link}"),
+  payNudge: (c) => c.payNudge("{until}", "{link}"),
   packPayLabel: (c) => c.packPayLabel("{price}"),
   packConfirmed: (c) => c.packConfirmed(10),
   creditBooked: (c) => c.creditBooked("{day}", "{time}", 9),
@@ -93,9 +94,10 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
       ["slotTaken", "The chosen time was just taken"],
       ["alreadyHolding", "Customer already has a time held"],
       ["callAlreadyBooked", "Customer already has a booked call"],
-      ["payBody", "Pay message (above the pay button)"],
+      ["payBody", "Pay message (above the pay button). {until} is when the hold ends (India time); {link} is our own payment link, the same one the button opens (section 8)"],
       ["payLabel", "Pay button (max 20 letters)"],
       ["payFailed", "Payment link could not be made"],
+      ["payNudge", "About 8 minutes before a held call or session time ends, if it is still unpaid (once; only inside the 24-hour window). \"HELP\" or \"मदद\" on its own reaches a person"],
       ["confirmed", "Payment received: call confirmed (the call language is the language of the chat when booking)"],
     ],
   },
@@ -109,7 +111,7 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
       ["rowSession", "Session time list: line under each time (max 72 letters)"],
       ["noSessionSlots", "No session times free"],
       ["sessionNotAvailable", "Session cannot be booked from this message"],
-      ["sessionPayBody", "Session pay message"],
+      ["sessionPayBody", "Session pay message ({until}, {link}: as for the call)"],
       ["sessionPayLabel", "Session pay button (max 20 letters)"],
       ["sessionConfirmed", "Session paid and confirmed"],
       ["notFitRefund", "\"Not right fit\": refund"],
@@ -136,7 +138,7 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
       ["rowPack20Desc", "Row 4: line under it (max 72 letters)"],
       ["softGate", "Soft gate: shown when someone who never had the first call picks a session or package (buttons: Book call / Continue)"],
       ["btnContinue", "Soft gate: Continue (max 20 letters)"],
-      ["packPayBody", "Package: pay message (above the pay button)"],
+      ["packPayBody", "Package: pay message (above the pay button); the link is open for an hour"],
       ["packPayLabel", "Package: pay button (max 20 letters)"],
       ["packPending", "Package: a payment link is already open"],
       ["packConfirmed", "Package paid: the credits are added (button below: Book a session)"],
@@ -198,6 +200,25 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
       ["btnKeep", "Button under it (max 20 letters); the other button is Talk to a person"],
     ],
   },
+  {
+    title: "8. The payment page (our own link)",
+    intro:
+      "Every pay button and pay message opens our own link (bot.disha-dira.com/p/…), never Razorpay's link directly: WhatsApp turns a Razorpay link into its own \"Pay now\" card, which opens WhatsApp's UPI setup instead of Razorpay's page. While the time is held, our link goes straight on to Razorpay's secure payment page (UPI, cards, net banking). Otherwise it shows one of these small pages, in the chat's language, with one button back to WhatsApp. A link we did not make shows the \"not found\" page in both languages.",
+    entries: [
+      ["pageBrand", "The name at the top of the page"],
+      ["pageBtnWhatsApp", "The button (opens the chat on WhatsApp)"],
+      ["pagePaidTitle", "Already paid: heading"],
+      ["pagePaidBody", "Already paid: text (a call or a session)"],
+      ["pagePaidPackBody", "Already paid: text (a package)"],
+      ["pageExpiredTitle", "The hold or the link has ended: heading"],
+      ["pageExpiredBody", "The hold has ended: text (a call or a session)"],
+      ["pageExpiredPackBody", "The link has ended: text (a package)"],
+      ["pageNotFoundTitle", "A link we did not make: heading"],
+      ["pageNotFoundBody", "A link we did not make: text"],
+      ["pageErrorTitle", "The page could not be opened just now: heading"],
+      ["pageErrorBody", "The page could not be opened just now: text"],
+    ],
+  },
 ];
 
 const get = (c: Copy, path: string): unknown => path.split(".").reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], c);
@@ -215,7 +236,7 @@ export function renderCopyDoc(): string {
     "",
     "Words in {curly brackets} are filled in automatically (a day, a time, a number). Prices, call lengths, the hold time, the opening hours and the name of the \"Energy cleansing\" service come from `src/config.ts`.",
     "",
-    "Rules the copy follows: it never names an illness, never promises a result, never asks for health details. Amma's page (section 8) is English only.",
+    "Rules the copy follows: it never names an illness, never promises a result, never asks for health details. Amma's page (section 9) is English only.",
     "",
     "Dates and times customers see are in India time: English `Wed, 21 Oct` and `2:30 pm`; Hindi `बुध, 21 अक्टूबर` and `दोपहर 2:30` (`सुबह` before noon, `शाम` from 4 pm).",
   ];
@@ -233,7 +254,7 @@ export function renderCopyDoc(): string {
       out.push(`| ${cell(where)} | ${cell(text("en"))} | ${cell(text("hi"))} |`);
     }
   }
-  out.push("", "## 8. Amma's page", "", "English only. No chat text and no health details are ever shown here.", "", "| Label | Text |", "|---|---|");
+  out.push("", "## 9. Amma's page", "", "English only. No chat text and no health details are ever shown here.", "", "| Label | Text |", "|---|---|");
   const amma = allCopy.en.amma as unknown as Record<string, unknown>;
   for (const key of Object.keys(amma)) {
     const v = amma[key];

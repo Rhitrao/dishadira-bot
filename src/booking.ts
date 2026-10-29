@@ -10,6 +10,7 @@ import { copyFor, langOf, type Copy, type ForWhom, type Lang } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
 import { razorpay } from "./pay/razorpay";
+import { customerPayLink, untilLabel } from "./paylink";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, type ListSection, type Out } from "./send";
 import { clearStep, sendStep, type StepName } from "./steps";
@@ -291,7 +292,8 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
     });
     await db.prepare("UPDATE payments SET state = 'PENDING', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();
     const p = formatIstLang(startUtc, lang);
-    await sendStep(env, conv.id, "pay", { type: "cta", body: cp.payBody(p.day, p.time), label: cp.payLabel, url: link.url }, `${msgId}:pay`, { until: hold.holdUntil });
+    const url = await customerPayLink(env, payId, link.url, hold.holdUntil); // our /p/ link, never Razorpay's own (src/paylink.ts)
+    await sendStep(env, conv.id, "pay", { type: "cta", body: cp.payBody(p.day, p.time, untilLabel(hold.holdUntil, conv.locale), url), label: cp.payLabel, url }, `${msgId}:pay`, { until: hold.holdUntil });
   } catch {
     // No link: free the hold. If a link did get created and is paid later, the late-payment rules apply.
     await db.prepare("UPDATE payments SET state = 'FAILED', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();

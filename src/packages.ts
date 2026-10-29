@@ -16,6 +16,7 @@ import { copyFor, langOf, packPrice, rupees, type Copy, type ForWhom } from "./c
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
 import { razorpay } from "./pay/razorpay";
+import { customerPayLink, untilLabel } from "./paylink";
 import type { PaymentProvider } from "./pay/provider";
 import { requestRefund } from "./pay/refund";
 import { startSession } from "./session";
@@ -310,7 +311,8 @@ async function startPackage(env: Env, provider: PaymentProvider, conv: Conv, f: 
       db.prepare("UPDATE packages SET state = 'PENDING', payment_id = ?2, updated_at = ?3 WHERE id = ?1 AND state = 'CREATING'").bind(packageId, payId, nowIso()),
     ]);
     const price = packPrice(pack.sessions);
-    await sendStep(env, conv.id, "pay", { type: "cta", body: cp.packPayBody(pack.sessions, price), label: cp.packPayLabel(price), url: link.url }, `${msgId}:pay`, { until: expires });
+    const url = await customerPayLink(env, payId, link.url, expires); // our /p/ link, never Razorpay's own (src/paylink.ts)
+    await sendStep(env, conv.id, "pay", { type: "cta", body: cp.packPayBody(pack.sessions, price, untilLabel(expires, conv.locale), url), label: cp.packPayLabel(price), url }, `${msgId}:pay`, { until: expires });
   } catch {
     await db.batch([
       db.prepare("UPDATE payments SET state = 'FAILED', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()),

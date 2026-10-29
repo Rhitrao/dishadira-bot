@@ -45,6 +45,7 @@ const oneOf = (text: string, list: readonly string[]) => {
 };
 export const isOptOut = (text: string) => oneOf(text, config.words.optOut);
 export const isBookingWord = (text: string) => oneOf(text, config.words.booking);
+export const isHelpWord = (text: string) => oneOf(text, config.words.help);
 
 // "ok", "Thanks!", "thanks 🙏", or only 👍/🙏 (repeated, with a skin tone, with spaces).
 const ACK_EMOJI = config.words.ack.filter((w) => normalize(w) === "");
@@ -74,8 +75,8 @@ export async function gate(env: Env, conv: GateConv, message: GateMessage, nowMs
   if (!conv.greeted_at) return "GREETING";
   // 4. Opt-out.
   if (text !== null && isOptOut(text)) return "OPT_OUT";
-  // 5. A person: always honoured, even when quiet.
-  if (message.choice === "menu_person" || (text !== null && isHandoffWords(text))) return "HANDOFF";
+  // 5. A person: always honoured, even when quiet. "HELP" on its own too (the payment reminder says "Reply HELP").
+  if (message.choice === "menu_person" || (text !== null && (isHandoffWords(text) || isHelpWord(text)))) return "HANDOFF";
   // 6. HUMAN mode: taps still work and a menu word ("hi", "menu") gets the menu without leaving HUMAN mode; everything else typed waits for Rohit.
   if (conv.mode === "HUMAN" && text !== null && isMenuWord(text)) return "MENU";
   if (conv.mode !== "BOT" && !isTap) return "HUMAN_WAIT";

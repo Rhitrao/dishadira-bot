@@ -67,6 +67,8 @@ export const config = {
     optOut: ["stop", "unsubscribe", "बंद करो", "band karo"],
     ack: ["ok", "okay", "thanks", "thank you", "ty", "ji", "👍", "🙏", "धन्यवाद", "शुक्रिया", "ठीक है"],
     booking: ["book", "booking", "book call", "book a call", "बुक", "बुकिंग"],
+    // "Reply HELP" (the payment reminder, ticket 29): the whole message asks for a person, like "Talk to a person".
+    help: ["help", "help me", "need help", "please help", "madad", "मदद", "मदद करें", "मदद चाहिए"],
     // A short message (at most handoffMaxWords words) containing one of these as a word asks for a person.
     handoff: ["human", "person", "insaan", "insan", "इंसान"],
     handoffMaxWords: 8,

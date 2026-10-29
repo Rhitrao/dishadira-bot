@@ -248,7 +248,7 @@ describe("the bot quotes the owner's prices (WhatsApp, end to end)", () => {
     const pay = (await w.db.prepare("SELECT provider_link_id AS link, amount_paise AS paise FROM payments").first<{ link: string; paise: number }>())!;
     expect(pay.paise).toBe(14900);
     expect(w.fake.links.get(pay.link)!.amount).toBe(14900);
-    expect(w.texts().some((t: string) => t?.includes("Tap below to pay ₹149"))).toBe(true);
+    expect(w.texts().some((t: string) => t?.includes('Tap "Pay ₹149" below'))).toBe(true); // the body names the button, at the price in force
     // The owner puts the price back to ₹99 before the customer pays: the ₹149 link is still the right amount.
     await w.db.prepare("UPDATE settings SET value = '9900' WHERE key = ?1").bind(KEYS.intro).run();
     await w.db.prepare("INSERT INTO audit_log (actor, action, target, detail) VALUES ('owner', 'PRICE_CHANGED', ?1, '14900 -> 9900')").bind(KEYS.intro).run();

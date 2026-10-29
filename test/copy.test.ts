@@ -81,12 +81,35 @@ describe("copy: both languages", () => {
       expect(c.btnBook).toContain(`₹${config.prices.intro / 100}`);
       expect(c.payLabel).toContain(`₹${config.prices.intro / 100}`);
       expect(c.sessionPayLabel).toContain(`₹${config.prices.single / 100}`);
-      expect(c.payBody("d", "t")).toContain(`${config.holdMinutes}`);
-      expect(c.payBody("d", "t")).toContain(`₹${config.prices.intro / 100}`);
-      expect(c.sessionPayBody("d", "t")).toContain(`₹${config.prices.single / 100}`);
+      expect(c.payBody("d", "t", "u", "l")).toContain(`₹${config.prices.intro / 100}`);
+      expect(c.sessionPayBody("d", "t", "u", "l")).toContain(`₹${config.prices.single / 100}`);
       expect(c.rowCall).toContain(`${config.slots.callMinutes}`);
       expect(c.rowSession).toContain(`${config.slots.sessionMinutes}`);
       expect(c.faqAnswers.price).toContain(`₹${config.prices.single / 100}`);
+    }
+  });
+
+  it("the pay messages (ticket 29): the hold's end, Razorpay's page, every way to pay, the same link as the button, well under 1024", () => {
+    const link = "https://bot.disha-dira.com/p/123456-0123456789abcdef";
+    for (const lang of LANGS) {
+      const c = allCopy[lang];
+      const bodies: [string, string][] = [
+        [c.payBody("बुध, 21 अक्टूबर", "शाम 5:30", "शाम 4:20", link), c.payLabel],
+        [c.sessionPayBody("बुध, 21 अक्टूबर", "शाम 5:30", "शाम 4:20", link), c.sessionPayLabel],
+        [c.packPayBody(20, "₹9,000", "शाम 4:20", link), c.packPayLabel("₹9,000")],
+      ];
+      for (const [body, label] of bodies) {
+        expect(body).toContain("शाम 4:20");
+        expect(body).toContain(`"${label}"`); // the body names the button exactly as it reads
+        expect(body).toContain("Razorpay");
+        expect(body).toContain("UPI");
+        expect(body.trimEnd().endsWith(link)).toBe(true); // the fallback link is the last line
+        expect(body).toContain(lang === "en" ? "Please don't pay twice." : "कृपया दो बार भुगतान न करें।");
+        expect(body).not.toContain(`${config.holdMinutes} minutes`);
+        expect(body.length).toBeLessThan(700);
+      }
+      expect(c.payNudge("शाम 4:20", link)).toContain(link);
+      expect(c.payNudge("शाम 4:20", link)).toContain("HELP");
     }
   });
 

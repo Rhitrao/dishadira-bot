@@ -12,6 +12,7 @@ import { reconcile } from "./pay/apply";
 import { razorpay } from "./pay/razorpay";
 import { retryRefunds } from "./pay/refund";
 import { razorpayWebhook } from "./pay/webhook";
+import { nudgeUnpaidHolds, payLinkPage } from "./paylink";
 import { mailOpenRequests } from "./requests";
 import { sendReminders } from "./remind";
 import { runDigest } from "./report";
@@ -32,9 +33,9 @@ app.onError((_e, c) => {
   return c.text("error", 500);
 });
 
-// Every request quotes the owner's prices from Settings (src/business.ts); /health and the font files don't need them.
+// Every request quotes the owner's prices from Settings (src/business.ts); /health, the font files and the payment link don't need them.
 app.use("*", async (c, next) => {
-  if (c.req.path !== "/health" && !c.req.path.startsWith("/app/fonts/")) await loadPrices(c.env);
+  if (c.req.path !== "/health" && !c.req.path.startsWith("/app/fonts/") && !c.req.path.startsWith("/p/")) await loadPrices(c.env);
   await next();
 });
 
@@ -45,6 +46,8 @@ app.get("/app/fonts/:file", serveFont);
 app.get("/wa/webhook", verifyWebhook);
 app.post("/wa/webhook", receiveWebhook);
 app.post("/pay/razorpay/webhook", (c) => razorpayWebhook(c));
+// Our own payment link (ticket 29): public, outside /amma, /admin and /app, so Cloudflare Access never stands in front of it.
+app.get("/p/:token", payLinkPage);
 // With CONSOLE_V2 on, the old pages send people to /app (src/switchover.ts); off, they work exactly as before.
 for (const path of ["/amma", "/amma/*", "/admin", "/admin/*"]) app.use(path, switchOver);
 app.route("/amma", amma);
@@ -89,7 +92,7 @@ const scheduled = async (event: { cron: string; scheduledTime?: number }, env: E
   await recordHeartbeat(env).catch(() => 0);
   // One failing job must not stop the others; each is safe to run again.
   for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);
-  for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests]) await job(env).catch(() => 0);
+  for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests, nudgeUnpaidHolds]) await job(env).catch(() => 0);
   await runDailyJobs(env, event.scheduledTime ?? Date.now()).catch(() => undefined);
 };
 

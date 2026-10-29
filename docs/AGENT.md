@@ -129,7 +129,7 @@ If a typed message arrives while a booking step is open (language, age, service,
    - Mark the person opted out and confirm once.
    - No templates are sent to them after that.
    - If they write again later, normal replies resume and the opt-out clears.
-5. **"Talk to a person"** (button or words like "human", "person", "insaan", "इंसान"): always honoured, even when quiet. HUMAN mode, attention item, handoff ack. At most one open handoff item per person.
+5. **"Talk to a person"** (button or words like "human", "person", "insaan", "इंसान"; or a message that is only "help" / "मदद", which the payment reminder asks for, ticket 29): always honoured, even when quiet. HUMAN mode, attention item, handoff ack. At most one open handoff item per person.
 6. **HUMAN mode:**
    - Booking and menu button taps still work, and so do menu words ("hi", "menu"…): they get the menu, and the mode doesn't change.
    - Other free text gets no bot reply. It waits for Rohit in /admin.
