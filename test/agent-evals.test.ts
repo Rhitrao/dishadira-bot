@@ -166,10 +166,11 @@ describe("cases decided by the assistant: the canned answer goes through the han
     expect(texts).toContain(f.reply);
     for (const bad of forbidden(c, texts)) throw new Error(`case ${c.id} sent "${bad}"`);
     const buttons = m.interactive?.action?.buttons?.map((b: { reply: { id: string } }) => b.reply.id);
+    const rows = m.interactive?.action?.sections?.flatMap((x: { rows: { id: string }[] }) => x.rows.map((r) => r.id)); // the day step is a list (ticket 30)
     if (c.step === "day" || c.step === "who") {
       expect(req.system[1].text).toContain(`open_step: ${c.step}`);
       expect(m.interactive.body.text).toBe(`${f.reply}\n\n${allCopy[c.lang][c.step === "day" ? "chooseDay" : "whoFor"]}`);
-      expect(buttons!.length).toBeGreaterThan(0);
+      expect((buttons ?? rows)!.length).toBeGreaterThan(0);
       return;
     }
     switch (f.next) {

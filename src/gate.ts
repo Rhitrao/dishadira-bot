@@ -62,9 +62,11 @@ export function isAckWord(text: string): boolean {
 export const isHandoffWords = (text: string) => normalize(text).split(" ").length <= config.words.handoffMaxWords && hasPhrase(text, config.words.handoff);
 
 // "Call me", "can I call?", "number please", "मुझे कॉल करो": a short message (at most callRequestMaxWords words) asking to call us or for a number.
-export const isCallRequest = (text: string) => normalize(text).split(" ").length <= config.words.callRequestMaxWords && hasPhrase(text, config.words.callRequest);
+// Not when it is about a call she makes ("she didn't call me", "can she call me now?"): the assistant answers those.
+export const isCallRequest = (text: string) =>
+  normalize(text).split(" ").length <= config.words.callRequestMaxWords && hasPhrase(text, config.words.callRequest) && !hasPhrase(text, config.words.callRequestNot);
 
-// Someone with a call or session booked that hasn't ended: "call me" from them is about that booking, so the classifier (or a person) answers.
+// Someone with a call or session booked that hasn't ended (or a paying customer, below): "call me" from them is about their booking, so the assistant (or a person) answers.
 const hasUpcomingBooking = async (env: Env, convId: number, nowMs: number) =>
   (await env.DB.prepare("SELECT 1 AS x FROM slots WHERE owner_id = ?1 AND state = 'BOOKED' AND end_utc > ?2 LIMIT 1").bind(convId, new Date(nowMs).toISOString().slice(0, 19) + "Z").first()) !== null;
 
@@ -104,7 +106,10 @@ export async function gate(env: Env, conv: GateConv, message: GateMessage, nowMs
   if (isMenuWord(text)) return "MENU";
   if (isBookingWord(text)) return "BOOKING_WORD";
   // 11b. Asking to call us or for a number: not during the no-selling week after a crisis message, nor for someone with a booking coming up.
-  if (isCallRequest(text) && !noSellActiveFor(await personState(env.DB, conv.id), nowMs) && !(await hasUpcomingBooking(env, conv.id, nowMs))) return "CALL_REQUEST";
+  if (
+    isCallRequest(text) && !noSellActiveFor(await personState(env.DB, conv.id), nowMs) &&
+    !(await hasUpcomingBooking(env, conv.id, nowMs)) && !(await isPayingCustomer(env.DB, conv.id, nowMs))
+  ) return "CALL_REQUEST";
   // 12. The day's AI budget.
   if (await budgetUsedUp(env.DB, conv.id, await isPayingCustomer(env.DB, conv.id, nowMs), nowMs)) return "BUDGET_FALLBACK";
   // 13. The classifier.

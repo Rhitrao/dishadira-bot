@@ -180,6 +180,20 @@ describe('"call me": we don\'t take calls on this number; the ₹99 call, where 
     expect(w.texts()).not.toContain(allCopy.en.callRequest);
   });
 
+  it("about a call she makes, or from a paying customer: the assistant answers as before", async () => {
+    for (const text of ["she didn't call me", "Can she call me right now?", "call nahi aaya, call me", "शांता जी ने कॉल नहीं किया, मुझे कॉल करो"]) {
+      const from = await w.greeted("en");
+      await w.typed(from, text);
+      expect(w.texts(), text).not.toContain(allCopy.en.callRequest);
+      expect(w.aiCalls(), text).toHaveLength(1);
+    }
+    const paid = await w.greeted("en");
+    const conv = (await w.conv(paid)).id as number;
+    await w.db.prepare("INSERT INTO intros (conversation_id, service, state, created_at) VALUES (?1, 'HEALING', 'PAID', '2026-10-04T05:00:00Z')").bind(conv).run();
+    await w.typed(paid, "call me");
+    expect(w.texts()).not.toContain(allCopy.en.callRequest);
+  });
+
   it("a long message that only mentions calling goes to the assistant as before", async () => {
     const from = await w.greeted("en");
     await w.typed(from, "my mother had a bad week and her sleep is poor, will Shantha Rao call me or her when we book the first call");

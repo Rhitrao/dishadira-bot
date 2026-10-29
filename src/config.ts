@@ -78,11 +78,13 @@ export const config = {
     callRequest: [
       "call me", "call me back", "call back", "callback", "can i call", "can we call", "may i call", "i want to call", "i will call", "want to call", "call you",
       "video call", "voice call", "whatsapp call", "phone call me", "phone me",
-      "phone number", "contact number", "mobile number", "your number", "her number", "number please", "number pls", "send number", "give number", "give me number",
+      "phone number", "contact number", "mobile number", "your number", "number please", "number pls", "send number", "give number", "give me number",
       "call karo", "call kar do", "call kijiye", "call karna hai", "phone karo", "number do", "number dijiye", "number bhejo",
       "मुझे कॉल करो", "मुझे कॉल करें", "मुझे कॉल कीजिए", "कॉल करो", "कॉल कीजिए", "कॉल कर सकते", "कॉल कर सकती", "वीडियो कॉल", "फोन करो", "फोन नंबर", "नंबर दो", "नंबर दीजिए", "नंबर भेजो", "अपना नंबर",
     ],
     callRequestMaxWords: 12,
+    // ... unless it also has one of these: it is about a call she makes ("she didn't call me", "can she call me now?"), so the assistant answers.
+    callRequestNot: ["she", "shantha", "amma", "didn't", "didnt", "did not", "not", "never", "missed", "nahi", "nahin", "nhi", "नहीं", "वो", "वे", "शांता"],
   },
   // The assistant (src/ai.ts, src/aicheck.ts). Budgets are counted per India day; reaching one sends the menu with "Talk to a person" instead.
   ai: {
