@@ -121,7 +121,7 @@ export async function payLinkPage(c: Context<{ Bindings: Env }>) {
 
   let link: { url?: unknown; until?: unknown } = {};
   try {
-    link = JSON.parse(row.link ?? "{}");
+    link = JSON.parse(row.link ?? "{}") ?? {};
   } catch {
     // an unreadable row is treated as an expired link
   }

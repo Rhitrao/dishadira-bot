@@ -120,6 +120,7 @@ Do this on weekdays between 14:00 and 19:00 India time, because that is when cal
 ### 12. Prepare the live copy
 - [ ] Repeat steps 3 to 6 and 8 to 9 for the live side, with live values: Worker `dishadira-bot-live`, custom domain `bot.disha-dira.com`, its own Access application and AUD tag, the **Live Mode** Razorpay keys (and a new webhook secret), the Airtel number's phone ID and a permanent token, and the live webhook addresses `https://bot.disha-dira.com/wa/webhook` and `https://bot.disha-dira.com/pay/razorpay/webhook` (Razorpay in **Live Mode**, same five events).
 - [ ] Add all the secrets from step 4 to `dishadira-bot-live`. Different values from test.
+- [ ] Razorpay dashboard in **Live Mode** → **Account & Settings → Payment methods**: every method on: UPI, cards (including **international cards**, for customers abroad), and net banking. Customers always pay on Razorpay's page, reached through the bot's own link `https://bot.disha-dira.com/p/…` (ticket 29); open `https://bot.disha-dira.com/p/x` in a private window: it must say "Link not found" without asking anyone to sign in.
 - [ ] Run **Actions → Deploy → live**. This applies the migrations to the **fresh live database** and deploys. All flags stay off.
 - [ ] Check `https://bot.disha-dira.com/health` opens, and `/admin` asks for sign-in.
 - [ ] Set the real business number in `src/config.ts` (`businessNumber`) if it is still the placeholder (ask Claude).

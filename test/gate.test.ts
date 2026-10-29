@@ -201,6 +201,10 @@ describe("gate(): the order of AGENT.md section 3.2", () => {
     expect(await decide(from, btn("menu_person"))).toBe("HANDOFF");
     for (const w of ["human", "Talk to a human", "I want to talk to a person", "insaan se baat karni hai", "इंसान से बात करनी है", "real person please"]) expect(await decide(from, txt(w)), w).toBe("HANDOFF");
     expect(await decide(from, txt("my sister is a very good person and I would like to book a call for her next week please"))).toBe("TO_CLASSIFIER"); // long: not a request
+    // "Reply HELP" (the payment reminder, ticket 29): the whole message only; the Help button is still the Help list.
+    for (const w of ["HELP", "help", "Help!", "help me", "need help", "मदद", "मदद चाहिए", "madad"]) expect(await decide(from, txt(w)), w).toBe("HANDOFF");
+    for (const w of ["will it help me sleep better", "can you help with my booking time"]) expect(await decide(from, txt(w)), w).toBe("TO_CLASSIFIER");
+    expect(await decide(from, btn("menu_how"))).toBe("TAP");
     await setMode(from, "HUMAN");
     expect(await decide(from, txt("are you there?"))).toBe("HUMAN_WAIT");
     expect(await decide(from, txt("hello"))).toBe("MENU"); // a menu word gets the menu in HUMAN mode too (the mode does not change)

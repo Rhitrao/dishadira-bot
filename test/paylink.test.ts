@@ -114,6 +114,10 @@ describe("GET /p/:token", () => {
     vi.setSystemTime(NOW + 20 * MIN); // the hold ends at 11:50 am
     await expired();
     vi.setSystemTime(NOW);
+    for (const value of ["null", "not json", '{"url":"https://rzp.io/x"}']) {
+      await t.db.prepare("UPDATE settings SET value = ?2 WHERE key = ?1").bind(`paylink:${pay.id}`, value).run();
+      await expired(); // an unreadable or incomplete row never redirects and never errors
+    }
     for (const state of ["FAILED", "UNKNOWN"]) {
       await t.db.prepare("UPDATE payments SET state = ?2 WHERE id = ?1").bind(pay.id, state).run();
       await expired();
