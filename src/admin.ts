@@ -73,15 +73,20 @@ const WORDS: Record<string, string> = {
   HUMAN_REQUEST: "A customer tapped 'Talk to a person'. The bot is quiet in this chat until you resolve this: resolving hands the chat back to the bot.",
   MEDIA_FROM_CUSTOMER: "A customer with a booking, a held time or a payment in progress sent a photo, voice note or file (never downloaded). It may be a payment screenshot.",
   AMMA_NO_TAP: `Amma has not tapped an outcome ${config.limits.ammaTapReminderHours} hours after a call.`,
-  AMMA_AWAY_CALL: "Amma is away. This call is booked: offer a new time or refund.",
-  AMMA_AWAY_SESSION: "Amma is away. This session is booked: offer a new time or refund.",
+  AMMA_AWAY_CALL: "Amma is away. This call is booked (no day-before reminder goes while she is away): offer a new time or refund.",
+  AMMA_AWAY_SESSION: "Amma is away. This session is booked (no day-before reminder goes while she is away): offer a new time or refund.",
   MANUAL_REFUND: `A package refund is for a payment older than ${config.sessionRules.razorpayRefundDays} days, which Razorpay cannot refund. The balance is already 0. Pay the customer by bank or UPI, then tap "Mark refunded by hand".`,
   CANCEL_REFUND_FAILED: "A single session was cancelled in time, but the refund could not be started. Refund it from the payment.",
   CANCEL_NO_PAYMENT: "A single session was cancelled in time, but no paid payment was found to refund.",
   PAID_NO_PACKAGE: "A package payment arrived for a package we cannot find.",
   PAID_PACKAGE_NOT_BOOKABLE: "A package payment arrived for a package that is already closed. Check it, then refund or resolve.",
+  // ticket 31
+  THREAT: "A customer wrote what looks like a threat. The bot did not reply and counted a strike (a second one blocks). Read it, and block them or report it if needed.",
+  NO_FREE_TIMES: "A customer tried to book but there were no free times in the next working days. They were told to check back or talk to a person.",
+  NO_PHONE: "Someone wrote from a WhatsApp username without a phone number. The bot cannot answer them yet (see STATUS: usernames), so nothing was sent.",
+  REFUND_NOT_STARTED: "Razorpay did not take a 'not right fit' refund yet. The system keeps retrying; the customer is told only once it goes through.",
 };
-const REPLY_KINDS = ["CRISIS", "EMERGENCY", "FREE_TEXT", "HUMAN_REQUEST", "MEDIA_FROM_CUSTOMER", "OUTSIDE_WINDOW", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION", "LATE_PAYMENT_NO_SLOT"];
+const REPLY_KINDS = ["CRISIS", "EMERGENCY", "FREE_TEXT", "HUMAN_REQUEST", "MEDIA_FROM_CUSTOMER", "OUTSIDE_WINDOW", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION", "LATE_PAYMENT_NO_SLOT", "NO_FREE_TIMES"];
 const REFUND_KINDS = ["LATE_PAYMENT_NO_SLOT", "PAYMENT_MISMATCH", "DUPLICATE_PAYMENT", "REFUND_FAILED", "REFUND_STUCK", "OUTCOME_FAILED", "NOT_FIT_REFUND_REFUSED", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION"];
 
 type Item = { id: number; kind: string; target: string | null; createdAt: string };
@@ -136,6 +141,7 @@ const TITLE: Record<string, string> = {
   AMMA_NO_TAP: "Amma has not marked a call", AMMA_AWAY_CALL: "Amma away: a booked call to move", AMMA_AWAY_SESSION: "Amma away: a booked session to move",
   MANUAL_REFUND: "Refund to pay by hand", CANCEL_REFUND_FAILED: "Cancelled session: refund did not start", CANCEL_NO_PAYMENT: "Cancelled session: no payment found",
   PAID_NO_PACKAGE: "Package payment, package missing", PAID_PACKAGE_NOT_BOOKABLE: "Package payment for a closed package",
+  THREAT: "Threatening message", NO_FREE_TIMES: "Wanted to book: no free times", NO_PHONE: "Wrote without a phone number", REFUND_NOT_STARTED: "Refund not taken by Razorpay yet",
 };
 const TODO: Record<string, string> = {
   CRISIS: "Write to them yourself now. Tap Done once you have.",
@@ -150,10 +156,13 @@ const TODO: Record<string, string> = {
   LATE_PAYMENT_NO_SLOT: "Offer a new time, or refund.",
   AMMA_AWAY_CALL: "Offer a new time, or refund.",
   AMMA_AWAY_SESSION: "Offer a new time, or refund.",
+  THREAT: "Read it; block them from the chat if needed, then tap Done.",
+  NO_FREE_TIMES: "Open more times, or message them once a time is free, then tap Done.",
+  REFUND_NOT_STARTED: "Check the refund in Razorpay; tap Done once it has gone through.",
 };
-const MONEY_KINDS = new Set([...REFUND_KINDS, "MANUAL_REFUND", "RUDE_REFUND_APPROVAL", "PARTIAL_PAYMENT", "UNSUPPORTED_PAYMENT", "UNKNOWN_PAYMENT_LINK", "NOT_FIT_NO_PAYMENT", "CANCEL_REFUND_FAILED", "CANCEL_NO_PAYMENT", "PAID_NO_PACKAGE", "PAID_PACKAGE_NOT_BOOKABLE"]);
+const MONEY_KINDS = new Set([...REFUND_KINDS, "REFUND_NOT_STARTED", "MANUAL_REFUND", "RUDE_REFUND_APPROVAL", "PARTIAL_PAYMENT", "UNSUPPORTED_PAYMENT", "UNKNOWN_PAYMENT_LINK", "NOT_FIT_NO_PAYMENT", "CANCEL_REFUND_FAILED", "CANCEL_NO_PAYMENT", "PAID_NO_PACKAGE", "PAID_PACKAGE_NOT_BOOKABLE"]);
 // 0: someone may be in danger, 1: someone is waiting for a person, 2: money, 3: everything else.
-const rank = (kind: string) => (kind === "CRISIS" || kind === "EMERGENCY" ? 0 : kind === "HUMAN_REQUEST" ? 1 : MONEY_KINDS.has(kind) ? 2 : 3);
+const rank = (kind: string) => (kind === "CRISIS" || kind === "EMERGENCY" || kind === "THREAT" ? 0 : kind === "HUMAN_REQUEST" ? 1 : MONEY_KINDS.has(kind) ? 2 : 3);
 const toneOf = (kind: string): Tone => (rank(kind) === 0 ? "red" : rank(kind) <= 2 ? "amber" : "");
 export const sortItems = <T extends { kind: string; id: number }>(items: T[]) => [...items].sort((a, b) => rank(a.kind) - rank(b.kind) || a.id - b.id);
 const titleOf = (kind: string) => TITLE[kind] ?? kind.charAt(0) + kind.slice(1).toLowerCase().replaceAll("_", " ");

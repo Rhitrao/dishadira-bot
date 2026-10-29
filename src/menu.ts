@@ -13,3 +13,10 @@ export const menuOut = (cp: Copy, noSell: boolean, body = cp.menuBody, withPerso
       ? [{ id: "menu_book", title: cp.btnBook }, { id: "menu_how", title: cp.btnHelp }, { id: "menu_person", title: cp.btnPerson }]
       : [{ id: "menu_book", title: cp.btnBook }, { id: "menu_pack", title: cp.btnPackages }, { id: "menu_how", title: cp.btnHelp }],
 });
+
+// "New bookings are paused" (ticket 31, I20) and "no free times" (I10) are not dead ends: Talk to a person and Help under them.
+export const pausedOut = (cp: Copy, body = cp.bookSoon): Out => ({
+  type: "buttons",
+  body,
+  buttons: [{ id: "menu_person", title: cp.btnPerson }, { id: "menu_how", title: cp.btnHelp }],
+});

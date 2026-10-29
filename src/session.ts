@@ -5,12 +5,13 @@ import { config } from "./config";
 import { copyFor, langOf } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
-import { razorpay } from "./pay/razorpay";
+import { contactFor, razorpay } from "./pay/razorpay";
 import { customerPayLink, untilLabel } from "./paylink";
 import type { PaymentProvider } from "./pay/provider";
 import { loadConv, sendDays, sendTimes } from "./booking";
 import { raiseAttention, sendMessage, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
+import { pausedOut } from "./menu";
 import { formatIstLang, holdSlot, iso, istDay } from "./slots";
 
 const nowIso = () => iso(Date.now());
@@ -34,7 +35,7 @@ export async function sessionChoice(env: Env, choice: string | null, convId: num
   await clearStep(db, conv.id); // the step that was open is over; the one sent below (if any) becomes the open one
 
   if (!(await bookingsOpen(env))) {
-    await send({ type: "text", text: cp.bookSoon }, "book");
+    await send(pausedOut(cp), "book");
     return true;
   }
   if (await db.prepare("SELECT 1 FROM blocks WHERE wa_id = ?1").bind(conv.wa_id).first()) {
@@ -69,6 +70,7 @@ export async function sessionChoice(env: Env, choice: string | null, convId: num
 }
 
 // The session a customer may still be choosing a time for: OFFERED, EXPIRED, or HELD with a lapsed hold; same rules as sessionChoice.
+// Someone who has bought a package since has answered the offer: "hi" gets the menu again (ticket 31, I6).
 export async function openOfferId(db: Env["DB"], convId: number): Promise<number | null> {
   const row = await db
     .prepare(
@@ -77,6 +79,7 @@ export async function openOfferId(db: Env["DB"], convId: number): Promise<number
        LEFT JOIN slots sl ON sl.id = se.slot_id
        WHERE se.conversation_id = ?1 AND (i.state = 'CALLED_SESSION' OR se.override_by IS NOT NULL)
          AND (se.state IN ('OFFERED','EXPIRED') OR (se.state = 'HELD' AND (sl.hold_until IS NULL OR sl.hold_until <= ?2)))
+         AND NOT EXISTS (SELECT 1 FROM packages k WHERE k.conversation_id = se.conversation_id AND k.state IN ('PAID', 'CLOSED'))
        ORDER BY se.id DESC LIMIT 1`,
     )
     .bind(convId, nowIso())
@@ -105,7 +108,11 @@ export async function startSession(env: Env, provider: PaymentProvider, conv: Co
   const hold = await holdSlot(db, { kind: "SESSION", startUtc, ownerId: conv.id, nowMs });
   if (!hold.ok) {
     if (hold.reason === "ALREADY_HOLDING") await send({ type: "text", text: cp.alreadyHolding }, "holding");
-    else {
+    else if (hold.reason === "TOO_SOON") {
+      // An old row whose time has passed or is too soon (ticket 31, B1): say so, then that day's times again, or the days.
+      await send({ type: "text", text: cp.timePassed }, "toosoon");
+      if (!(await sendTimes(env, conv, "SESSION", istDay(Date.parse(startUtc)), (u) => `sess_${ses.id}_${u}`, `smore_${ses.id}`, `${msgId}:again`))) await sendSessionDays(env, conv, ses.id, `${msgId}:again`);
+    } else {
       await send({ type: "text", text: cp.slotTaken }, "taken");
       await showSessionTimes(env, conv, ses.id, istDay(Date.parse(startUtc)), `${msgId}:again`);
     }
@@ -139,7 +146,7 @@ export async function startSession(env: Env, provider: PaymentProvider, conv: Co
       amountPaise: amount,
       purpose: "Disha Dira session booking",
       customerName: conv.display_name ?? "Customer",
-      customerPhone: conv.wa_id.replace(/\D/g, "").slice(-10),
+      customerPhone: contactFor(conv.wa_id),
       expiresAtUtc: hold.holdUntil, // expires with the hold
     });
     await db.prepare("UPDATE payments SET state = 'PENDING', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();

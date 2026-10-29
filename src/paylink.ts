@@ -63,6 +63,23 @@ export async function customerPayLink(env: Env, paymentId: number, razorpayUrl: 
   }
 }
 
+// The link already sent for a payment (the same /p/ link, or Razorpay's own when we could not make ours), or null when none was stored.
+// Used to send the pay step again while its hold is live (ticket 31, B2).
+export async function existingPayLink(env: Env, paymentId: number): Promise<string | null> {
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE key = ?1").bind(PAYLINK_KEY(paymentId)).first<{ value: string }>();
+  if (row) {
+    const base = (env.PUBLIC_URL ?? "").replace(/\/+$/, "");
+    const token = await payToken(env, paymentId);
+    if (/^https:\/\/[^/]+$/.test(base) && token) return `${base}/p/${token}`;
+  }
+  try {
+    const url = (JSON.parse(row?.value ?? "{}") as { url?: unknown }).url;
+    return typeof url === "string" && /^https:\/\//.test(url) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 // The time a link stays open, as the customer reads it: "2:20 pm" / "दोपहर 2:20" (India time).
 export const untilLabel = (untilUtc: string, locale: string | null | undefined) => formatIstLang(untilUtc, langOf(locale)).time;
 
@@ -71,9 +88,10 @@ export const untilLabel = (untilUtc: string, locale: string | null | undefined) 
 const waLink = () => `https://wa.me/${config.businessNumber.replace(/\D/g, "")}`;
 
 type Page = { title: string; body: string };
-function page(lang: "en" | "hi", brand: string, parts: Page[], button: string) {
+// `go`: the short page in front of Razorpay's (ticket 31): it moves on at once by meta refresh (no script), and its button is the same link.
+function page(lang: "en" | "hi", brand: string, parts: Page[], button: string, go?: string) {
   return html`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer"><meta name="color-scheme" content="light dark"><title>${parts[0].title} · ${brand}</title><style>
+${go ? html`<meta http-equiv="refresh" content="0;url=${go}">` : ""}<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer"><meta name="color-scheme" content="light dark"><title>${parts[0].title} · ${brand}</title><style>
 :root{--bg:#FBFAF7;--card:#FFFFFF;--ink:#14302F;--muted:#5B6B69;--line:#E2DED3;--accent:#1B6F73;--accent-ink:#FFFFFF}
 @media (prefers-color-scheme:dark){:root{--bg:#121615;--card:#1A201F;--ink:#E8EEEC;--muted:#9FB0AD;--line:#2C3533;--accent:#5CC2BE;--accent-ink:#0E1A19}}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
@@ -83,7 +101,7 @@ main{max-width:30rem;margin:0 auto;padding:32px 16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 20px}
 h1{font-size:24px;line-height:1.3;margin:0 0 12px}p{margin:0 0 16px}
 .btn{display:flex;align-items:center;justify-content:center;min-height:52px;padding:12px 20px;border-radius:12px;background:var(--accent);color:var(--accent-ink);font-weight:600;text-decoration:none;margin-top:8px}
-</style></head><body><main><p class="brand">${brand}</p><div class="card">${parts.map((p, i) => html`<h1${i ? html` lang="hi"` : ""}>${p.title}</h1><p${i ? html` lang="hi"` : ""}>${p.body}</p>`)}<a class="btn" href="${waLink()}">${button}</a></div></main></body></html>`;
+</style></head><body><main><p class="brand">${brand}</p><div class="card">${parts.map((p, i) => html`<h1${i ? html` lang="hi"` : ""}>${p.title}</h1><p${i ? html` lang="hi"` : ""}>${p.body}</p>`)}<a class="btn" href="${go ?? waLink()}">${button}</a></div></main></body></html>`;
 }
 
 const headers = { "Cache-Control": "no-store", "Content-Security-Policy": PAYLINK_CSP, "X-Robots-Tag": "noindex", "Referrer-Policy": "no-referrer" };
@@ -97,10 +115,12 @@ const PAID_STATES = ["PAID", "REFUND_PENDING", "REFUNDED", "REFUND_FAILED"];
 export async function payLinkPage(c: Context<{ Bindings: Env }>) {
   const id = await tokenPaymentId(c.env, c.req.param("token") ?? "");
   if (id === null) return c.html(bothPages((x) => x.pageNotFoundTitle, (x) => x.pageNotFoundBody), 404, headers);
-  let row: { state: string; purpose: string; link: string | null; locale: string | null } | null;
+  let row: { state: string; purpose: string; link: string | null; locale: string | null; target: string | null } | null;
   try {
     row = await c.env.DB.prepare(
-      `SELECT p.state, p.purpose, st.value AS link, c.locale FROM payments p
+      `SELECT p.state, p.purpose, st.value AS link, c.locale, CASE p.purpose
+         WHEN 'INTRO' THEN (SELECT state FROM intros WHERE id = p.target_id)
+         WHEN 'SESSION' THEN (SELECT state FROM sessions WHERE id = p.target_id) END AS target FROM payments p
        LEFT JOIN settings st ON st.key = 'paylink:' || p.id
        LEFT JOIN conversations c ON c.id = CASE p.purpose
          WHEN 'INTRO' THEN (SELECT conversation_id FROM intros WHERE id = p.target_id)
@@ -117,7 +137,10 @@ export async function payLinkPage(c: Context<{ Bindings: Env }>) {
   const lang = langOf(row.locale);
   const cp = copyFor(row.locale);
   const pack = row.purpose === "PACKAGE";
-  if (PAID_STATES.includes(row.state)) return c.html(onePage(cp, lang, cp.pagePaidTitle, pack ? cp.pagePaidPackBody : cp.pagePaidBody), 200, headers);
+  // Paid, but the time went to someone else after the hold ended (the target is EXPIRED): never "confirmed" (ticket 31, B4).
+  if (PAID_STATES.includes(row.state)) return c.html(onePage(cp, lang, cp.pagePaidTitle, pack ? cp.pagePaidPackBody : row.target === "EXPIRED" ? cp.pageLateBody : cp.pagePaidBody), 200, headers);
+  // A payment we must check (the wrong amount, part paid): money may have been taken, so never "expired, book again" (I19).
+  if (row.state === "UNKNOWN") return c.html(onePage(cp, lang, cp.pageCheckTitle, cp.pageCheckBody), 200, headers);
 
   let link: { url?: unknown; until?: unknown } = {};
   try {
@@ -127,7 +150,8 @@ export async function payLinkPage(c: Context<{ Bindings: Env }>) {
   }
   const open = (row.state === "PENDING" || row.state === "CREATING") && typeof link.until === "string" && Date.now() < Date.parse(link.until);
   if (open && typeof link.url === "string" && /^https:\/\//.test(link.url)) {
-    return new Response(null, { status: 302, headers: { Location: link.url, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+    // A tiny page instead of a bare redirect: on a phone the redirect showed a black screen for a second or two (ticket 31).
+    return c.html(page(lang, cp.pageBrand, [{ title: cp.pageOpeningTitle, body: cp.pageOpeningBody }], cp.pageBtnContinue, link.url), 200, headers);
   }
   return c.html(onePage(cp, lang, cp.pageExpiredTitle, pack ? cp.pageExpiredPackBody : cp.pageExpiredBody), 200, headers);
 }

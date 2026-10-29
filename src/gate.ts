@@ -101,11 +101,16 @@ export async function gate(env: Env, conv: GateConv, message: GateMessage, nowMs
   return "TO_CLASSIFIER";
 }
 
-// The rule-based stand-in for the AI's label (ticket 14 replaces it): spam, flirting and abuse from the config word lists, nothing else.
+// The rule-based stand-in for the AI's label (ticket 14 replaces it when AI_REPLIES is on): from the config word lists.
+// Ticket 31 (I1, I16): threats count as abuse (a strike, no reply; src/whatsapp.ts also raises an urgent THREAT item), promotions and scams
+// are spam even without a link, and influencing or harming another person is prohibited_request (a strike and one firm line).
 const LINK = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|in|net|org|io|me|co|xyz|info|link)\b/i;
-export function classifyWithoutAI(text: string): Extract<Label, "spam_or_promo" | "flirt_or_sexual" | "abuse"> | "TO_CLASSIFIER" {
-  if (hasPhrase(text, config.noise.abuseBlockWords) || hasPhrase(text, config.noise.abuseWords)) return "abuse";
+export const isThreat = (text: string) => hasPhrase(text, config.noise.threatWords);
+export const isJobText = (text: string) => hasPhrase(text, config.noise.jobWords);
+export function classifyWithoutAI(text: string): Extract<Label, "spam_or_promo" | "flirt_or_sexual" | "abuse" | "prohibited_request"> | "TO_CLASSIFIER" {
+  if (hasPhrase(text, config.noise.abuseBlockWords) || hasPhrase(text, config.noise.abuseWords) || isThreat(text)) return "abuse";
   if (hasPhrase(text, config.noise.sexualBlockWords) || hasPhrase(text, config.noise.flirtWords)) return "flirt_or_sexual";
-  if (LINK.test(text) && hasPhrase(text, config.noise.spamWords)) return "spam_or_promo";
+  if ((LINK.test(text) && hasPhrase(text, config.noise.spamWords)) || hasPhrase(text, config.noise.promoWords)) return "spam_or_promo";
+  if (hasPhrase(text, config.noise.prohibitedWords)) return "prohibited_request";
   return "TO_CLASSIFIER";
 }

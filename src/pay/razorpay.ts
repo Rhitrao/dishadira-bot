@@ -56,6 +56,14 @@ const refundEvent = z.object({
 type LinkRow = { id?: string; reference_id?: string; status?: string; amount_paid?: number; currency?: string; payments?: { payment_id?: string; status?: string }[] | null };
 type RefundRow = { id?: string; receipt?: string | null; notes?: unknown; status?: string };
 
+// The customer's number as Razorpay's customer.contact takes it (8-14 characters): "+" and the full international number, so +971 and +1
+// numbers arrive whole (ticket 31, I12). A number too long for the field is left out (contact is optional); the link still works.
+export function contactFor(waId: string): string {
+  const digits = waId.replace(/\D/g, "");
+  const contact = `+${digits}`;
+  return contact.length >= 8 && contact.length <= 14 ? contact : "";
+}
+
 export function razorpay(env: Env): PaymentProvider {
   const base = config.razorpay.baseUrl;
   const auth = () => "Basic " + btoa(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`);
@@ -93,7 +101,7 @@ export function razorpay(env: Env): PaymentProvider {
         accept_partial: false,
         reference_id: a.linkId, // our id; Razorpay makes its own plink_ id
         description: a.purpose,
-        customer: { name: a.customerName, contact: a.customerPhone },
+        customer: { name: a.customerName, ...(a.customerPhone ? { contact: a.customerPhone } : {}) },
         notify: { sms: false, email: false }, // we send the link on WhatsApp
         reminder_enable: false,
         expire_by: Math.floor(Date.parse(a.expiresAtUtc) / 1000),

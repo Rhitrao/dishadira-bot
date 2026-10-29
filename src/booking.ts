@@ -9,8 +9,9 @@ import { config } from "./config";
 import { copyFor, langOf, type Copy, type ForWhom, type Lang } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
-import { razorpay } from "./pay/razorpay";
-import { customerPayLink, untilLabel } from "./paylink";
+import { contactFor, razorpay } from "./pay/razorpay";
+import { pausedOut } from "./menu";
+import { customerPayLink, existingPayLink, untilLabel } from "./paylink";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, type ListSection, type Out } from "./send";
 import { clearStep, sendStep, type StepName } from "./steps";
@@ -39,14 +40,15 @@ async function freeByDay(db: D1Database, kind: SlotKind, window: number, nowMs: 
 }
 
 // Day step: up to 3 reply buttons for days that still have a free slot. `idFor` makes each button's id.
-// With no free day it sends the "no times" text instead and returns false.
+// With no free day it sends the "no times" message (with Talk to a person and Help, ticket 31 I10) and an item instead, and returns false.
 export async function sendDays(env: Env, conv: Conv, kind: SlotKind, idFor: (ymd: string) => string, key: string): Promise<boolean> {
   const cp = copyFor(conv.locale);
   const lang = langOf(conv.locale);
   const days = [...(await freeByDay(env.DB, kind, kind === "CALL" ? config.booking.workingDays : 5, Date.now())).keys()].slice(0, config.booking.dayButtons);
   if (!days.length) {
     await clearStep(env.DB, conv.id);
-    await sendMessage(env, conv.id, { type: "text", text: kind === "CALL" ? cp.noSlots : cp.noSessionSlots }, `${key}:noslots`);
+    await sendMessage(env, conv.id, pausedOut(cp, kind === "CALL" ? cp.noSlots : cp.noSessionSlots), `${key}:noslots`);
+    await raiseAttention(env.DB, "NO_FREE_TIMES", `conv:${conv.id}`);
     return false;
   }
   await sendStep(env, conv.id, "day", { type: "buttons", body: cp.chooseDay, buttons: days.map((ymd) => ({ id: idFor(ymd), title: dayLabelFor(ymd, lang) })) }, `${key}:days`);
@@ -143,7 +145,7 @@ export async function bookingChoice(env: Env, choice: string | null, convId: num
   }
 
   if (!(await bookingsOpen(env))) {
-    await send({ type: "text", text: cp.bookSoon }, "book"); // switch is off: booking stays closed
+    await send(pausedOut(cp), "book"); // switch is off: booking stays closed
     return true;
   }
 
@@ -203,16 +205,29 @@ async function upcomingCall(db: D1Database, convId: number): Promise<string | nu
   return row?.startUtc ?? null;
 }
 
-// The start of a ₹99 call this person is holding right now (HELD, hold not expired), or null.
-async function liveHeldCall(db: D1Database, convId: number): Promise<string | null> {
-  const row = await db
+// The ₹99 call this person is holding right now (HELD, hold not expired), with its payment, or null.
+type Held = { introId: number; slotId: number; startUtc: string; holdUntil: string; payId: number | null; payState: string | null };
+async function liveHeldCall(db: D1Database, convId: number): Promise<Held | null> {
+  return db
     .prepare(
-      `SELECT s.start_utc AS startUtc FROM intros i JOIN slots s ON s.id = i.slot_id
-       WHERE i.conversation_id = ?1 AND i.state = 'HELD' AND s.hold_until > ?2 LIMIT 1`,
+      `SELECT i.id AS introId, s.id AS slotId, s.start_utc AS startUtc, s.hold_until AS holdUntil, p.id AS payId, p.state AS payState
+       FROM intros i JOIN slots s ON s.id = i.slot_id
+       LEFT JOIN payments p ON p.id = (SELECT MAX(id) FROM payments WHERE purpose = 'INTRO' AND target_id = i.id)
+       WHERE i.conversation_id = ?1 AND i.state = 'HELD' AND s.state = 'HELD' AND s.owner_id = ?1 AND s.hold_until > ?2 LIMIT 1`,
     )
     .bind(convId, nowIso())
-    .first<{ startUtc: string }>();
-  return row?.startUtc ?? null;
+    .first<Held>();
+}
+
+// A different time picked while a hold is unpaid: the old hold goes (its payment FAILED, so our /p/ link says expired and the cron stops
+// asking about it; the intro EXPIRED; the slot freed). If the old Razorpay link is still paid, the late-payment and duplicate rules apply.
+async function releaseHeld(db: D1Database, h: Held): Promise<void> {
+  const now = nowIso();
+  await db.batch([
+    db.prepare("UPDATE payments SET state = 'FAILED', updated_at = ?2 WHERE purpose = 'INTRO' AND target_id = ?1 AND state IN ('CREATING', 'PENDING')").bind(h.introId, now),
+    db.prepare("UPDATE intros SET state = 'EXPIRED', updated_at = ?2 WHERE id = ?1 AND state = 'HELD'").bind(h.introId, now),
+    db.prepare("UPDATE slots SET hold_until = ?2 WHERE id = ?1 AND state = 'HELD'").bind(h.slotId, now),
+  ]);
 }
 
 // The times of one day; if the day filled up meanwhile, say so and show the days again.
@@ -241,22 +256,41 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
     return;
   }
 
-  // 1b. One open intro per person: a paid call that has not ended yet (the same rule as the check at the Book tap and My bookings),
-  // or a HELD one with a live hold. A past call that is still waiting for an outcome tap does not block: it is the practitioner's
-  // AMMA_NO_TAP item (src/watch.ts), not the customer's problem.
-  const open = (await upcomingCall(db, conv.id)) ?? (await liveHeldCall(db, conv.id));
-  if (open) {
-    const p = formatIstLang(open, lang);
+  // 1b. One open intro per person: a paid call that has not ended yet (the same rule as the check at the Book tap and My bookings).
+  // A past call that is still waiting for an outcome tap does not block: it is the practitioner's AMMA_NO_TAP item (src/watch.ts).
+  const upcoming = await upcomingCall(db, conv.id);
+  if (upcoming) {
+    const p = formatIstLang(upcoming, lang);
     await send({ type: "text", text: cp.callAlreadyBooked(p.day, p.time) }, "booked");
     return;
   }
+  // 1c. An unpaid hold is not a booking (ticket 31, B2). The same time again: the pay step again, with the same link. Another time: the old hold goes.
+  const held = await liveHeldCall(db, conv.id);
+  if (held && held.startUtc === startUtc) {
+    const link = held.payId !== null && held.payState === "PENDING" ? await existingPayLink(env, held.payId) : null;
+    if (!link) {
+      await send({ type: "text", text: cp.alreadyHolding }, "holding");
+      return;
+    }
+    const p = formatIstLang(startUtc, lang);
+    await sendStep(env, conv.id, "pay", { type: "cta", body: cp.stillHeld(p.day, p.time, untilLabel(held.holdUntil, conv.locale), link), label: cp.payLabel, url: link }, `${msgId}:stillheld`, { until: held.holdUntil });
+    return;
+  }
+  if (held) await releaseHeld(db, held);
 
   // 2. Hold the slot (one atomic write).
   const nowMs = Date.now();
   const hold = await holdSlot(db, { kind: "CALL", startUtc, ownerId: conv.id, nowMs });
   if (!hold.ok) {
     if (hold.reason === "ALREADY_HOLDING") await send({ type: "text", text: cp.alreadyHolding }, "holding");
-    else {
+    else if (hold.reason === "TOO_SOON") {
+      // An old list row whose time has passed (or starts within the booking lead): say so, then the times again (B1).
+      await send({ type: "text", text: cp.timePassed }, "toosoon");
+      const ymd = istDay(Date.parse(startUtc));
+      if (!forWhom) await sendStep(env, conv.id, "who", whoButtons(cp, service), `${msgId}:who`);
+      else if (!(await sendTimes(env, conv, "CALL", ymd, (u) => `time_${service}_${forWhom}_${u}`, `more_${service}_${forWhom}`, `${msgId}:again`)))
+        await sendDays(env, conv, "CALL", (d) => `day_${service}_${forWhom}_${d}`, `${msgId}:again`);
+    } else {
       await send({ type: "text", text: cp.slotTaken }, "taken");
       // A legacy row has no "who for" yet, so the flow goes on from that step; otherwise the same day's times again.
       if (forWhom) await showTimes(env, conv, service, forWhom, istDay(Date.parse(startUtc)), `${msgId}:again`);
@@ -287,7 +321,7 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
       amountPaise: amount,
       purpose: "Disha Dira call booking",
       customerName: conv.display_name ?? "Customer",
-      customerPhone: conv.wa_id.replace(/\D/g, "").slice(-10),
+      customerPhone: contactFor(conv.wa_id),
       expiresAtUtc: hold.holdUntil,
     });
     await db.prepare("UPDATE payments SET state = 'PENDING', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();

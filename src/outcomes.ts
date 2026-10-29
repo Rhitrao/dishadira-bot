@@ -7,12 +7,13 @@ import { config } from "./config";
 import { freeCallSlots } from "./booking";
 import { copyFor, langOf, rupees } from "./copy";
 import type { Env } from "./env";
-import { bookingsOpen } from "./switches";
+import { bookingsOpen, sendsOn } from "./switches";
 import { sessionOfferOut } from "./packages";
 import { requestRefund } from "./pay/refund";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
 import { formatIstLang, holdSlot, iso } from "./slots";
+import { pausedOut } from "./menu";
 
 const nowIso = () => iso(Date.now());
 
@@ -126,17 +127,7 @@ async function applySessionNotFit(env: Env, provider: PaymentProvider, o: Due): 
       db.prepare("UPDATE packages SET state = 'CLOSED', updated_at = ?2 WHERE id = ?1 AND state = 'PAID'").bind(ses.pkg, now),
     ]);
   }
-  const refund = await db.prepare("SELECT state FROM refunds WHERE payment_id = ?1").bind(pay.id).first<{ state: string }>();
-  if (refund?.state !== "FAILED") {
-    const amount = rupees(pay.amount);
-    await sendOrTemplate(
-      env,
-      ses.conv,
-      { type: "text", text: copyFor(ses.locale).notFitRefundSession(amount) },
-      { type: "template", name: "payment_update", params: [amount] },
-      `outcome:${o.id}:refund`,
-    );
-  }
+  await tellRefund(env, o.id);
   await audit(env, o, `session NOT_FIT, refund ${why} for payment ${pay.id}`);
 }
 
@@ -196,16 +187,7 @@ async function applyOne(env: Env, provider: PaymentProvider, o: Due): Promise<vo
       await audit(env, o, `intro CALLED_NOT_FIT, refund refused (${why})`);
       return;
     }
-    const refund = await db.prepare("SELECT state FROM refunds WHERE payment_id = ?1").bind(pay.id).first<{ state: string }>();
-    if (refund?.state !== "FAILED") {
-      await sendOrTemplate(
-        env,
-        intro.conv,
-        { type: "text", text: cp.notFitRefund },
-        { type: "template", name: "payment_update", params: [rupees(prices().intro)] },
-        key("refund"),
-      );
-    }
+    await tellRefund(env, o.id);
     await audit(env, o, `intro CALLED_NOT_FIT, refund ${why} for payment ${pay.id}`);
     return;
   }
@@ -219,12 +201,7 @@ async function applyOne(env: Env, provider: PaymentProvider, o: Due): Promise<vo
       await audit(env, o, "intro MISSED again, closed with no refund");
       return;
     }
-    const rows = (await freeCallSlots(env, Date.now()))
-      .slice(0, config.booking.maxListRows)
-      .map((s) => {
-        const p = formatIstLang(s.startUtc, langOf(intro.locale));
-        return { id: `resched_${intro.id}_${s.startUtc}`, title: p.time, description: p.day }; // the day is too long to share a 24-character title in Hindi
-      });
+    const rows = await reschedRows(env, intro.id, intro.locale);
     if (!rows.length) {
       await raiseAttention(db, "NO_CALL_SLOTS_FOR_RESCHEDULE", `intro:${intro.id}`);
     } else {
@@ -247,6 +224,68 @@ async function applyOne(env: Env, provider: PaymentProvider, o: Due): Promise<vo
   await audit(env, o, "conversation BLOCKED, refund waits for approval");
 }
 
+// The free times for a missed call's one new time, as list rows.
+async function reschedRows(env: Env, introId: number, locale: string) {
+  return (await freeCallSlots(env, Date.now())).slice(0, config.booking.maxListRows).map((s) => {
+    const p = formatIstLang(s.startUtc, langOf(locale));
+    return { id: `resched_${introId}_${s.startUtc}`, title: p.time, description: p.day }; // the day is too long to share a 24-character title in Hindi
+  });
+}
+
+// "Not right fit": the customer is told "we're refunding your ₹99" only once Razorpay has taken the refund (a refund id, or done), with the
+// usual timing. A refund Razorpay refused, or could not be asked yet, is the owner's item, never a message to the customer (ticket 31, I7);
+// when the cron's retry gets it through, sendRefundNotices() below tells the customer then.
+async function tellRefund(env: Env, outcomeId: number): Promise<void> {
+  const db = env.DB;
+  const r = await db
+    .prepare(
+      `SELECT o.intro_id AS introId, o.session_id AS sessionId, r.state, r.provider_refund_id AS providerId, r.payment_id AS payId, p.amount_paise AS amount,
+         COALESCE((SELECT conversation_id FROM intros WHERE id = o.intro_id), (SELECT conversation_id FROM sessions WHERE id = o.session_id)) AS conv
+       FROM outcomes o
+       JOIN payments p ON p.id = CASE WHEN o.intro_id IS NOT NULL
+         THEN (SELECT id FROM payments WHERE purpose = 'INTRO' AND target_id = o.intro_id AND state IN ('PAID','REFUND_PENDING','REFUNDED','REFUND_FAILED') ORDER BY id LIMIT 1)
+         ELSE COALESCE(
+           (SELECT k.payment_id FROM sessions se JOIN packages k ON k.id = se.package_id WHERE se.id = o.session_id AND se.origin = 'CREDIT'),
+           (SELECT id FROM payments WHERE purpose = 'SESSION' AND target_id = o.session_id AND state IN ('PAID','REFUND_PENDING','REFUNDED','REFUND_FAILED') ORDER BY id LIMIT 1)) END
+       JOIN refunds r ON r.payment_id = p.id AND r.reason = 'NOT_FIT'
+       WHERE o.id = ?1 AND o.value = 'NOT_FIT'`,
+    )
+    .bind(outcomeId)
+    .first<{ introId: number | null; sessionId: number | null; state: string; providerId: string | null; payId: number; amount: number; conv: number }>();
+  if (!r) return;
+  const accepted = r.state === "REFUNDED" || (r.state === "PENDING" && r.providerId !== null);
+  if (!accepted) {
+    if (r.state === "PENDING") await raiseAttention(db, "REFUND_NOT_STARTED", `payment:${r.payId}`); // REFUND_FAILED has its own item
+    return;
+  }
+  const conv = await db.prepare("SELECT locale FROM conversations WHERE id = ?1").bind(r.conv).first<{ locale: string }>();
+  const cp = copyFor(conv?.locale);
+  const amount = r.introId !== null ? rupees(prices().intro) : rupees(r.amount);
+  await sendOrTemplate(
+    env,
+    r.conv,
+    { type: "text", text: r.introId !== null ? cp.notFitRefund : cp.notFitRefundSession(amount) },
+    { type: "template", name: "payment_update", params: [amount] },
+    `outcome:${outcomeId}:refund`,
+  );
+}
+
+// Cron: a "Not right fit" refund notice not sent yet (the refund was accepted later, or SENDS was paused): sent now, once (ticket 31, I4, I7).
+// Only outcomes of the last 3 days whose notice has no row, or a skipped one.
+export async function sendRefundNotices(env: Env, nowMs = Date.now()): Promise<number> {
+  if (!(await sendsOn(env))) return 0;
+  const { results } = await env.DB
+    .prepare(
+      `SELECT o.id FROM outcomes o WHERE o.value = 'NOT_FIT' AND o.applied_at IS NOT NULL AND o.applied_at > ?1
+         AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.direction = 'OUT' AND m.dedupe_key = 'outcome:' || o.id || ':refund' AND m.status != 'SKIPPED')
+       ORDER BY o.id LIMIT 25`,
+    )
+    .bind(iso(nowMs - 3 * 86_400_000))
+    .all<{ id: number }>();
+  for (const o of results) await tellRefund(env, o.id);
+  return results.length;
+}
+
 // resched_<introId>_<startUtc>: free, no payment. Same guarded hold, then BOOKED directly. Returns false for any other choice.
 export async function rescheduleChoice(env: Env, choice: string | null, convId: number, msgId: string): Promise<boolean> {
   const m = /^resched_(\d+)_(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$/.exec(choice ?? "");
@@ -258,7 +297,7 @@ export async function rescheduleChoice(env: Env, choice: string | null, convId: 
   const send = (out: Out, step: string) => sendMessage(env, conv.id, out, `${msgId}:${step}`);
 
   if (!(await bookingsOpen(env))) {
-    await send({ type: "text", text: cp.bookSoon }, "book");
+    await send(pausedOut(cp), "book");
     return true;
   }
   if (await db.prepare("SELECT 1 FROM blocks WHERE wa_id = ?1").bind(conv.wa_id).first()) {
@@ -271,8 +310,15 @@ export async function rescheduleChoice(env: Env, choice: string | null, convId: 
     await send({ type: "text", text: cp.rescheduleNotAvailable }, "na");
     return true;
   }
+  if (res === "ALREADY_HOLDING") {
+    await send({ type: "text", text: cp.alreadyHolding }, "taken");
+    return true;
+  }
   if (res !== "MOVED") {
-    await send({ type: "text", text: res === "ALREADY_HOLDING" ? cp.alreadyHolding : cp.slotTaken }, "taken");
+    // Taken meanwhile, or an old row whose time has passed (ticket 31, B1): say so, with the free times again in the same message.
+    const line = res === "TOO_SOON" ? cp.timePassed : cp.slotTaken;
+    const rows = await reschedRows(env, introId, conv.locale);
+    await send(rows.length ? { type: "list", body: line, button: cp.listButtonTimes, rows } : { type: "text", text: line }, "taken");
     return true;
   }
   const now = nowIso();
@@ -286,7 +332,7 @@ export async function rescheduleChoice(env: Env, choice: string | null, convId: 
 // (from PAID, a call that hasn't started; ticket 26). The same guarded hold, then one batch: the call -> RESCHEDULED with
 // reschedule_count 1 (only if it is still in `from` and has never moved, so a double tap or a second move changes nothing), the new
 // slot BOOKED, the old one freed. A call moved once can't move again, and a second miss closes it with no refund, as before.
-export type CallMove = "MOVED" | "NOT_AVAILABLE" | "ALREADY_HOLDING" | "TAKEN";
+export type CallMove = "MOVED" | "NOT_AVAILABLE" | "ALREADY_HOLDING" | "TAKEN" | "TOO_SOON";
 export async function moveCall(db: D1Database, o: { convId: number; introId: number; startUtc: string; from: "MISSED" | "PAID"; nowMs: number }): Promise<CallMove> {
   const intro = await db
     .prepare("SELECT state, reschedule_count AS rc, slot_id AS slotId FROM intros WHERE id = ?1 AND conversation_id = ?2")
@@ -294,7 +340,7 @@ export async function moveCall(db: D1Database, o: { convId: number; introId: num
     .first<{ state: string; rc: number; slotId: number | null }>();
   if (!intro || intro.state !== o.from || intro.rc !== 0) return "NOT_AVAILABLE";
   const hold = await holdSlot(db, { kind: "CALL", startUtc: o.startUtc, ownerId: o.convId, nowMs: o.nowMs });
-  if (!hold.ok) return hold.reason === "ALREADY_HOLDING" ? "ALREADY_HOLDING" : "TAKEN";
+  if (!hold.ok) return hold.reason === "ALREADY_HOLDING" ? "ALREADY_HOLDING" : hold.reason === "TOO_SOON" ? "TOO_SOON" : "TAKEN";
   const slot = await db.prepare("SELECT id FROM slots WHERE kind = 'CALL' AND start_utc = ?1 AND owner_id = ?2").bind(o.startUtc, o.convId).first<{ id: number }>();
   const now = iso(o.nowMs);
   const [moved] = await db.batch([
