@@ -179,7 +179,7 @@ async function applyPaid(env: Env, provider: PaymentProvider, pay: Payment, ev: 
     await tellPayer(env, pay.id);
     return "DUPLICATE_REFUNDED";
   }
-  return pay.purpose === "SESSION" ? bookSession(env, pay) : pay.purpose === "PACKAGE" ? bookPackage(env, pay) : bookIntro(env, provider, pay);
+  return pay.purpose === "SESSION" ? bookSession(env, pay) : pay.purpose === "PACKAGE" ? bookPackage(env, pay) : bookIntro(env, provider, pay, ev.linkId !== "");
 }
 
 // A package payment: the credits are added once (src/packages.ts), then one confirmation with [Book a session].
@@ -227,7 +227,7 @@ async function bookSlot(db: Env["DB"], slotId: number | null, ownerId: number, n
   return slot && slot.state === "BOOKED" && slot.owner_id === ownerId ? slot : null;
 }
 
-async function bookIntro(env: Env, provider: PaymentProvider, pay: Payment): Promise<Applied> {
+async function bookIntro(env: Env, provider: PaymentProvider, pay: Payment, viaRazorpay: boolean): Promise<Applied> {
   const db = env.DB;
   const intro = await db
     .prepare("SELECT id, state, slot_id, conversation_id FROM intros WHERE id = ?1")
@@ -244,6 +244,7 @@ async function bookIntro(env: Env, provider: PaymentProvider, pay: Payment): Pro
   const now = nowIso();
   // One ₹99 call per person at a time (ticket 31, B3): a second paid call while another is paid and still ahead (a payment that surfaced
   // late, after the person booked and paid again) is a duplicate. Its own hold is let go, the money goes back, the person is told.
+  // Only for a Razorpay payment: money the owner records as received outside Razorpay is the owner's decision (and has nothing to refund).
   const other = await db
     .prepare(
       `SELECT 1 FROM intros i JOIN slots s ON s.id = i.slot_id
@@ -251,7 +252,7 @@ async function bookIntro(env: Env, provider: PaymentProvider, pay: Payment): Pro
     )
     .bind(intro.conversation_id, intro.id, now)
     .first();
-  if (other && intro.state !== "PAID") {
+  if (viaRazorpay && other && intro.state !== "PAID") {
     await db.batch([
       db.prepare("UPDATE intros SET state = 'EXPIRED', updated_at = ?2 WHERE id = ?1 AND state = 'HELD'").bind(intro.id, now),
       db.prepare("UPDATE slots SET hold_until = ?3 WHERE id = ?1 AND owner_id = ?2 AND state = 'HELD'").bind(intro.slot_id, intro.conversation_id, now),

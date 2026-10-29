@@ -257,7 +257,7 @@ describe("messages written while SENDS was off (ticket 10, step 0)", () => {
     expect(greetings()).toHaveLength(1);
   });
 
-  it("the free-text acknowledgement skipped while SENDS was off is sent once it is back on, then once per 24h", async () => {
+  it("the 'booking assistant' line skipped while SENDS was off is sent once it is back on, then not again for a while (ticket 31)", async () => {
     await post(text("wamid.A0")); // greeting, delivered
     await post(button("wamid.A00", "lang_en")); // language chosen: no booking step is open, so typed text gets the acknowledgement
     fetchMock.mockClear();
@@ -267,7 +267,7 @@ describe("messages written while SENDS was off (ticket 10, step 0)", () => {
 
     sends = "true";
     await post(text("wamid.A2", "my question again"));
-    const acks = () => sent().filter((b) => b.type === "text");
+    const acks = () => sent().filter((b) => b.interactive?.body?.text === allCopy.en.ack);
     expect(acks()).toHaveLength(1);
     await post(text("wamid.A3", "and again"));
     expect(acks()).toHaveLength(1);
