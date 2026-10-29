@@ -8,6 +8,7 @@ import { applyDueOutcomes } from "../src/outcomes";
 import { bookCredit, creditBalance, markManualRefund, refundUnused } from "../src/packages";
 import { cancelCredit, cancelSingle, moveSession } from "../src/mybookings";
 import { razorpay } from "../src/pay/razorpay";
+import { payToken, untilLabel } from "../src/paylink";
 import { sendReminders } from "../src/remind";
 import { digestText, packageLines } from "../src/report";
 import { generateSlots, iso } from "../src/slots";
@@ -33,7 +34,14 @@ let fetchMock: ReturnType<typeof vi.fn>;
 let fake: FakeRazorpay;
 let n = 0;
 
-const env = () => ({ DB: db, SENDS: "true", NEW_BOOKINGS: "true", WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "v", WA_TOKEN: "tok", WA_PHONE_ID: "1000", ...rzpEnv() }) as never;
+const env = () => ({ DB: db, SENDS: "true", NEW_BOOKINGS: "true", WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "v", WA_TOKEN: "tok", WA_PHONE_ID: "1000", PUBLIC_URL: PUBLIC, ...rzpEnv() }) as never;
+// The /p/ link and the "until" time of the newest payment's message (ticket 29), as the pay bodies take them.
+const PUBLIC = "https://bot.example.test";
+async function sentLink(lang: "en" | "hi"): Promise<[string, string]> {
+  const id = (await db.prepare("SELECT MAX(id) AS id FROM payments").first<{ id: number }>())!.id;
+  const row = JSON.parse((await db.prepare("SELECT value FROM settings WHERE key = ?1").bind(`paylink:${id}`).first<{ value: string }>())!.value) as { until: string };
+  return [untilLabel(row.until, lang), `${PUBLIC}/p/${await payToken(env() as never, id)}`];
+}
 const sent = (): Wa[] => fetchMock.mock.calls.filter((c) => String(c[0]).includes("graph.facebook.com")).map((c) => JSON.parse((c[1] as { body: string }).body));
 const last = (): Wa => sent().at(-1);
 const count = async (sql: string) => (await db.prepare(sql).first<{ n: number }>())!.n;
@@ -324,7 +332,10 @@ describe("buying a package", () => {
         expect(last().interactive.body.text).toBe(c.softGate); // never had the 99 call
         await tap(from, `gate_${flow}`);
         expect(last().interactive.type).toBe("cta_url");
-        expect(last().interactive.body.text).toBe(c.packPayBody(p.sessions, rupees(p.paise)));
+        const [until, link] = await sentLink(lang);
+        expect(until).toBe(lang === "en" ? "12:30 pm" : "दोपहर 12:30"); // the link is open for an hour
+        expect(last().interactive.body.text).toBe(c.packPayBody(p.sessions, rupees(p.paise), until, link));
+        expect(last().interactive.action.parameters.url).toBe(link);
         expect(last().interactive.action.parameters.display_text).toBe(c.packPayLabel(rupees(p.paise)));
         expect(await count("SELECT COUNT(*) AS n FROM slots")).toBe(0);
         const py = await one("SELECT id, provider_link_id AS ref, amount_paise AS amount, state FROM payments WHERE purpose = 'PACKAGE'");

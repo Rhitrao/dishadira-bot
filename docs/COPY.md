@@ -4,7 +4,7 @@ Every message the bot sends to customers on WhatsApp, in English and Hindi, exac
 
 Words in {curly brackets} are filled in automatically (a day, a time, a number). Prices, call lengths, the hold time, the opening hours and the name of the "Energy cleansing" service come from `src/config.ts`.
 
-Rules the copy follows: it never names an illness, never promises a result, never asks for health details. Amma's page (section 8) is English only.
+Rules the copy follows: it never names an illness, never promises a result, never asks for health details. Amma's page (section 9) is English only.
 
 Dates and times customers see are in India time: English `Wed, 21 Oct` and `2:30 pm`; Hindi `बुध, 21 अक्टूबर` and `दोपहर 2:30` (`सुबह` before noon, `शाम` from 4 pm).
 
@@ -80,9 +80,10 @@ The steps before the payment: age check (once per person), service, who it is fo
 | The chosen time was just taken | Sorry, that time was just taken. Please choose another. | माफ़ कीजिए, यह समय अभी-अभी बुक हो गया। कृपया दूसरा समय चुनें। |
 | Customer already has a time held | A time is already held for you. Please use the payment button above, or try again in a few minutes. | आपके लिए एक समय पहले से रोका गया है। ऊपर दिए भुगतान बटन का इस्तेमाल करें, या कुछ मिनट बाद फिर कोशिश करें। |
 | Customer already has a booked call | Your call is already booked for {day} at {time}. Shantha Rao will call you then. | आपकी कॉल पहले से {day} को {time} बजे बुक है। शांता राव जी उसी समय आपको कॉल करेंगी। |
-| Pay message (above the pay button) | {day} at {time} is held for you for 20 minutes. Tap below to pay ₹99 and confirm. Please don't pay twice. | {day}, {time} का समय आपके लिए 20 मिनट तक रोका गया है। बुकिंग पूरी करने के लिए नीचे ₹99 का भुगतान करें। कृपया दो बार भुगतान न करें। |
+| Pay message (above the pay button). {until} is when the hold ends (India time); {link} is our own payment link, the same one the button opens (section 8) | {day} at {time} is held for you until {until} (India time). ⏎  ⏎ Tap "Pay ₹99" below to open Razorpay's secure payment page. Pay by any UPI app, card or net banking. Please don't pay twice. ⏎  ⏎ If the button does not open, use this link: {link} | {day}, {time} का समय आपके लिए {until} बजे तक (भारतीय समय) रोका गया है। ⏎  ⏎ नीचे "₹99 भुगतान करें" बटन दबाएँ, Razorpay का सुरक्षित भुगतान पेज खुलेगा। किसी भी UPI ऐप, कार्ड या नेट बैंकिंग से भुगतान करें। कृपया दो बार भुगतान न करें। ⏎  ⏎ अगर बटन न खुले, तो यह लिंक खोलें: {link} |
 | Pay button (max 20 letters) | Pay ₹99 | ₹99 भुगतान करें |
 | Payment link could not be made | Sorry, we couldn't create the payment link. Nothing was charged. Please try again. | माफ़ कीजिए, भुगतान लिंक नहीं बन पाया। कोई पैसा नहीं कटा है। कृपया फिर से कोशिश करें। |
+| About 8 minutes before a held call or session time ends, if it is still unpaid (once; only inside the 24-hour window). "HELP" or "मदद" on its own reaches a person | Your time is still held until {until} (India time). Pay here: {link} ⏎  ⏎ Having trouble paying? Reply HELP and we will help you. | आपका समय अभी {until} बजे तक (भारतीय समय) रोका गया है। यहाँ भुगतान करें: {link} ⏎  ⏎ भुगतान में दिक्कत हो रही है? HELP या मदद लिखकर भेजें, हम आपकी मदद करेंगे। |
 | Payment received: call confirmed (the call language is the language of the chat when booking) | Received your ₹99. Shantha Rao will call you on {day} at {time} from {number}. Call in English. That number is for her calls only, so please message us here. | हमें आपके ₹99 मिल गए हैं। शांता राव जी {day} को {time} बजे {number} से आपको कॉल करेंगी। कॉल हिंदी में होगी। वह नंबर सिर्फ़ उनकी कॉल के लिए है, इसलिए मैसेज यहीं भेजें। |
 
 ## 4. After Amma's call
@@ -97,7 +98,7 @@ What the customer gets, depending on what Amma tapped. After "Session" the custo
 | Session time list: line under each time (max 72 letters) | 60-min session | 60 मिनट का सेशन |
 | No session times free | There are no free session times right now. We will message you when new times are open. | अभी सेशन का कोई खाली समय नहीं है। नए समय खुलते ही हम आपको मैसेज करेंगे। |
 | Session cannot be booked from this message | Sorry, we cannot book a session from this message. A person will look into it. | माफ़ कीजिए, इस मैसेज से सेशन बुक नहीं हो सकता। हमारी टीम इसे देखेगी। |
-| Session pay message | {day} at {time} is held for your session for 20 minutes. Tap below to pay ₹799 and confirm. Please don't pay twice. | {day}, {time} का समय आपके सेशन के लिए 20 मिनट तक रोका गया है। बुकिंग पूरी करने के लिए नीचे ₹799 का भुगतान करें। कृपया दो बार भुगतान न करें। |
+| Session pay message ({until}, {link}: as for the call) | {day} at {time} is held for your session until {until} (India time). ⏎  ⏎ Tap "Pay ₹799" below to open Razorpay's secure payment page. Pay by any UPI app, card or net banking. Please don't pay twice. ⏎  ⏎ If the button does not open, use this link: {link} | {day}, {time} का समय आपके सेशन के लिए {until} बजे तक (भारतीय समय) रोका गया है। ⏎  ⏎ नीचे "₹799 भुगतान करें" बटन दबाएँ, Razorpay का सुरक्षित भुगतान पेज खुलेगा। किसी भी UPI ऐप, कार्ड या नेट बैंकिंग से भुगतान करें। कृपया दो बार भुगतान न करें। ⏎  ⏎ अगर बटन न खुले, तो यह लिंक खोलें: {link} |
 | Session pay button (max 20 letters) | Pay ₹799 | ₹799 भुगतान करें |
 | Session paid and confirmed | Your session with Shantha Rao is confirmed for {day} at {time} (India time). It is a distance session: you stay where you are and she calls you at the booked time. Please keep your phone with you in a quiet place. We will remind you the day before. | शांता राव जी के साथ आपका सेशन {day} को {time} बजे (भारतीय समय) तय हो गया है। यह दूर से होने वाला सेशन है: आप जहाँ हैं वहीं रहें, वे तय समय पर आपको कॉल करेंगी। कृपया किसी शांत जगह पर फ़ोन साथ रखें। एक दिन पहले हम आपको याद दिलाएँगे। |
 | "Not right fit": refund | Thank you for speaking with Shantha Rao. She feels a session isn't the right fit just now, so we've refunded your ₹99. | शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी सेशन आपके लिए सही नहीं है, इसलिए आपके ₹99 वापस कर दिए गए हैं। |
@@ -124,7 +125,7 @@ Prices and the per-session rates are built from `src/config.ts` (price ÷ sessio
 | Row 4: line under it (max 72 letters) | ₹9,000 · ₹450 each · no expiry | ₹9,000 · ₹450 प्रति सेशन · कोई समय-सीमा नहीं |
 | Soft gate: shown when someone who never had the first call picks a session or package (buttons: Book call / Continue) | Most people start with a ₹99 call, so Shantha Rao can understand what you need first. Would you like to do that, or continue? | ज़्यादातर लोग पहले ₹99 की कॉल करते हैं, ताकि शांता राव जी आपकी ज़रूरत समझ सकें। क्या आप ऐसा करना चाहेंगे, या आगे बढ़ें? |
 | Soft gate: Continue (max 20 letters) | Continue | आगे बढ़ें |
-| Package: pay message (above the pay button) | 10 sessions for {price}. Tap below to pay. After that, you book each session whenever you like, with no payment per session. Please don't pay twice. | 10 सेशन {price} में। भुगतान के लिए नीचे टैप करें। उसके बाद आप जब चाहें हर सेशन बुक कर सकते हैं, हर बार भुगतान नहीं करना होगा। कृपया दो बार भुगतान न करें। |
+| Package: pay message (above the pay button); the link is open for an hour | 10 sessions for {price}. After paying, you book each session whenever you like, with no payment per session. ⏎  ⏎ Tap "Pay {price}" below to open Razorpay's secure payment page. Pay by any UPI app, card or net banking. The link is open until {until} (India time). Please don't pay twice. ⏎  ⏎ If the button does not open, use this link: {link} | 10 सेशन {price} में। भुगतान के बाद आप जब चाहें हर सेशन बुक कर सकते हैं, हर बार भुगतान नहीं करना होगा। ⏎  ⏎ नीचे "{price} भुगतान करें" बटन दबाएँ, Razorpay का सुरक्षित भुगतान पेज खुलेगा। किसी भी UPI ऐप, कार्ड या नेट बैंकिंग से भुगतान करें। यह लिंक {until} बजे तक (भारतीय समय) खुला है। कृपया दो बार भुगतान न करें। ⏎  ⏎ अगर बटन न खुले, तो यह लिंक खोलें: {link} |
 | Package: pay button (max 20 letters) | Pay {price} | {price} भुगतान करें |
 | Package: a payment link is already open | A payment link for a package is already open. Please use the payment button above, or try again in a few minutes. | पैकेज का भुगतान लिंक पहले से खुला है। कृपया ऊपर दिए भुगतान बटन का इस्तेमाल करें, या कुछ मिनट बाद फिर कोशिश करें। |
 | Package paid: the credits are added (button below: Book a session) | Payment received. You have 10 sessions. Book your first one now? | भुगतान मिल गया। आपके पास 10 सेशन हैं। क्या अभी पहला सेशन बुक करें? |
@@ -186,7 +187,26 @@ Sent by code, never by the AI. The crisis and emergency messages go to everyone,
 | Book tapped by someone who already has a call (with the buttons below) | You already have a call on {day} at {time}. Shantha Rao will call you then. | आपकी कॉल पहले से {day} को {time} बजे बुक है। शांता राव जी उसी समय कॉल करेंगी। |
 | Button under it (max 20 letters); the other button is Talk to a person | Keep it | ठीक है |
 
-## 8. Amma's page
+## 8. The payment page (our own link)
+
+Every pay button and pay message opens our own link (bot.disha-dira.com/p/…), never Razorpay's link directly: WhatsApp turns a Razorpay link into its own "Pay now" card, which opens WhatsApp's UPI setup instead of Razorpay's page. While the time is held, our link goes straight on to Razorpay's secure payment page (UPI, cards, net banking). Otherwise it shows one of these small pages, in the chat's language, with one button back to WhatsApp. A link we did not make shows the "not found" page in both languages.
+
+| Where it appears | English | हिंदी |
+|---|---|---|
+| The name at the top of the page | Disha Dira | दिशा दिरा |
+| The button (opens the chat on WhatsApp) | Back to WhatsApp | WhatsApp पर वापस जाएँ |
+| Already paid: heading | Payment received | भुगतान मिल गया |
+| Already paid: text (a call or a session) | Your booking is confirmed; the details are in WhatsApp. You can close this page. | आपकी बुकिंग तय हो गई है; पूरी जानकारी WhatsApp पर है। आप यह पेज बंद कर सकते हैं। |
+| Already paid: text (a package) | Your sessions are added to your package; the details are in WhatsApp. You can close this page. | आपके सेशन आपके पैकेज में जुड़ गए हैं; पूरी जानकारी WhatsApp पर है। आप यह पेज बंद कर सकते हैं। |
+| The hold or the link has ended: heading | This payment link has expired | इस भुगतान लिंक का समय खत्म हो गया है |
+| The hold has ended: text (a call or a session) | Your time is no longer held. Go back to WhatsApp and tap Book again. | आपका समय अब रोका हुआ नहीं है। WhatsApp पर वापस जाएँ और फिर से "बुक करें" दबाएँ। |
+| The link has ended: text (a package) | Go back to WhatsApp and choose your package again. | WhatsApp पर वापस जाएँ और पैकेज फिर से चुनें। |
+| A link we did not make: heading | Link not found | लिंक नहीं मिला |
+| A link we did not make: text | This payment link is not right. Please go back to WhatsApp and use the latest payment message. | यह भुगतान लिंक सही नहीं है। कृपया WhatsApp पर वापस जाएँ और सबसे नए भुगतान मैसेज का लिंक खोलें। |
+| The page could not be opened just now: heading | Please try again | कृपया फिर से कोशिश करें |
+| The page could not be opened just now: text | We couldn't open the payment page just now. Please open the link again in a minute. | अभी भुगतान पेज नहीं खुल पाया। कृपया एक मिनट बाद लिंक फिर से खोलें। |
+
+## 9. Amma's page
 
 English only. No chat text and no health details are ever shown here.
 

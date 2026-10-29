@@ -4,6 +4,7 @@ import app from "../src/index";
 import { bookingChoice } from "../src/booking";
 import { config } from "../src/config";
 import { razorpay } from "../src/pay/razorpay";
+import { payToken } from "../src/paylink";
 import { reconcile } from "../src/pay/apply";
 import { generateSlots, holdSlot } from "../src/slots";
 import { addPerson, newDb } from "./db";
@@ -21,7 +22,7 @@ let n = 0;
 
 const env = () =>
   ({
-    DB: db, SENDS: "true", NEW_BOOKINGS: "true", ...rzpEnv(live), WA_TOKEN: "tok", WA_PHONE_ID: "1000",
+    DB: db, SENDS: "true", NEW_BOOKINGS: "true", ...rzpEnv(live), WA_TOKEN: "tok", WA_PHONE_ID: "1000", PUBLIC_URL: "https://bot.example.test",
   }) as never;
 const count = async (sql: string) => (await db.prepare(sql).first<{ n: number }>())!.n;
 const calls = (host: string, method?: string) =>
@@ -229,7 +230,12 @@ describe("bot flow", () => {
     expect(rows.at(-1)).toEqual({ id: "more_PROTECTION_FAMILY", title: "Another day" });
     await tap(c, rows[1].id); // 2:30 pm, the second half hour
     expect(await db.prepare("SELECT service, for_whom, call_lang FROM intros").first()).toEqual({ service: "PROTECTION", for_whom: "FAMILY", call_lang: "en" });
-    expect(waSent().at(-1).interactive.body.text).toBe("Mon, 5 Oct at 2:30 pm is held for you for 20 minutes. Tap below to pay ₹99 and confirm. Please don't pay twice.");
+    const link = waSent().at(-1).interactive.action.parameters.url;
+    expect(waSent().at(-1).interactive.body.text).toBe(
+      "Mon, 5 Oct at 2:30 pm is held for you until 11:50 am (India time).\n\n" +
+        "Tap \"Pay ₹99\" below to open Razorpay's secure payment page. Pay by any UPI app, card or net banking. Please don't pay twice.\n\n" +
+        `If the button does not open, use this link: ${link}`,
+    );
   });
 
   it("the hold, the payment row and a link that expires with the hold", async () => {
@@ -247,9 +253,15 @@ describe("bot flow", () => {
     expect(pay.link.length).toBeLessThanOrEqual(40);
     const cta = waSent().at(-1).interactive;
     expect(cta.type).toBe("cta_url");
-    expect(cta.action.parameters.url).toBe(`https://rzp.io/i/${pay.link}`);
+    // Our own link, never Razorpay's (ticket 29: WhatsApp turns a Razorpay link into its own UPI card); Razorpay's is kept for the redirect.
+    expect(cta.action.parameters.url).toBe(`https://bot.example.test/p/${await payToken(env(), pay.id)}`);
+    expect(JSON.parse((await db.prepare("SELECT value FROM settings WHERE key = ?1").bind(`paylink:${pay.id}`).first<{ value: string }>())!.value)).toEqual({
+      url: `https://rzp.io/i/${pay.link}`,
+      until: "2026-10-05T06:20:00Z",
+    });
     expect(cta.action.parameters.display_text).toBe("Pay ₹99");
-    expect(cta.body.text).toContain("20 minutes");
+    expect(cta.body.text).toContain("until 11:50 am (India time)");
+    expect(cta.body.text).toContain(cta.action.parameters.url);
     expect(cta.body.text).toContain("don't pay twice");
   });
 

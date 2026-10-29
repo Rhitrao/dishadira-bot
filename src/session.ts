@@ -6,6 +6,7 @@ import { copyFor, langOf } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
 import { razorpay } from "./pay/razorpay";
+import { customerPayLink, untilLabel } from "./paylink";
 import type { PaymentProvider } from "./pay/provider";
 import { loadConv, sendDays, sendTimes } from "./booking";
 import { raiseAttention, sendMessage, type Out } from "./send";
@@ -143,7 +144,8 @@ export async function startSession(env: Env, provider: PaymentProvider, conv: Co
     });
     await db.prepare("UPDATE payments SET state = 'PENDING', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();
     const p = formatIstLang(startUtc, langOf(conv.locale));
-    await sendStep(env, conv.id, "pay", { type: "cta", body: cp.sessionPayBody(p.day, p.time), label: cp.sessionPayLabel, url: link.url }, `${msgId}:pay`, { until: hold.holdUntil });
+    const url = await customerPayLink(env, payId, link.url, hold.holdUntil); // our /p/ link, never Razorpay's own (src/paylink.ts)
+    await sendStep(env, conv.id, "pay", { type: "cta", body: cp.sessionPayBody(p.day, p.time, untilLabel(hold.holdUntil, conv.locale), url), label: cp.sessionPayLabel, url }, `${msgId}:pay`, { until: hold.holdUntil });
   } catch {
     await db.prepare("UPDATE payments SET state = 'FAILED', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();
     await db.prepare("UPDATE sessions SET state = 'OFFERED', updated_at = ?2 WHERE id = ?1 AND state = 'HELD'").bind(ses.id, nowIso()).run();

@@ -173,7 +173,8 @@ export type Copy = {
   slotTaken: string;
   alreadyHolding: string;
   callAlreadyBooked: (day: string, time: string) => string;
-  payBody: (day: string, time: string) => string;
+  // The pay messages (ticket 29): `until` is the hold's end as a clock time (India time), `link` our own /p/ link (src/paylink.ts).
+  payBody: (day: string, time: string, until: string, link: string) => string;
   payLabel: string; // max 20 chars
   payFailed: string;
   confirmed: (day: string, time: string, callLang: Lang, businessNumber: string) => string;
@@ -182,7 +183,7 @@ export type Copy = {
   sessionOfferBody: string;
   noSessionSlots: string;
   sessionNotAvailable: string;
-  sessionPayBody: (day: string, time: string) => string;
+  sessionPayBody: (day: string, time: string, until: string, link: string) => string;
   sessionPayLabel: string; // max 20 chars
   sessionConfirmed: (day: string, time: string) => string;
   notFitRefund: string;
@@ -234,7 +235,7 @@ export type Copy = {
   rowPack20Desc: string;
   softGate: string;
   btnContinue: string; // max 20 chars
-  packPayBody: (n: number, price: string) => string;
+  packPayBody: (n: number, price: string, until: string, link: string) => string;
   packPayLabel: (price: string) => string; // max 20 chars
   packPending: string;
   packConfirmed: (n: number) => string;
@@ -259,6 +260,20 @@ export type Copy = {
   cancelledSingleNoRefund: string;
   notFitRefundSession: (amount: string) => string;
   packRefunded: (amount: string) => string;
+  // The payment reminder about 8 minutes before a hold ends (ticket 29), and the small page behind our /p/ link (src/paylink.ts).
+  payNudge: (until: string, link: string) => string;
+  pageBrand: string;
+  pageBtnWhatsApp: string;
+  pagePaidTitle: string;
+  pagePaidBody: string;
+  pagePaidPackBody: string;
+  pageExpiredTitle: string;
+  pageExpiredBody: string;
+  pageExpiredPackBody: string;
+  pageNotFoundTitle: string;
+  pageNotFoundBody: string;
+  pageErrorTitle: string;
+  pageErrorBody: string;
   amma: AmmaCopy;
 };
 
@@ -358,8 +373,10 @@ const en: Copy = {
   slotTaken: "Sorry, that time was just taken. Please choose another.",
   alreadyHolding: "A time is already held for you. Please use the payment button above, or try again in a few minutes.",
   callAlreadyBooked: (day, time) => `Your call is already booked for ${day} at ${time}. Shantha Rao will call you then.`,
-  payBody: (day, time) =>
-    `${day} at ${time} is held for you for ${config.holdMinutes} minutes. Tap below to pay ${intro} and confirm. Please don't pay twice.`,
+  payBody: (day, time, until, link) =>
+    `${day} at ${time} is held for you until ${until} (India time).\n\n` +
+    `Tap "Pay ${intro}" below to open Razorpay's secure payment page. Pay by any UPI app, card or net banking. Please don't pay twice.\n\n` +
+    `If the button does not open, use this link: ${link}`,
   payLabel: `Pay ${intro}`,
   payFailed: "Sorry, we couldn't create the payment link. Nothing was charged. Please try again.",
   confirmed: (day, time, callLang, number) =>
@@ -369,8 +386,10 @@ const en: Copy = {
   sessionOfferBody: `Thank you for speaking with Shantha Rao. She would be glad to offer you a full session. Choose an option below: a single session, or a package of ${p10.sessions} or ${p20.sessions}.`,
   noSessionSlots: "There are no free session times right now. We will message you when new times are open.",
   sessionNotAvailable: "Sorry, we cannot book a session from this message. A person will look into it.",
-  sessionPayBody: (day, time) =>
-    `${day} at ${time} is held for your session for ${config.holdMinutes} minutes. Tap below to pay ${sessionPrice} and confirm. Please don't pay twice.`,
+  sessionPayBody: (day, time, until, link) =>
+    `${day} at ${time} is held for your session until ${until} (India time).\n\n` +
+    `Tap "Pay ${sessionPrice}" below to open Razorpay's secure payment page. Pay by any UPI app, card or net banking. Please don't pay twice.\n\n` +
+    `If the button does not open, use this link: ${link}`,
   sessionPayLabel: `Pay ${sessionPrice}`,
   sessionConfirmed: (day, time) =>
     `Your session with Shantha Rao is confirmed for ${day} at ${time} (India time). ` +
@@ -455,8 +474,10 @@ const en: Copy = {
   softGate:
     `Most people start with a ${intro} call, so Shantha Rao can understand what you need first. Would you like to do that, or continue?`,
   btnContinue: "Continue",
-  packPayBody: (n, price) =>
-    `${n} sessions for ${price}. Tap below to pay. After that, you book each session whenever you like, with no payment per session. Please don't pay twice.`,
+  packPayBody: (n, price, until, link) =>
+    `${n} sessions for ${price}. After paying, you book each session whenever you like, with no payment per session.\n\n` +
+    `Tap "Pay ${price}" below to open Razorpay's secure payment page. Pay by any UPI app, card or net banking. The link is open until ${until} (India time). Please don't pay twice.\n\n` +
+    `If the button does not open, use this link: ${link}`,
   packPayLabel: (price) => `Pay ${price}`,
   packPending: "A payment link for a package is already open. Please use the payment button above, or try again in a few minutes.",
   packConfirmed: (n) => `Payment received. You have ${n} sessions. Book your first one now?`,
@@ -482,6 +503,20 @@ const en: Copy = {
   notFitRefundSession: (amount) =>
     `Thank you for speaking with Shantha Rao. She feels this isn't the right fit just now, so we've refunded your payment of ${amount}.`,
   packRefunded: (amount) => `We've refunded ${amount} for the sessions you didn't use. It goes back to your original payment method.`,
+  payNudge: (until, link) =>
+    `Your time is still held until ${until} (India time). Pay here: ${link}\n\nHaving trouble paying? Reply HELP and we will help you.`,
+  pageBrand: "Disha Dira",
+  pageBtnWhatsApp: "Back to WhatsApp",
+  pagePaidTitle: "Payment received",
+  pagePaidBody: "Your booking is confirmed; the details are in WhatsApp. You can close this page.",
+  pagePaidPackBody: "Your sessions are added to your package; the details are in WhatsApp. You can close this page.",
+  pageExpiredTitle: "This payment link has expired",
+  pageExpiredBody: "Your time is no longer held. Go back to WhatsApp and tap Book again.",
+  pageExpiredPackBody: "Go back to WhatsApp and choose your package again.",
+  pageNotFoundTitle: "Link not found",
+  pageNotFoundBody: "This payment link is not right. Please go back to WhatsApp and use the latest payment message.",
+  pageErrorTitle: "Please try again",
+  pageErrorBody: "We couldn't open the payment page just now. Please open the link again in a minute.",
   amma: ammaEn,
 };
 
@@ -524,8 +559,10 @@ const hi: Copy = {
   slotTaken: "माफ़ कीजिए, यह समय अभी-अभी बुक हो गया। कृपया दूसरा समय चुनें।",
   alreadyHolding: "आपके लिए एक समय पहले से रोका गया है। ऊपर दिए भुगतान बटन का इस्तेमाल करें, या कुछ मिनट बाद फिर कोशिश करें।",
   callAlreadyBooked: (day, time) => `आपकी कॉल पहले से ${day} को ${time} बजे बुक है। शांता राव जी उसी समय आपको कॉल करेंगी।`,
-  payBody: (day, time) =>
-    `${day}, ${time} का समय आपके लिए ${config.holdMinutes} मिनट तक रोका गया है। बुकिंग पूरी करने के लिए नीचे ${intro} का भुगतान करें। कृपया दो बार भुगतान न करें।`,
+  payBody: (day, time, until, link) =>
+    `${day}, ${time} का समय आपके लिए ${until} बजे तक (भारतीय समय) रोका गया है।\n\n` +
+    `नीचे "${intro} भुगतान करें" बटन दबाएँ, Razorpay का सुरक्षित भुगतान पेज खुलेगा। किसी भी UPI ऐप, कार्ड या नेट बैंकिंग से भुगतान करें। कृपया दो बार भुगतान न करें।\n\n` +
+    `अगर बटन न खुले, तो यह लिंक खोलें: ${link}`,
   payLabel: `${intro} भुगतान करें`,
   payFailed: "माफ़ कीजिए, भुगतान लिंक नहीं बन पाया। कोई पैसा नहीं कटा है। कृपया फिर से कोशिश करें।",
   confirmed: (day, time, callLang, number) =>
@@ -535,8 +572,10 @@ const hi: Copy = {
   sessionOfferBody: `शांता राव जी से बात करने के लिए धन्यवाद। वे आपको पूरा सेशन देना चाहेंगी। नीचे एक विकल्प चुनें: एक सेशन, या ${p10.sessions} या ${p20.sessions} सेशन का पैकेज।`,
   noSessionSlots: "अभी सेशन का कोई खाली समय नहीं है। नए समय खुलते ही हम आपको मैसेज करेंगे।",
   sessionNotAvailable: "माफ़ कीजिए, इस मैसेज से सेशन बुक नहीं हो सकता। हमारी टीम इसे देखेगी।",
-  sessionPayBody: (day, time) =>
-    `${day}, ${time} का समय आपके सेशन के लिए ${config.holdMinutes} मिनट तक रोका गया है। बुकिंग पूरी करने के लिए नीचे ${sessionPrice} का भुगतान करें। कृपया दो बार भुगतान न करें।`,
+  sessionPayBody: (day, time, until, link) =>
+    `${day}, ${time} का समय आपके सेशन के लिए ${until} बजे तक (भारतीय समय) रोका गया है।\n\n` +
+    `नीचे "${sessionPrice} भुगतान करें" बटन दबाएँ, Razorpay का सुरक्षित भुगतान पेज खुलेगा। किसी भी UPI ऐप, कार्ड या नेट बैंकिंग से भुगतान करें। कृपया दो बार भुगतान न करें।\n\n` +
+    `अगर बटन न खुले, तो यह लिंक खोलें: ${link}`,
   sessionPayLabel: `${sessionPrice} भुगतान करें`,
   sessionConfirmed: (day, time) =>
     `शांता राव जी के साथ आपका सेशन ${day} को ${time} बजे (भारतीय समय) तय हो गया है। ` +
@@ -621,8 +660,10 @@ const hi: Copy = {
   softGate:
     `ज़्यादातर लोग पहले ${intro} की कॉल करते हैं, ताकि शांता राव जी आपकी ज़रूरत समझ सकें। क्या आप ऐसा करना चाहेंगे, या आगे बढ़ें?`,
   btnContinue: "आगे बढ़ें",
-  packPayBody: (n, price) =>
-    `${n} सेशन ${price} में। भुगतान के लिए नीचे टैप करें। उसके बाद आप जब चाहें हर सेशन बुक कर सकते हैं, हर बार भुगतान नहीं करना होगा। कृपया दो बार भुगतान न करें।`,
+  packPayBody: (n, price, until, link) =>
+    `${n} सेशन ${price} में। भुगतान के बाद आप जब चाहें हर सेशन बुक कर सकते हैं, हर बार भुगतान नहीं करना होगा।\n\n` +
+    `नीचे "${price} भुगतान करें" बटन दबाएँ, Razorpay का सुरक्षित भुगतान पेज खुलेगा। किसी भी UPI ऐप, कार्ड या नेट बैंकिंग से भुगतान करें। यह लिंक ${until} बजे तक (भारतीय समय) खुला है। कृपया दो बार भुगतान न करें।\n\n` +
+    `अगर बटन न खुले, तो यह लिंक खोलें: ${link}`,
   packPayLabel: (price) => `${price} भुगतान करें`,
   packPending: "पैकेज का भुगतान लिंक पहले से खुला है। कृपया ऊपर दिए भुगतान बटन का इस्तेमाल करें, या कुछ मिनट बाद फिर कोशिश करें।",
   packConfirmed: (n) => `भुगतान मिल गया। आपके पास ${n} सेशन हैं। क्या अभी पहला सेशन बुक करें?`,
@@ -648,6 +689,20 @@ const hi: Copy = {
   notFitRefundSession: (amount) =>
     `शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी यह आपके लिए सही नहीं है, इसलिए आपके ${amount} वापस कर दिए गए हैं।`,
   packRefunded: (amount) => `आपके बिना इस्तेमाल हुए सेशन के ${amount} वापस कर दिए गए हैं। यह राशि आपके भुगतान के तरीके में लौटेगी।`,
+  payNudge: (until, link) =>
+    `आपका समय अभी ${until} बजे तक (भारतीय समय) रोका गया है। यहाँ भुगतान करें: ${link}\n\nभुगतान में दिक्कत हो रही है? HELP या मदद लिखकर भेजें, हम आपकी मदद करेंगे।`,
+  pageBrand: "दिशा दिरा",
+  pageBtnWhatsApp: "WhatsApp पर वापस जाएँ",
+  pagePaidTitle: "भुगतान मिल गया",
+  pagePaidBody: "आपकी बुकिंग तय हो गई है; पूरी जानकारी WhatsApp पर है। आप यह पेज बंद कर सकते हैं।",
+  pagePaidPackBody: "आपके सेशन आपके पैकेज में जुड़ गए हैं; पूरी जानकारी WhatsApp पर है। आप यह पेज बंद कर सकते हैं।",
+  pageExpiredTitle: "इस भुगतान लिंक का समय खत्म हो गया है",
+  pageExpiredBody: "आपका समय अब रोका हुआ नहीं है। WhatsApp पर वापस जाएँ और फिर से \"बुक करें\" दबाएँ।",
+  pageExpiredPackBody: "WhatsApp पर वापस जाएँ और पैकेज फिर से चुनें।",
+  pageNotFoundTitle: "लिंक नहीं मिला",
+  pageNotFoundBody: "यह भुगतान लिंक सही नहीं है। कृपया WhatsApp पर वापस जाएँ और सबसे नए भुगतान मैसेज का लिंक खोलें।",
+  pageErrorTitle: "कृपया फिर से कोशिश करें",
+  pageErrorBody: "अभी भुगतान पेज नहीं खुल पाया। कृपया एक मिनट बाद लिंक फिर से खोलें।",
   amma: ammaEn, // Amma's page copy stays English
 };
 

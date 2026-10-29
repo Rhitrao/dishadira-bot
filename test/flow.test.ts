@@ -4,6 +4,7 @@ import app from "../src/index";
 import { config } from "../src/config";
 import { allCopy } from "../src/copy";
 import { isMenuWord, plainWord } from "../src/whatsapp";
+import { payToken, untilLabel } from "../src/paylink";
 import { generateSlots, holdSlot, nextWorkingDays, spreadTimes, type Slot } from "../src/slots";
 import { applySql, migrations, newDb } from "./db";
 import { FakeRazorpay, paidEvent, rzpEnv, rzpHeaders } from "./razorpay";
@@ -25,7 +26,14 @@ let fake: FakeRazorpay;
 let n = 0;
 let sends = "true";
 
-const env = () => ({ DB: db, SENDS: sends, NEW_BOOKINGS: "true", WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "v", WA_TOKEN: "tok", WA_PHONE_ID: "1000", ...rzpEnv() }) as never;
+const env = () => ({ DB: db, SENDS: sends, NEW_BOOKINGS: "true", WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "v", WA_TOKEN: "tok", WA_PHONE_ID: "1000", PUBLIC_URL: PUBLIC, ...rzpEnv() }) as never;
+// The /p/ link and the "until" time of the newest payment's message (ticket 29), as the pay bodies take them.
+const PUBLIC = "https://bot.example.test";
+async function sentLink(lang: "en" | "hi"): Promise<[string, string]> {
+  const id = (await db.prepare("SELECT MAX(id) AS id FROM payments").first<{ id: number }>())!.id;
+  const row = JSON.parse((await db.prepare("SELECT value FROM settings WHERE key = ?1").bind(`paylink:${id}`).first<{ value: string }>())!.value) as { until: string };
+  return [untilLabel(row.until, lang), `${PUBLIC}/p/${await payToken(env() as never, id)}`];
+}
 const sent = (): Wa[] => fetchMock.mock.calls.filter((c) => String(c[0]).includes("graph.facebook.com")).map((c) => JSON.parse((c[1] as { body: string }).body));
 const last = (): Wa => sent().at(-1);
 const count = async (sql: string) => (await db.prepare(sql).first<{ n: number }>())!.n;
@@ -181,7 +189,10 @@ describe("the whole booking, in both languages, within WhatsApp's limits", () =>
       await tapRow(from, rows[2].id); // 3:00 pm
       const pay = last();
       expect(pay.interactive.type).toBe("cta_url");
-      expect(pay.interactive.body.text).toBe(c.payBody(lang === "en" ? "Tue, 6 Oct" : "मंगल, 6 अक्टूबर", lang === "en" ? "3:00 pm" : "दोपहर 3:00"));
+      const [until, link] = await sentLink(lang);
+      expect(until).toBe(lang === "en" ? "11:50 am" : "सुबह 11:50"); // the hold's end, 20 minutes after 11:30 am
+      expect(pay.interactive.body.text).toBe(c.payBody(lang === "en" ? "Tue, 6 Oct" : "मंगल, 6 अक्टूबर", lang === "en" ? "3:00 pm" : "दोपहर 3:00", until, link));
+      expect(pay.interactive.action.parameters.url).toBe(link);
       expect(pay.interactive.action.parameters.display_text).toBe(c.payLabel);
       expect(await db.prepare("SELECT service, for_whom, call_lang FROM intros").first()).toEqual({ service: "PROTECTION", for_whom: "PET", call_lang: lang });
       allWithinLimits();
@@ -326,7 +337,7 @@ describe("old and odd button ids never cause an error", () => {
     await ageOk(from);
     await tapRow(from, `slot_PROTECTION_${call(2).startUtc}`);
     expect(last().interactive.type).toBe("cta_url");
-    expect(last().interactive.body.text).toBe(allCopy.en.payBody("Mon, 5 Oct", "2:30 pm"));
+    expect(last().interactive.body.text).toBe(allCopy.en.payBody("Mon, 5 Oct", "2:30 pm", ...(await sentLink("en"))));
     expect(await db.prepare("SELECT service, for_whom, call_lang, state FROM intros").first()).toEqual({ service: "PROTECTION", for_whom: null, call_lang: "en", state: "HELD" });
     expect(await failed()).toBe(0);
   });
@@ -742,7 +753,9 @@ describe("the session picker uses the same day and time steps", () => {
       await tapButton(from, `sday_${sid}_2026-10-06`);
       await tapRow(from, rowsOf(last())[2].id); // 4:00 pm
       expect(last().interactive.type).toBe("cta_url");
-      expect(last().interactive.body.text).toBe(c.sessionPayBody(lang === "en" ? "Tue, 6 Oct" : "मंगल, 6 अक्टूबर", lang === "en" ? "4:00 pm" : "शाम 4:00"));
+      const [until, link] = await sentLink(lang);
+      expect(last().interactive.body.text).toBe(c.sessionPayBody(lang === "en" ? "Tue, 6 Oct" : "मंगल, 6 अक्टूबर", lang === "en" ? "4:00 pm" : "शाम 4:00", until, link));
+      expect(last().interactive.action.parameters.url).toBe(link);
       expect(last().interactive.action.parameters.display_text).toBe(c.sessionPayLabel);
       expect(await db.prepare("SELECT state FROM sessions WHERE id = ?1").bind(sid).first()).toEqual({ state: "HELD" });
       allWithinLimits();
