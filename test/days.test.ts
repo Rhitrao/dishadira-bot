@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { allCopy } from "../src/copy";
 import { config } from "../src/config";
 import { generateSlots } from "../src/slots";
+import templatesDoc from "../docs/TEMPLATES.md?raw";
 import { type Json, Wa } from "./wa";
 
 const w = new Wa();
@@ -198,5 +199,23 @@ describe("the confirmation never gives a number to call", () => {
         expect(text).toContain(lang === "en" ? "This WhatsApp number is for messages only, not calls." : "यह WhatsApp नंबर सिर्फ़ मैसेज के लिए है, कॉल के लिए नहीं।");
       }
     }
+  });
+});
+
+describe("the call_booked template (docs/TEMPLATES.md) has no number and two variables, as the code sends", () => {
+  const block = (heading: string) => {
+    const at = templatesDoc.indexOf(heading);
+    expect(at, heading).toBeGreaterThan(-1);
+    return /```\n([\s\S]*?)\n```/.exec(templatesDoc.slice(at))![1];
+  };
+  it("English and Hindi: {{1}} day and {{2}} time only; no business number; messages only", () => {
+    for (const [heading, words] of [["## 1. call_booked", "This WhatsApp number is for messages only, not calls."], ["### 1. call_booked_hi", "यह WhatsApp नंबर सिर्फ़ मैसेज के लिए है, कॉल के लिए नहीं।"]] as const) {
+      const body = block(heading);
+      expect([...body.matchAll(/\{\{(\d)\}\}/g)].map((m) => m[1]), heading).toEqual(["1", "2"]);
+      expect(body).toContain(words);
+      expect(body).not.toContain(config.businessNumber);
+    }
+    expect(templatesDoc).not.toContain("The business number Amma calls from");
+    expect(config.templates.call_booked).toMatchObject({ approved: false, hi: { approved: false } });
   });
 });
