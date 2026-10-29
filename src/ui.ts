@@ -492,7 +492,7 @@ button,.btn{appearance:none;display:inline-flex;align-items:center;justify-conte
 button.primary,.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 button.danger,.btn.danger{color:var(--red);border-color:var(--red-line)}
 button.danger.solid{background:var(--red);border-color:var(--red);color:var(--card)}
-textarea,input[type=text],input[type=search]{width:100%;font-size:16px;line-height:1.4;font-family:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+textarea,input[type=text],input[type=search],input[type=date]{width:100%;font-size:16px;line-height:1.4;font-family:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 textarea:focus,input:focus,button:focus-visible,.btn:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .reply{width:100%;margin-top:10px}
 .reply button{margin-top:8px}

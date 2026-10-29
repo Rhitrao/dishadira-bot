@@ -278,6 +278,8 @@ const ACTION_WORDS: Record<string, { en: string; hi: string }> = {
   SWITCH_CHANGED: { en: "Changed a bot switch", hi: "बॉट का स्विच बदला" },
   ADMIN_SWITCH: { en: "Changed a bot switch", hi: "बॉट का स्विच बदला" },
   BUSINESS_CHANGED: { en: "Changed the business details", hi: "बिज़नेस की जानकारी बदली" },
+  HOLIDAY_ADDED: { en: "Marked a holiday", hi: "छुट्टी तय की" },
+  HOLIDAY_REMOVED: { en: "Removed a holiday", hi: "छुट्टी हटाई" },
   EMAILS_CHANGED: { en: "Changed who gets emails", hi: "ईमेल पाने वाले बदले" },
   STAFF_CHAT_TEXT: { en: "Changed whether staff read chats", hi: "स्टाफ़ के चैट पढ़ने की सेटिंग बदली" },
   DATA_EXPORTED: { en: "Downloaded payments", hi: "पेमेंट डाउनलोड किए" },

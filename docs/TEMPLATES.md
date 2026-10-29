@@ -25,14 +25,15 @@ Sent when a ₹99 payment is received but the customer's 24-hour window has clos
 **Body**
 
 ```
-Thank you, we have received your payment. Shantha Rao will call you on {{1}} at {{2}} from {{3}}. That number is for her calls only, so please message us here if you need anything.
+Thank you, we have received your payment. Shantha Rao will call you on {{1}} at {{2}} (India time), on the number you are messaging from. The call may come from a number you don't know, so please keep your phone nearby. This WhatsApp number is for messages only, not calls.
 ```
 
 | Variable | Meaning | Sample value |
 |---|---|---|
 | {{1}} | Day of the call | Tue, 6 Oct |
 | {{2}} | Time of the call (India time) | 2:00 pm |
-| {{3}} | The business number Amma calls from | +91 63661 99009 |
+
+No number is ever given: Amma calls from a different number, which is not shown (owner, 29 Oct 2026). Also sent when the team moves a paid call and the 24-hour window has closed.
 
 ## 2. session_offer
 
@@ -146,10 +147,10 @@ Seven more templates, one per template above, with the same variables in the sam
 ### 1. call_booked_hi
 
 ```
-हमें आपका भुगतान मिल गया है। शांता राव जी {{1}} को {{2}} बजे {{3}} से आपको कॉल करेंगी। वह नंबर सिर्फ़ उनकी कॉल के लिए है, इसलिए मैसेज यहीं भेजें।
+हमें आपका भुगतान मिल गया है। शांता राव जी {{1}} को {{2}} बजे (भारतीय समय) आपको उसी नंबर पर कॉल करेंगी जिससे आप मैसेज कर रहे हैं। कॉल किसी अनजान नंबर से आ सकती है, इसलिए कृपया फ़ोन पास रखें। यह WhatsApp नंबर सिर्फ़ मैसेज के लिए है, कॉल के लिए नहीं।
 ```
 
-Samples: {{1}} मंगल, 6 अक्टूबर · {{2}} दोपहर 2:00 · {{3}} +91 63661 99009
+Samples: {{1}} मंगल, 6 अक्टूबर · {{2}} दोपहर 2:00
 
 ### 2. session_offer_hi
 

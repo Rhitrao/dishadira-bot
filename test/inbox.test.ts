@@ -555,9 +555,11 @@ describe("the 2-hour email", () => {
     expect(await nudgeWaitingChats(env())).toBe(1);
   });
 
-  it("counts only working hours: Friday 6:30 pm to Monday 3:00 pm is 90 minutes", () => {
-    expect(workingMinutes(Date.parse("2026-10-09T13:00:00Z"), Date.parse("2026-10-12T09:30:00Z"))).toBe(90);
-    expect(inWorkingHours(Date.parse("2026-10-10T09:30:00Z"))).toBe(false); // Saturday
+  it("counts only working hours (Monday to Saturday): Saturday 6:30 pm to Monday 3:00 pm is 90 minutes; Friday 6:30 pm to Monday 3:00 pm is 390", () => {
+    expect(workingMinutes(Date.parse("2026-10-10T13:00:00Z"), Date.parse("2026-10-12T09:30:00Z"))).toBe(90);
+    expect(workingMinutes(Date.parse("2026-10-09T13:00:00Z"), Date.parse("2026-10-12T09:30:00Z"))).toBe(390);
+    expect(inWorkingHours(Date.parse("2026-10-10T09:30:00Z"))).toBe(true); // Saturday
+    expect(inWorkingHours(Date.parse("2026-10-11T09:30:00Z"))).toBe(false); // Sunday
     expect(inWorkingHours(NOW)).toBe(true);
   });
 });

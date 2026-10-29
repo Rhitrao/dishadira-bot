@@ -221,8 +221,10 @@ describe("bot flow", () => {
     await tap(c, "svc_PROTECTION");
     expect(ids(waSent()[1])).toEqual(["who_PROTECTION_SELF", "who_PROTECTION_FAMILY", "who_PROTECTION_PET"]);
     await tap(c, "who_PROTECTION_FAMILY");
-    expect(ids(waSent()[2])).toEqual(["day_PROTECTION_FAMILY_2026-10-05", "day_PROTECTION_FAMILY_2026-10-06", "day_PROTECTION_FAMILY_2026-10-07"]);
-    expect(waSent()[2].interactive.action.buttons.map((b: { reply: { title: string } }) => b.reply.title)).toEqual(["Mon, 5 Oct", "Tue, 6 Oct", "Wed, 7 Oct"]);
+    // The day step is one list of six days, Monday to Saturday (ticket 30).
+    const dayRows: { id: string; title: string }[] = waSent()[2].interactive.action.sections.flatMap((x: { rows: unknown[] }) => x.rows);
+    expect(dayRows.map((r) => r.id)).toEqual(["05", "06", "07", "08", "09", "10"].map((d) => `day_PROTECTION_FAMILY_2026-10-${d}`));
+    expect(dayRows.map((r) => r.title)).toEqual(["Mon, 5 Oct", "Tue, 6 Oct", "Wed, 7 Oct", "Thu, 8 Oct", "Fri, 9 Oct", "Sat, 10 Oct"]);
     await tap(c, "day_PROTECTION_FAMILY_2026-10-05");
     const rows = waSent()[3].interactive.action.sections.flatMap((x: { rows: unknown[] }) => x.rows);
     expect(rows).toHaveLength(10); // 9 times + "Another day"
@@ -328,7 +330,8 @@ describe("webhook", () => {
     expect(await count("SELECT COUNT(*) AS n FROM events WHERE provider = 'razorpay'")).toBe(1);
     const texts = waSent().map((m) => m.text?.body).filter(Boolean);
     expect(texts.filter((t) => t.startsWith("Received your ₹99"))).toEqual([
-      `Received your ₹99. Shantha Rao will call you on Mon, 5 Oct at 2:00 pm from ${config.businessNumber}. Call in English. That number is for her calls only, so please message us here.`,
+      "Received your ₹99. Shantha Rao will call you on Mon, 5 Oct at 2:00 pm (India time), on the number you are messaging from. Call in English. " +
+        "The call may come from a number you don't know, so please keep your phone nearby. This WhatsApp number is for messages only, not calls.",
     ]);
     expect(await count("SELECT COUNT(*) AS n FROM refunds")).toBe(0);
   });

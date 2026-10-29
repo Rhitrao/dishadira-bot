@@ -22,7 +22,7 @@ export const config = {
   },
   hours: {
     // 0 = Sunday ... 6 = Saturday
-    days: [1, 2, 3, 4, 5],
+    days: [1, 2, 3, 4, 5, 6], // Monday to Saturday (owner, 29 Oct 2026)
     start: "14:00",
     end: "19:00",
   },
@@ -31,6 +31,8 @@ export const config = {
     sessionMinutes: 60,
     maxSessionsPerDay: 5,
   },
+  // Days off the owner or practitioner marks on /amma, /admin or /app Calendar (src/holidays.ts): no new bookings on them.
+  holidays: { maxDaysAhead: 60 },
   holdMinutes: 20,
   undoMinutes: 10,
   limits: {
@@ -44,10 +46,9 @@ export const config = {
   },
   booking: {
     leadMinutes: 60,
-    workingDays: 3, // days offered on the day step: the first 3 working days that still have a free time
-    lookaheadDays: 10, // how many working days ahead to look for them
+    workingDays: 6, // days offered on the day step (one list message): the first 6 working days that still have a free time
+    lookaheadDays: 21, // how many working days ahead to look for them (full days and holidays are skipped)
     maxListRows: 10,
-    dayButtons: 3, // reply buttons on the day step (WhatsApp allows 3)
     timeRows: 9, // times on the time step; the "Another day" row makes it 10
     eveningFrom: "16:00", // the time list has an Afternoon section before this and an Evening section from it
     stepOpenHours: 24, // a booking step stays "open" (a typed message re-sends it) this long; a payment step lasts as long as its hold
@@ -72,6 +73,18 @@ export const config = {
     // A short message (at most handoffMaxWords words) containing one of these as a word asks for a person.
     handoff: ["human", "person", "insaan", "insan", "इंसान"],
     handoffMaxWords: 8,
+    // "Call me", "number please": a short message (at most callRequestMaxWords words) with one of these as a word or phrase gets the
+    // "we don't take calls on this number" line and the menu (src/gate.ts CALL_REQUEST). No number is ever given.
+    callRequest: [
+      "call me", "call me back", "call back", "callback", "can i call", "can we call", "may i call", "i want to call", "i will call", "want to call", "call you",
+      "video call", "voice call", "whatsapp call", "phone call me", "phone me",
+      "phone number", "contact number", "mobile number", "your number", "number please", "number pls", "send number", "give number", "give me number",
+      "call karo", "call kar do", "call kijiye", "call karna hai", "phone karo", "number do", "number dijiye", "number bhejo",
+      "मुझे कॉल करो", "मुझे कॉल करें", "मुझे कॉल कीजिए", "कॉल करो", "कॉल कीजिए", "कॉल कर सकते", "कॉल कर सकती", "वीडियो कॉल", "फोन करो", "फोन नंबर", "नंबर दो", "नंबर दीजिए", "नंबर भेजो", "अपना नंबर",
+    ],
+    callRequestMaxWords: 12,
+    // ... unless it also has one of these: it is about a call she makes ("she didn't call me", "can she call me now?"), so the assistant answers.
+    callRequestNot: ["she", "shantha", "amma", "didn't", "didnt", "did not", "not", "never", "missed", "nahi", "nahin", "nhi", "नहीं", "वो", "वे", "शांता"],
   },
   // The assistant (src/ai.ts, src/aicheck.ts). Budgets are counted per India day; reaching one sends the menu with "Talk to a person" instead.
   ai: {

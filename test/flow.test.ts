@@ -174,8 +174,19 @@ describe("the whole booking, in both languages, within WhatsApp's limits", () =>
       expect(buttonTitles(last())).toEqual([c.btnMe, c.btnFamily, c.btnPet]);
       await tapButton(from, "who_PROTECTION_PET");
       expect(last().interactive.body.text).toBe(c.chooseDay);
-      expect(buttonTitles(last())).toEqual(lang === "en" ? ["Mon, 5 Oct", "Tue, 6 Oct", "Wed, 7 Oct"] : ["सोम, 5 अक्टूबर", "मंगल, 6 अक्टूबर", "बुध, 7 अक्टूबर"]);
-      await tapButton(from, buttonIds(last())[1]); // Tuesday
+      // Ticket 30: one list with the next 6 working days (Monday to Saturday) that have a free time, "(India time)" in the body.
+      const dayList = last();
+      expect(dayList.interactive.type).toBe("list");
+      expect(dayList.interactive.body.text).toContain(lang === "en" ? "(India time)" : "(भारतीय समय)");
+      expect(dayList.interactive.action.button).toBe(c.listButtonDays);
+      expect(rowsOf(dayList).map((r) => r.title)).toEqual(
+        lang === "en"
+          ? ["Mon, 5 Oct", "Tue, 6 Oct", "Wed, 7 Oct", "Thu, 8 Oct", "Fri, 9 Oct", "Sat, 10 Oct"]
+          : ["सोम, 5 अक्टूबर", "मंगल, 6 अक्टूबर", "बुध, 7 अक्टूबर", "गुरु, 8 अक्टूबर", "शुक्र, 9 अक्टूबर", "शनि, 10 अक्टूबर"],
+      );
+      expect(rowsOf(dayList).map((r) => r.id)).toEqual(["05", "06", "07", "08", "09", "10"].map((d) => `day_PROTECTION_PET_2026-10-${d}`));
+      expect(rowsOf(dayList).every((r) => r.description === c.rowDayBoth)).toBe(true);
+      await tapRow(from, rowsOf(dayList)[1].id); // Tuesday
       const times = last();
       expect(times.interactive.body.text).toBe(c.timesFor(lang === "en" ? "Tue, 6 Oct" : "मंगल, 6 अक्टूबर"));
       expect(times.interactive.action.button).toBe(c.listButtonTimes);
@@ -206,8 +217,8 @@ describe("the whole booking, in both languages, within WhatsApp's limits", () =>
     for (const day of [Date.UTC(2026, 8, 1, 6, 0), Date.UTC(2027, 1, 1, 6, 0), Date.UTC(2027, 11, 28, 6, 0)]) {
       vi.setSystemTime(day);
       await tapButton(from, "who_HEALING_SELF");
-      seen.push(...buttonTitles(last()));
-      await tapButton(from, buttonIds(last())[0]);
+      seen.push(...rowsOf(last()).map((r) => r.title));
+      await tapRow(from, rowsOf(last())[0].id);
     }
     expect(seen).toContain("मंगल, 1 सितंबर");
     expect(seen).toContain("सोम, 1 फ़रवरी");
@@ -288,20 +299,21 @@ describe("the time list: the spread rule, sections and full days", () => {
     };
     await fill("2026-10-06"); // Tuesday is full: the next working day with free times takes its place (ticket 18)
     await tapButton(from, "more_HEALING_SELF");
-    expect(buttonTitles(last())).toEqual(["Mon, 5 Oct", "Wed, 7 Oct", "Thu, 8 Oct"]);
+    const titles = () => rowsOf(last()).map((r) => r.title);
+    expect(titles()).toEqual(["Mon, 5 Oct", "Wed, 7 Oct", "Thu, 8 Oct", "Fri, 9 Oct", "Sat, 10 Oct", "Mon, 12 Oct"]);
     // Tuesday's button is still in the chat: the day is full, so it says so and shows the days again.
     await tapButton(from, "day_HEALING_SELF_2026-10-06");
     expect(sent().at(-2).text.body).toBe(allCopy.en.slotTaken);
-    expect(buttonTitles(last())).toEqual(["Mon, 5 Oct", "Wed, 7 Oct", "Thu, 8 Oct"]);
+    expect(titles()).toEqual(["Mon, 5 Oct", "Wed, 7 Oct", "Thu, 8 Oct", "Fri, 9 Oct", "Sat, 10 Oct", "Mon, 12 Oct"]);
     await fill("2026-10-05");
     await fill("2026-10-07");
     await tapButton(from, "more_HEALING_SELF");
-    expect(buttonTitles(last())).toEqual(["Thu, 8 Oct", "Fri, 9 Oct", "Mon, 12 Oct"]);
+    expect(titles()).toEqual(["Thu, 8 Oct", "Fri, 9 Oct", "Sat, 10 Oct", "Mon, 12 Oct", "Tue, 13 Oct", "Wed, 14 Oct"]); // never a Sunday
     for (const ymd of nextWorkingDays(Date.now(), config.booking.lookaheadDays)) if (!["2026-10-05", "2026-10-06", "2026-10-07"].includes(ymd)) await fill(ymd);
     await tapButton(from, "more_HEALING_SELF");
     expect(last().text.body).toBe(allCopy.en.noSlots);
     expect(await count("SELECT COUNT(*) AS n FROM slots WHERE owner_id IN (SELECT id FROM conversations WHERE wa_id = '" + from + "')")).toBe(0);
-  });
+  }, 90_000); // fills six working days of slots one by one, slow on the CI runner
 
   it("a time taken while the person was choosing: 'just taken' and the same day's times again without it, no hold, no payment", async () => {
     const from = await greeted("en");
@@ -392,9 +404,18 @@ describe("old and odd button ids never cause an error", () => {
   it("a day button whose date is not a working day shows the day's times as 'taken' and the days again", async () => {
     const from = await greeted("en");
     await ageOk(from);
-    await tapButton(from, "day_HEALING_SELF_2026-10-10"); // a Saturday
+    await tapButton(from, "day_HEALING_SELF_2026-10-11"); // a Sunday
     expect(sent().at(-2).text.body).toBe(allCopy.en.slotTaken);
-    expect(last().interactive.type).toBe("button");
+    expect(last().interactive.type).toBe("list");
+    expect(rowsOf(last()).map((r) => r.title)).not.toContain("Sun, 11 Oct");
+  });
+
+  it("Saturday is a working day (ticket 30): its old day button shows Saturday's times", async () => {
+    const from = await greeted("en");
+    await ageOk(from);
+    await tapButton(from, "day_HEALING_SELF_2026-10-10"); // a Saturday
+    expect(last().interactive.body.text).toBe(allCopy.en.timesFor("Sat, 10 Oct"));
+    expect(rowsOf(last())[0].title).toBe("2:00 pm");
   });
 });
 
@@ -700,13 +721,17 @@ describe("dates, times and call language after the payment", () => {
 
   it("Hindi: the confirmation uses Hindi dates and says the call is in Hindi", async () => {
     await bookAndPay("hi");
-    expect(last().text.body).toBe(allCopy.hi.confirmed("मंगल, 6 अक्टूबर", "शाम 5:30", "hi", config.businessNumber));
+    expect(last().text.body).toBe(allCopy.hi.confirmed("मंगल, 6 अक्टूबर", "शाम 5:30", "hi"));
     expect(last().text.body).toContain("कॉल हिंदी में होगी");
     expect(last().text.body).toContain("शाम 5:30 बजे");
   });
   it("English: Wed-style dates and 'Call in English'", async () => {
     await bookAndPay("en");
-    expect(last().text.body).toBe(`Received your ₹99. Shantha Rao will call you on Tue, 6 Oct at 5:30 pm from ${config.businessNumber}. Call in English. That number is for her calls only, so please message us here.`);
+    expect(last().text.body).toBe(
+      "Received your ₹99. Shantha Rao will call you on Tue, 6 Oct at 5:30 pm (India time), on the number you are messaging from. Call in English. " +
+        "The call may come from a number you don't know, so please keep your phone nearby. This WhatsApp number is for messages only, not calls.",
+    );
+    expect(last().text.body).not.toContain(config.businessNumber); // she calls from another number, which is never shown (ticket 30)
   });
   it("the call language is the chat language at booking; changing language later changes the chat, not the booking", async () => {
     const from = newPhone();
@@ -742,7 +767,7 @@ describe("the session picker uses the same day and time steps", () => {
       const { from, sid } = await offered(lang);
       await tapButton(from, `sess_offer_${sid}`);
       expect(last().interactive.body.text).toBe(c.chooseDay);
-      expect(buttonIds(last())).toEqual([`sday_${sid}_2026-10-05`, `sday_${sid}_2026-10-06`, `sday_${sid}_2026-10-07`]);
+      expect(rowsOf(last()).map((r) => r.id)).toEqual(["05", "06", "07", "08", "09", "10"].map((d) => `sday_${sid}_2026-10-${d}`));
       await tapButton(from, `sday_${sid}_2026-10-06`);
       const l = last();
       expect(l.interactive.body.text).toBe(c.sessionTimesFor(lang === "en" ? "Tue, 6 Oct" : "मंगल, 6 अक्टूबर"));

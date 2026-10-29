@@ -84,14 +84,22 @@ export function spreadTimes(free: Slot[], max: number): Slot[] {
   return [...byHalfHour.values()].slice(0, max);
 }
 
-// The next `count` working days (IST "YYYY-MM-DD"), starting with today.
+// The next `count` working days (IST "YYYY-MM-DD"), starting with today. Holidays are still in the list: availableSlots() and
+// holdSlot() skip them (they need the database).
 export function nextWorkingDays(nowMs: number, count: number): string[] {
   const out: string[] = [];
-  for (let i = 0; out.length < count && i < 14; i++) {
+  for (let i = 0; out.length < count && i < 7 * count + 7; i++) {
     const ymd = istDay(nowMs + i * 86_400_000);
     if (generateSlots(ymd, "CALL").length) out.push(ymd);
   }
   return out;
+}
+
+// Holidays (ticket 30): one settings row per day off, `holiday:<YYYY-MM-DD>` (IST), value = the owner's note (may be empty).
+// Marked and removed in src/holidays.ts; a holiday has no free times and takes no new hold. Bookings already on it stay.
+export const HOLIDAY_PREFIX = "holiday:";
+export async function isHoliday(db: D1Database, ymd: string): Promise<boolean> {
+  return (await db.prepare("SELECT 1 AS x FROM settings WHERE key = ?1").bind(HOLIDAY_PREFIX + ymd).first()) !== null;
 }
 
 // A slot is active (blocks the calendar) when booked, or held and not yet expired.
@@ -114,6 +122,7 @@ export async function holdSlot(
   const { kind, startUtc, ownerId, nowMs } = args;
   const slot = generateSlots(istDay(Date.parse(startUtc)), kind).find((s) => s.startUtc === startUtc);
   if (!slot) return { ok: false, reason: "NOT_A_SLOT" };
+  if (await isHoliday(db, istDay(Date.parse(startUtc)))) return { ok: false, reason: "UNAVAILABLE" }; // a day off: nothing new is held
 
   const now = iso(nowMs);
   const holdUntil = iso(nowMs + config.holdMinutes * 60_000);
@@ -137,6 +146,7 @@ export async function holdSlot(
 // `nowMs` is the earliest start (the caller adds the booking lead time). Holds are judged at `busyAtMs`, the real now: a hold that
 // is live right now keeps the slot off the list even when it will have lapsed by the time the lead has passed.
 export async function availableSlots(db: D1Database, kind: SlotKind, ymd: string, nowMs: number, busyAtMs = nowMs): Promise<Slot[]> {
+  if (await isHoliday(db, ymd)) return [];
   const now = iso(nowMs);
   const busyAt = iso(busyAtMs);
   const out: Slot[] = [];

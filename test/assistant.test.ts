@@ -12,7 +12,9 @@ const w = new Wa();
 const en = allCopy.en;
 const out = (label: string, reply: string, next = "ask_more", language = "en", script = "latin") => ({ label, language, script, reply, next });
 const iso = (ms: number) => new Date(ms).toISOString().slice(0, 19) + "Z";
-const ids = (p: { interactive?: { action?: { buttons?: { reply: { id: string; title: string } }[] } } }) => p.interactive?.action?.buttons?.map((b) => b.reply.id);
+// Button ids, or a list's row ids (the day step is a list since ticket 30).
+const ids = (p: { interactive?: { action?: { buttons?: { reply: { id: string; title: string } }[]; sections?: { rows: { id: string }[] }[] } } }) =>
+  p.interactive?.action?.buttons?.map((b) => b.reply.id) ?? p.interactive?.action?.sections?.flatMap((x) => x.rows.map((r) => r.id));
 
 beforeEach(() => w.start());
 afterEach(() => w.stop());
@@ -84,10 +86,10 @@ describe("one message per answer, as the assistant's `next` says", () => {
   });
   it("show_booking: the reply with one button, See call times, which opens the booking flow", async () => {
     const from = await w.greeted();
-    w.ai = out("relevant_question", "Calls are Monday to Friday, 2 pm to 7 pm. Would you like to see the free call times?", "show_booking");
+    w.ai = out("relevant_question", "Calls are Monday to Saturday, 2 pm to 7 pm. Would you like to see the free call times?", "show_booking");
     await w.typed(from, "Which days are calls?");
     expect(w.sent()).toHaveLength(1);
-    expect(w.last().interactive.body.text).toContain("Monday to Friday");
+    expect(w.last().interactive.body.text).toContain("Monday to Saturday");
     expect(w.last().interactive.action.buttons).toEqual([{ type: "reply", reply: { id: "menu_book", title: "See call times" } }]);
     await w.tap(from, "menu_book");
     expect(w.last().interactive.body.text).toBe(en.ageCheck);
@@ -95,7 +97,7 @@ describe("one message per answer, as the assistant's `next` says", () => {
   it("show_booking while selling is paused (after a crisis message): the reply only", async () => {
     const from = await w.greeted();
     await w.setState(from, "no_sell_until = ?2", iso(NOW + 86_400_000));
-    w.ai = out("relevant_question", "Calls are Monday to Friday. Would you like to see the free call times?", "show_booking");
+    w.ai = out("relevant_question", "Calls are Monday to Saturday. Would you like to see the free call times?", "show_booking");
     await w.typed(from, "Which days are calls?");
     expect(w.sent()).toHaveLength(1);
     expect(w.last().type).toBe("text");
@@ -346,20 +348,21 @@ describe("in the middle of a booking: one message, the answer on top of the step
   it("the reply is the first part of the step's own message, with its buttons", async () => {
     const from = await atDayStep();
     const buttons = ids(w.last());
+    expect(buttons).toHaveLength(6); // the six-day list (ticket 30)
     w.fetchMock.mockClear();
-    w.ai = out("relevant_question", "Calls are only Monday to Friday.", "none");
-    await w.typed(from, "Saturday please");
+    w.ai = out("relevant_question", "Calls are only Monday to Saturday.", "none");
+    await w.typed(from, "Sunday please");
     expect(w.sent()).toHaveLength(1);
-    expect(w.last().interactive.body.text).toBe(`Calls are only Monday to Friday.\n\n${en.chooseDay}`);
+    expect(w.last().interactive.body.text).toBe(`Calls are only Monday to Saturday.\n\n${en.chooseDay}`);
     expect(ids(w.last())).toEqual(buttons);
     expect((await w.conv(from)).pending_reprompts).toBe(0); // an answered question is not a re-prompt (ticket 18)
     expect(await w.count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(0);
   });
   it("answered questions never add Talk to a person; the third unanswered one in a row does (ticket 18)", async () => {
     const from = await atDayStep();
-    w.ai = out("relevant_question", "Calls are only Monday to Friday.", "show_booking");
-    for (let i = 0; i < 4; i++) await w.typed(from, `Saturday please ${i}`);
-    expect(w.last().interactive.body.text).toBe(`Calls are only Monday to Friday.\n\n${en.chooseDay}`);
+    w.ai = out("relevant_question", "Calls are only Monday to Saturday.", "show_booking");
+    for (let i = 0; i < 4; i++) await w.typed(from, `Sunday please ${i}`);
+    expect(w.last().interactive.body.text).toBe(`Calls are only Monday to Saturday.\n\n${en.chooseDay}`);
     expect(w.sent().some((m) => m.interactive?.body?.text === en.repromptHelp)).toBe(false);
     w.ai = () => new Response("{}", { status: 500 });
     for (let i = 0; i < 3; i++) await w.typed(from, `and sunday ${i}`);

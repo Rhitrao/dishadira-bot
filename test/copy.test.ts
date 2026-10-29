@@ -185,8 +185,8 @@ describe("dates and times (India time)", () => {
 
 describe("timings answer, from config.hours", () => {
   it("says the days and hours in plain words", () => {
-    expect(hoursText("en")).toBe("Calls are Monday to Friday, 2 pm to 7 pm (India time).");
-    expect(hoursText("hi")).toBe("कॉल सोमवार से शुक्रवार, दोपहर 2 बजे से शाम 7 बजे तक (भारतीय समय) होती हैं।");
+    expect(hoursText("en")).toBe("Calls are Monday to Saturday, 2 pm to 7 pm (India time).");
+    expect(hoursText("hi")).toBe("कॉल सोमवार से शनिवार, दोपहर 2 बजे से शाम 7 बजे तक (भारतीय समय) होती हैं।");
     expect(allCopy.en.faqAnswers.timings).toBe(hoursText("en"));
     // Ticket 18: "What is this?" says what it is, how it happens and the first step.
     expect(allCopy.en.faqAnswers.what_is_this).toContain("no-touch pranic healing by phone");

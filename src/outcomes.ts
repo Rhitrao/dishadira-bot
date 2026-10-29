@@ -278,7 +278,7 @@ export async function rescheduleChoice(env: Env, choice: string | null, convId: 
   const now = nowIso();
   await db.prepare("INSERT INTO audit_log (at, actor, action, target, detail) VALUES (?1, 'system', 'RESCHEDULED', ?2, ?3)").bind(now, `intro:${introId}`, m[2]).run();
   const p = formatIstLang(m[2], langOf(conv.locale));
-  await send({ type: "text", text: cp.rescheduled(p.day, p.time, config.businessNumber) }, "done");
+  await send({ type: "text", text: cp.rescheduled(p.day, p.time) }, "done");
   return true;
 }
 

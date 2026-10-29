@@ -163,8 +163,8 @@ The same Today on both screens: urgent cards first, then the day in time order. 
 ### Calendar: when am I booked or free?
 
 - **Day and week views** for one practitioner, or all of them from Phase 2, showing bookings, held times and free times.
-- **Working hours** per practitioner, per weekday, defaulting to Monday to Friday, 2 to 7 pm. Phase 2; until then the hours stay as they are today.
-- **Time off:** "Away from Mon 2 Nov to Wed 4 Nov". The bot stops offering those times at once. The screen lists only the bookings that clash, and lets you move or refund each one. Phase 2.
+- **Working hours** per practitioner, per weekday, defaulting to Monday to Saturday, 2 to 7 pm (owner, 29 Oct 2026). Phase 2; until then the hours stay as they are today.
+- **Time off:** "Away from Mon 2 Nov to Wed 4 Nov". The bot stops offering those times at once. The screen lists only the bookings that clash, and lets you move or refund each one. Phase 2. (Ticket 30 brought whole days off forward: "Mark a day off" on the Calendar, /admin and /amma, stored as `settings` rows `holiday:<date>`; the bookings on that day are listed with a warning.)
 - **Book for a customer** (owner and staff): pick the person, the service and a time. Payment goes by the usual link, or is marked as received outside Razorpay.
 
 ### People: who is this customer?

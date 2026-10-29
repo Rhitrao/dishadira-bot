@@ -98,7 +98,7 @@ The flags are in `wrangler.toml`, under `[env.test.vars]`. For the sandbox run, 
 
 ## B. The sandbox run (test copy only, no real money)
 
-Do this on weekdays between 14:00 and 19:00 India time, because that is when call times exist. Calls cannot be booked less than one hour ahead.
+Do this Monday to Saturday between 14:00 and 19:00 India time, because that is when call times exist. Calls cannot be booked less than one hour ahead.
 
 ### 11. Book, call, pay, refund
 - [ ] **Booking.** From your allowed phone, message the Meta test number. Choose a language, **Book a ₹99 call**, a service, a time. Tap the pay button and pay with a Razorpay **test** method (Razorpay's test card and test UPI details are on their docs pages "Test Card Details" and "Test UPI Details"). No real money moves in Test Mode.
