@@ -131,7 +131,8 @@ const CAL_CSS = `
 .holform label{display:block;font-weight:500;margin:0 0 4px}
 .holform input{display:block;width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px;margin:0 0 16px}
 .hol{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
-.hol .why a{color:inherit}
+.holbks{display:flex;flex-direction:column;margin:4px 0 0}
+.holbk{display:flex;align-items:center;min-height:48px;color:var(--ink)}
 @media (min-width:900px){.calbar{flex-wrap:nowrap}}
 `;
 
@@ -284,10 +285,10 @@ async function daysOff(c: ConsoleCtx) {
       const label = dayLabelFor(h.ymd, lang);
       // Bookings on the day that this member may open (a practitioner: their own customers').
       const booked = (await bookingsOn(c.env.DB, h.ymd)).filter((b) => can(m, "view_people", { practitionerId: b.practitionerId }) === "yes");
-      const who = booked.map((b, i) => html`${i ? " · " : ""}<a href="/app/people/${b.convId}">${clock(b.startUtc, lang)} ${firstName(b.name, "")} <span class="nw">${last4(b.waId)}</span></a>`);
+      const who = booked.map((b) => html`<a class="holbk" href="/app/people/${b.convId}"><span>${clock(b.startUtc, lang)} ${firstName(b.name, "")} <span class="nw">${last4(b.waId)}</span></span></a>`);
       const remove = may ? button({ label: cc.holRemove, post: { action: "/app/calendar/holiday/remove", csrf: await memberCsrf(jwt, m, `holiday:remove:${h.ymd}`), fields: { day: h.ymd } } }) : "";
       return html`<article class="card${booked.length ? " attention" : ""}"><div class="hol"><h3>${label}</h3>${remove}</div>
-${seesNote(m) && h.note ? html`<p class="why">${h.note}</p>` : ""}${booked.length ? html`<p class="why">${keep4(cc.holWarn(booked.length, label))}</p><p class="why">${who}</p>` : ""}</article>`;
+${seesNote(m) && h.note ? html`<p class="why">${h.note}</p>` : ""}${booked.length ? html`<p class="why">${keep4(cc.holWarn(booked.length, label))}</p><div class="holbks">${who}</div>` : ""}</article>`;
     }),
   );
   const b = holidayBounds();

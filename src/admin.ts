@@ -830,9 +830,9 @@ async function daysOff(c: Ctx) {
       const label = dayLabelFor(h.ymd, "en");
       const booked = await bookingsOn(c.env.DB, h.ymd);
       const warn = booked.length
-        ? html`<p class="todo">${w.holWarn(booked.length, label)}</p><p class="small">${booked.map(
-            (x, i) => html`${i ? " · " : ""}<a href="/admin/conv/${x.convId}">${formatIstParts(x.startUtc).time} ${firstName(x.name)} ${mask(x.waId)}</a>`,
-          )}</p>`
+        ? html`<p class="todo">${w.holWarn(booked.length, label)}</p>${booked.map(
+            (x) => html`<p><a class="btn" href="/admin/conv/${x.convId}">${formatIstParts(x.startUtc).time} ${firstName(x.name)} ${mask(x.waId)}</a></p>`,
+          )}`
         : "";
       return html`<div class="card${booked.length ? " amber" : ""}"><div class="head"><h3>${label}</h3>${chip(w.calHoliday, booked.length ? "amber" : "")}</div>
 ${h.note ? html`<p class="small muted">${h.note}</p>` : ""}${warn}<div class="actions">${await form(c, "holiday-remove", `holiday:remove:${h.ymd}`, { day: h.ymd }, w.holRemove)}</div></div>`;
