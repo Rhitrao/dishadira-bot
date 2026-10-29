@@ -169,7 +169,7 @@ describe("POST /wa/webhook", () => {
     await post(button("wamid.F1", "lang_en"));
     fetchMock.mockClear();
 
-    await post(text("wamid.F2", "can you call me about my problem"));
+    await post(text("wamid.F2", "can you help me with my problem")); // ("can you call me" now gets the call-request line, ticket 30: test/days.test.ts)
     expect(sent()).toHaveLength(1);
     expect(sent()[0].text.body).toBe("Thanks, a person will reply within 24 hours.");
     expect(await count("SELECT COUNT(*) n FROM attention WHERE kind = 'FREE_TEXT' AND resolved_at IS NULL")).toBe(1);

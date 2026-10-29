@@ -796,10 +796,12 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
       expect(last().interactive.body.text).toBe(reprompt(lang, "", c.whoFor));
       expect(last().interactive.action.buttons.map((b: Wa) => b.reply.id)).toEqual(["who_HEALING_SELF", "who_HEALING_FAMILY", "who_HEALING_PET"]);
       await tap(from, "who_HEALING_SELF");
-      const days = last().interactive.action.buttons.map((b: Wa) => b.reply.id);
+      const dayRows = () => last().interactive.action.sections.flatMap((x: Wa) => x.rows).map((r: Wa) => r.id); // the day step is a list (ticket 30)
+      const days = dayRows();
+      expect(days).toHaveLength(6);
       await typed(from, ask);
       expect(last().interactive.body.text).toBe(reprompt(lang, hours(lang), c.chooseDay));
-      expect(last().interactive.action.buttons.map((b: Wa) => b.reply.id)).toEqual(days);
+      expect(dayRows()).toEqual(days);
       await tap(from, days[1]);
       const rows = last().interactive.action.sections.flatMap((s: Wa) => s.rows).map((r: Wa) => r.id);
       await typed(from, ask);
