@@ -230,6 +230,6 @@ describe("the call_booked template (docs/TEMPLATES.md) has no number and two var
       expect(body).not.toContain(config.businessNumber);
     }
     expect(templatesDoc).not.toContain("The business number Amma calls from");
-    expect(config.templates.call_booked).toMatchObject({ approved: false, hi: { approved: false } });
+    expect(config.templates.call_booked).toMatchObject({ language: "en", hi: { name: "call_booked_hi", language: "hi" } });
   });
 });
