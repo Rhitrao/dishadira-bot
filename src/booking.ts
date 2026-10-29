@@ -38,20 +38,28 @@ async function freeByDay(db: D1Database, kind: SlotKind, window: number, nowMs: 
   return out;
 }
 
-// Day step: up to 3 reply buttons for days that still have a free slot. `idFor` makes each button's id.
-// With no free day it sends the "no times" text instead and returns false.
+// Day step: one list message with a row for each of the first config.booking.workingDays (6) days that still have a free time
+// (full days and holidays are skipped). `idFor` makes each row's id; the ids are the same as the old day buttons', so a day button
+// still sitting in an older chat keeps working. With no free day it sends the "no times" text instead and returns false.
 export async function sendDays(env: Env, conv: Conv, kind: SlotKind, idFor: (ymd: string) => string, key: string): Promise<boolean> {
   const cp = copyFor(conv.locale);
   const lang = langOf(conv.locale);
-  const days = [...(await freeByDay(env.DB, kind, kind === "CALL" ? config.booking.workingDays : 5, Date.now())).keys()].slice(0, config.booking.dayButtons);
+  const days = [...(await freeByDay(env.DB, kind, config.booking.workingDays, Date.now())).entries()];
   if (!days.length) {
     await clearStep(env.DB, conv.id);
     await sendMessage(env, conv.id, { type: "text", text: kind === "CALL" ? cp.noSlots : cp.noSessionSlots }, `${key}:noslots`);
     return false;
   }
-  await sendStep(env, conv.id, "day", { type: "buttons", body: cp.chooseDay, buttons: days.map((ymd) => ({ id: idFor(ymd), title: dayLabelFor(ymd, lang) })) }, `${key}:days`);
+  const split = eveningMinutes();
+  const rows = days.map(([ymd, free]) => {
+    const afternoon = free.some((s) => istMinutes(s.startUtc) < split);
+    const evening = free.some((s) => istMinutes(s.startUtc) >= split);
+    return { id: idFor(ymd), title: dayLabelFor(ymd, lang), description: afternoon && evening ? cp.rowDayBoth : afternoon ? cp.rowDayAfternoon : cp.rowDayEvening };
+  });
+  await sendStep(env, conv.id, "day", { type: "list", body: cp.chooseDay, button: cp.listButtonDays, rows }, `${key}:days`);
   return true;
 }
+const eveningMinutes = () => Number(config.booking.eveningFrom.slice(0, 2)) * 60 + Number(config.booking.eveningFrom.slice(3));
 
 // Time step for one day: at most 9 times (the spread rule), then "Another day". Two sections, Afternoon and Evening, never an empty one.
 // Returns false when the day has no free slot any more (the caller then sends the day step instead).
@@ -61,7 +69,7 @@ export async function sendTimes(env: Env, conv: Conv, kind: SlotKind, ymd: strin
   const free = await availableSlots(env.DB, kind, ymd, Date.now() + config.booking.leadMinutes * 60_000, Date.now());
   if (!free.length) return false;
   const picked = spreadTimes(free, config.booking.timeRows);
-  const split = Number(config.booking.eveningFrom.slice(0, 2)) * 60 + Number(config.booking.eveningFrom.slice(3));
+  const split = eveningMinutes();
   const row = (s: Slot) => ({ id: idFor(s.startUtc), title: formatIstLang(s.startUtc, lang).time, description: kind === "CALL" ? cp.rowCall : cp.rowSession });
   const sections: ListSection[] = [
     { title: cp.sectionAfternoon, rows: picked.filter((s) => istMinutes(s.startUtc) < split).map(row) },

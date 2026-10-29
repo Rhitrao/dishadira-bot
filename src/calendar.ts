@@ -3,18 +3,21 @@
 // and staff ?p=<practitioner member id> when there is more than one practitioner. Each day lists its calls, sessions and live holds in
 // time order, then the free times left (the slot generator in src/slots.ts, less every active booking or hold, exactly as the bot sees
 // them), under the working hours from config. A practitioner sees only their own (the view_calendar row of the permission table is "own").
-// Working hours and time off are edited in Phase 2; the page says so in one line and draws no button for it.
+// Working hours are edited in Phase 2; the page says so in one line and draws no button for it. Days off (holidays, ticket 30) are
+// marked and removed at the foot of the page by whoever may set_hours (owner; a practitioner for the one shared calendar; not staff),
+// and a holiday shows as "Holiday" on its day (src/holidays.ts).
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
-import { can, canAny, type Member } from "./auth";
+import { can, canAny, memberCsrf, type Member } from "./auth";
 import { config } from "./config";
-import { appPage, refused, type ConsoleCtx, type ConsoleVars } from "./console";
+import { appPage, auditStmt, refused, type ConsoleCtx, type ConsoleVars } from "./console";
+import { addHoliday, anyDate, bookingsOn, holidayBounds, holidayDate, holidaysBetween, removeHoliday, upcomingHolidays } from "./holidays";
 import { consoleCopy, consoleLang, type ConsoleCopy } from "./console-copy";
 import { hoursText, serviceName, type ForWhom } from "./copy";
 import type { Env } from "./env";
 import { dayLabelFor, generateSlots, iso, istDay } from "./slots";
 import { TODAY_COPY } from "./today";
-import { appointmentRow, bookingChip, clock, dayName, emptyState, firstName, forWhomText, ledger, screenHead, statusChip } from "./ui";
+import { appointmentRow, bookingChip, button, clock, dayName, emptyState, firstName, forWhomText, keep4, last4, ledger, screenHead, section, statusChip } from "./ui";
 
 const DAY = 86_400_000;
 export type CalView = "day" | "week";
@@ -124,6 +127,11 @@ const CAL_CSS = `
 .cday .ledger{margin-bottom:8px}
 .cday .appt .side{justify-content:space-between}
 .cday .appt .side .btn{flex:0 0 auto}
+.holform{max-width:420px}
+.holform label{display:block;font-weight:500;margin:0 0 4px}
+.holform input{display:block;width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px;margin:0 0 16px}
+.hol{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
+.hol .why a{color:inherit}
 @media (min-width:900px){.calbar{flex-wrap:nowrap}}
 `;
 
@@ -156,12 +164,18 @@ function entryRow(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, string
 }
 
 // One day: its heading (a link to the Day view from the Week), its bookings, its free times. A day off is one quiet line.
-function dayBlock(o: { ymd: string; entries: Entry[]; busy: { startUtc: string; endUtc: string }[]; m: Member; cc: ConsoleCopy; nowMs: number; view: CalView; p: number | null; many: Map<number, string> | null }) {
+function dayBlock(o: { ymd: string; entries: Entry[]; busy: { startUtc: string; endUtc: string }[]; m: Member; cc: ConsoleCopy; nowMs: number; view: CalView; p: number | null; many: Map<number, string> | null; holiday: boolean }) {
   const { ymd, m, cc } = o;
   const lang = consoleLang(m.locale);
   const label = dayLabelFor(ymd, lang);
   const today = ymd === istDay(o.nowMs);
   const working = isWorkingDay(ymd);
+  if (o.holiday) {
+    // A day off: said plainly, with whatever was booked before it was marked (those stay booked until someone moves them).
+    const title = o.view === "week" ? html`<a href="${link({ view: "day", d: ymd, p: o.p })}">${label}</a>` : html`${label}`;
+    return html`<section class="cday" id="d-${ymd}"><h2 class="sec"><span>${title} ${statusChip(cc.calHoliday, o.entries.length ? "attention" : "plain")}</span><span class="n">${o.entries.length ? cc.calBooked(o.entries.length) : ""}</span></h2>
+${o.entries.length ? ledger(o.entries.map((e) => entryRow(e, m, cc, o.many))) : ""}<p class="free">${cc.calHolidayLine}</p></section>`;
+  }
   if (!working && !o.entries.length) {
     return html`<p class="closed"><b>${label}</b><span>${cc.calClosed}</span></p>`;
   }
@@ -201,7 +215,8 @@ async function calendarPage(c: ConsoleCtx) {
   const days = view === "week" ? Array.from({ length: 7 }, (_, i) => addDays(weekStart(d), i)) : [d];
   const from = dayStartUtc(days[0]);
   const to = dayStartUtc(addDays(days.at(-1)!, 1));
-  const [entries, busy] = await Promise.all([entriesBetween(c.env, from, to, scope, nowMs), busyBetween(c.env, from, to, nowMs)]);
+  const [entries, busy, hols] = await Promise.all([entriesBetween(c.env, from, to, scope, nowMs), busyBetween(c.env, from, to, nowMs), holidaysBetween(c.env.DB, days[0], days.at(-1)!)]);
+  const holidays = new Set(hols.map((h) => h.ymd));
 
   const step = view === "week" ? 7 : 1;
   const anchor = view === "week" ? days[0] : d; // a week moves Monday to Monday
@@ -231,14 +246,88 @@ async function calendarPage(c: ConsoleCtx) {
     empty = emptyState(sentence, next ? { label: cc.calGoNext, href: link({ view: "day", d: istDay(Date.parse(next)), p: picked }) } : undefined);
   }
   const byDay = (ymd: string) => entries.filter((e) => istDay(Date.parse(e.startUtc)) === ymd);
-  const blocks = days.map((ymd) => dayBlock({ ymd, entries: byDay(ymd), busy, m, cc, nowMs, view, p: picked, many }));
+  const blocks = days.map((ymd) => dayBlock({ ymd, entries: byDay(ymd), busy, m, cc, nowMs, view, p: picked, many, holiday: holidays.has(ymd) }));
 
   const body = html`<style>${raw(CAL_CSS)}</style>${screenHead("calendar", m.locale)}
 <div class="calbar">${viewSeg}${nav}</div>${filter ? html`<div class="calbar">${filter}</div>` : ""}
 ${view === "week" ? html`<p class="range">${rangeLabel}</p>` : ""}<p class="calnote">${hoursText(lang)} ${cc.calPhase2}</p>
-${empty}${blocks}`;
-  return appPage(c, { active: "calendar", title: cc.tabCalendar, body, back: here({}) });
+${empty}${blocks}${await daysOff(c)}`;
+  return appPage(c, { active: "calendar", title: cc.tabCalendar, body, back: here({}), flash: flashFor(c, cc) });
+}
+
+// ---------- days off (ticket 30) ----------
+// Who may mark or remove one: set_hours (owner yes; a practitioner "own", and the one calendar is theirs too; staff no).
+const maySetDaysOff = (m: Member) => can(m, "set_hours", { practitionerId: m.id }) === "yes";
+// The team's note is the owner's (never shown to customers, nor to other roles).
+const seesNote = (m: Member) => m.role === "OWNER";
+
+function flashFor(c: ConsoleCtx, cc: ConsoleCopy): string | null {
+  const day = anyDate(c.req.query("hd"));
+  const lang = consoleLang(c.get("member").locale);
+  const code = c.req.query("m");
+  if (code === "holiday" && day) return cc.holAdded(dayLabelFor(day, lang));
+  if (code === "holidayoff" && day) return cc.holRemoved(dayLabelFor(day, lang));
+  if (code === "holidaybad") return cc.holBadDate(config.holidays.maxDaysAhead);
+  return null;
+}
+
+async function daysOff(c: ConsoleCtx) {
+  const m = c.get("member");
+  const cc = consoleCopy(m.locale);
+  const lang = consoleLang(m.locale);
+  const jwt = c.get("jwt");
+  const may = maySetDaysOff(m);
+  const list = await upcomingHolidays(c.env.DB);
+  if (!may && !list.length) return "";
+  const cards = await Promise.all(
+    list.map(async (h) => {
+      const label = dayLabelFor(h.ymd, lang);
+      // Bookings on the day that this member may open (a practitioner: their own customers').
+      const booked = (await bookingsOn(c.env.DB, h.ymd)).filter((b) => can(m, "view_people", { practitionerId: b.practitionerId }) === "yes");
+      const who = booked.map((b, i) => html`${i ? " · " : ""}<a href="/app/people/${b.convId}">${clock(b.startUtc, lang)} ${firstName(b.name, "")} <span class="nw">${last4(b.waId)}</span></a>`);
+      const remove = may ? button({ label: cc.holRemove, post: { action: "/app/calendar/holiday/remove", csrf: await memberCsrf(jwt, m, `holiday:remove:${h.ymd}`), fields: { day: h.ymd } } }) : "";
+      return html`<article class="card${booked.length ? " attention" : ""}"><div class="hol"><h3>${label}</h3>${remove}</div>
+${seesNote(m) && h.note ? html`<p class="why">${h.note}</p>` : ""}${booked.length ? html`<p class="why">${keep4(cc.holWarn(booked.length, label))}</p><p class="why">${who}</p>` : ""}</article>`;
+    }),
+  );
+  const b = holidayBounds();
+  const form = may
+    ? html`<form class="card holform" method="post" action="/app/calendar/holiday"><h3>${cc.holMarkTitle}</h3><p class="why">${cc.holIntro}</p>
+<input type="hidden" name="csrf" value="${await memberCsrf(jwt, m, "holiday:add")}">
+<label for="hol-day">${cc.holDate}</label><input id="hol-day" type="date" name="day" min="${b.min}" max="${b.max}" required>
+${seesNote(m) ? html`<label for="hol-note">${cc.holReason}</label><input id="hol-note" type="text" name="note" maxlength="200" autocomplete="off">` : ""}
+<button class="btn primary" type="submit">${cc.holMark}</button></form>`
+    : "";
+  return html`<div id="days-off">${section(cc.holTitle, html`${form}${list.length ? html`<h3 class="sub">${cc.holUpcoming}</h3>${cards}` : may ? html`<p class="calnote">${cc.holNone}</p>` : ""}`)}</div>`;
+}
+
+// Back to the week of the day, with the flash.
+const backTo = (ymd: string | null, code: string) => `/app/calendar?view=week${ymd ? `&d=${ymd}&hd=${ymd}` : ""}&m=${code}#days-off`;
+
+async function addDayOff(c: ConsoleCtx) {
+  const m = c.get("member");
+  if (!maySetDaysOff(m)) return refused(c);
+  const f = (await c.req.parseBody()) as Record<string, string | undefined>;
+  if (f.csrf !== (await memberCsrf(c.get("jwt"), m, "holiday:add"))) return c.text("Forbidden", 403);
+  const day = holidayDate(f.day);
+  if (!day) return c.redirect(backTo(null, "holidaybad"), 303);
+  const note = seesNote(m) ? (f.note ?? "").trim().slice(0, 200) : "";
+  const booked = (await bookingsOn(c.env.DB, day)).length;
+  await addHoliday(c.env, day, note, auditStmt(c, "HOLIDAY_ADDED", `holiday:${day}`, `${booked} booked that day`, note || null));
+  return c.redirect(backTo(day, "holiday"), 303);
+}
+
+async function removeDayOff(c: ConsoleCtx) {
+  const m = c.get("member");
+  if (!maySetDaysOff(m)) return refused(c);
+  const f = (await c.req.parseBody()) as Record<string, string | undefined>;
+  const day = anyDate(f.day);
+  if (!day || f.csrf !== (await memberCsrf(c.get("jwt"), m, `holiday:remove:${day}`))) return c.text("Forbidden", 403);
+  await removeHoliday(c.env, day, auditStmt(c, "HOLIDAY_REMOVED", `holiday:${day}`, ""));
+  return c.redirect(backTo(day, "holidayoff"), 303);
 }
 
 export const calendar = new Hono<{ Bindings: Env; Variables: ConsoleVars }>();
 calendar.get("/", calendarPage);
+calendar.post("/holiday", addDayOff);
+calendar.post("/holiday/remove", removeDayOff);

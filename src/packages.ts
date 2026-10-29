@@ -22,7 +22,7 @@ import { requestRefund } from "./pay/refund";
 import { startSession } from "./session";
 import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
-import { bind, formatIstLang, generateSlots, iso, istDay, PRACTITIONER_SQL } from "./slots";
+import { bind, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
 
 const nowIso = () => iso(Date.now());
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -348,6 +348,7 @@ type CreditResult = { ok: true; sessionId: number } | { ok: false; reason: "NO_C
 export async function bookCredit(db: D1Database, convId: number, service: string, forWhom: ForWhom, lang: string, startUtc: string, nowMs = Date.now()): Promise<CreditResult> {
   const slot = generateSlots(istDay(Date.parse(startUtc)), "SESSION").find((s) => s.startUtc === startUtc);
   if (!slot || startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000)) return { ok: false, reason: "SLOT_TAKEN" };
+  if (await isHoliday(db, istDay(Date.parse(startUtc)))) return { ok: false, reason: "SLOT_TAKEN" }; // a day off takes no new booking
   const now = iso(nowMs);
   const params = { conv: convId, start: slot.startUtc, end: slot.endUtc, now, service, who: forWhom, lang, max: config.sessionRules.maxUpcoming };
   const stmt = (sql: string) => bind(db, sql, params);

@@ -821,8 +821,8 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
   }
 
   it("the hours hint says when calls and sessions happen, from config", () => {
-    expect(allCopy.en.hintDays).toBe("Calls and sessions are Monday to Friday, 2 pm to 7 pm (India time).");
-    expect(allCopy.hi.hintDays).toBe("कॉल और सेशन सोमवार से शुक्रवार, दोपहर 2 से शाम 7 बजे तक (भारतीय समय) होते हैं।");
+    expect(allCopy.en.hintDays).toBe("Calls and sessions are Monday to Saturday, 2 pm to 7 pm (India time).");
+    expect(allCopy.hi.hintDays).toBe("कॉल और सेशन सोमवार से शनिवार, दोपहर 2 से शाम 7 बजे तक (भारतीय समय) होते हैं।");
     expect(allCopy.en.reprompt("")).toBe("Please choose from the options below.");
     expect(allCopy.en.reprompt("X.")).toBe("X. Please choose from the options below.");
     expect(allCopy.hi.reprompt("")).toBe("कृपया नीचे दिए विकल्पों में से चुनें।");
@@ -911,7 +911,7 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
     expect(last().interactive.body.text).toBe(allCopy.en.chooseDay);
     await typed(from, "Saturday please");
     expect(last().interactive.body.text).toBe(reprompt("en", allCopy.en.hintDays, allCopy.en.chooseDay));
-    expect(last().interactive.action.buttons[0].reply.id).toMatch(/^sday_/);
+    expect(last().interactive.action.sections[0].rows[0].id).toMatch(/^sday_/); // the day step is a list (ticket 30)
   });
 });
 

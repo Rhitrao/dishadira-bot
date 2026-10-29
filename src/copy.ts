@@ -161,6 +161,10 @@ export type Copy = {
   btnFamily: string; // max 20 chars
   btnPet: string; // max 20 chars
   chooseDay: string;
+  listButtonDays: string; // max 20 chars: the button that opens the day list
+  rowDayBoth: string; // max 72 chars: a day row's description when it has afternoon and evening times
+  rowDayAfternoon: string; // max 72 chars
+  rowDayEvening: string; // max 72 chars
   timesFor: (day: string) => string;
   sessionTimesFor: (day: string) => string;
   sectionAfternoon: string; // max 24 chars
@@ -177,7 +181,8 @@ export type Copy = {
   payBody: (day: string, time: string, until: string, link: string) => string;
   payLabel: string; // max 20 chars
   payFailed: string;
-  confirmed: (day: string, time: string, callLang: Lang, businessNumber: string) => string;
+  // She calls the customer's own phone; the number she calls from is never given (owner, 29 Oct 2026).
+  confirmed: (day: string, time: string, callLang: Lang) => string;
   // outcomes and the session
   btnChooseTime: string; // max 20 chars
   sessionOfferBody: string;
@@ -188,7 +193,7 @@ export type Copy = {
   sessionConfirmed: (day: string, time: string) => string;
   notFitRefund: string;
   missedOffer: string;
-  rescheduled: (day: string, time: string, businessNumber: string) => string;
+  rescheduled: (day: string, time: string) => string;
   rescheduleNotAvailable: string;
   missedFinal: string;
   reminderCall: (day: string, time: string) => string;
@@ -214,6 +219,7 @@ export type Copy = {
   reprompt: (hint: string) => string;
   hintDays: string;
   repromptHelp: string;
+  callRequest: string; // "call me", "number please" (ticket 30): the body of the menu message
   repromptQuestion: string; // above the open step when the assistant could not answer a typed question
   alreadyBookedStart: (day: string, time: string) => string;
   btnKeep: string; // max 20 chars
@@ -361,6 +367,10 @@ const en: Copy = {
   btnFamily: "Family member",
   btnPet: "Pet",
   chooseDay: "Which day suits you? (India time)",
+  listButtonDays: "Choose a day",
+  rowDayBoth: "Afternoon and evening times",
+  rowDayAfternoon: "Afternoon times",
+  rowDayEvening: "Evening times",
   timesFor: (day) => `Free times on ${day} (India time). Each call is ${config.slots.callMinutes} minutes.`,
   sessionTimesFor: (day) => `Free times on ${day} (India time). Each session is ${config.slots.sessionMinutes} minutes.`,
   sectionAfternoon: "Afternoon",
@@ -379,9 +389,9 @@ const en: Copy = {
     `If the button does not open, use this link: ${link}`,
   payLabel: `Pay ${intro}`,
   payFailed: "Sorry, we couldn't create the payment link. Nothing was charged. Please try again.",
-  confirmed: (day, time, callLang, number) =>
-    `Received your ${intro}. Shantha Rao will call you on ${day} at ${time} from ${number}. Call in ${callLang === "hi" ? "Hindi" : "English"}. ` +
-    "That number is for her calls only, so please message us here.",
+  confirmed: (day, time, callLang) =>
+    `Received your ${intro}. Shantha Rao will call you on ${day} at ${time} (India time), on the number you are messaging from. Call in ${callLang === "hi" ? "Hindi" : "English"}. ` +
+    "The call may come from a number you don't know, so please keep your phone nearby. This WhatsApp number is for messages only, not calls.",
   btnChooseTime: "Choose a time",
   sessionOfferBody: `Thank you for speaking with Shantha Rao. She would be glad to offer you a full session. Choose an option below: a single session, or a package of ${p10.sessions} or ${p20.sessions}.`,
   noSessionSlots: "There are no free session times right now. We will message you when new times are open.",
@@ -397,8 +407,9 @@ const en: Copy = {
     "Please keep your phone with you in a quiet place. We will remind you the day before.",
   notFitRefund: `Thank you for speaking with Shantha Rao. She feels a session isn't the right fit just now, so we've refunded your ${intro}.`,
   missedOffer: "Sorry we missed each other. Choose a new time for your call. There is nothing more to pay.",
-  rescheduled: (day, time, number) =>
-    `Your call is now booked for ${day} at ${time}. Shantha Rao will call you from ${number}. There is nothing more to pay.`,
+  rescheduled: (day, time) =>
+    `Your call is now booked for ${day} at ${time} (India time). Shantha Rao will call you on the number you are messaging from. ` +
+    "The call may come from a number you don't know, so please keep your phone nearby. There is nothing more to pay. This WhatsApp number is for messages only, not calls.",
   rescheduleNotAvailable: "Sorry, this call cannot be moved again. A person will look into it.",
   missedFinal:
     "We were not able to reach you for the second time, so we are closing this booking. Thank you for your interest, and you are welcome to write to us again.",
@@ -427,6 +438,7 @@ const en: Copy = {
   reprompt: (hint) => `${hint ? `${hint} ` : ""}Please choose from the options below.`,
   hintDays: hintDaysText("en"),
   repromptHelp: "If you would rather talk to a person from our team, tap below.",
+  callRequest: `We don't take calls on this WhatsApp number. The quickest way to talk to Shantha Rao is the ${intro} ${config.slots.callMinutes}-minute call: you choose a time, and she calls you.`,
   repromptQuestion: "Thanks for asking. Shantha Rao can explain this on your call. When you're ready, choose an option below.",
   alreadyBookedStart: (day, time) => `You already have a call on ${day} at ${time}. Shantha Rao will call you then.`,
   btnKeep: "Keep it",
@@ -547,6 +559,10 @@ const hi: Copy = {
   btnFamily: "परिवार के लिए",
   btnPet: "पालतू जानवर के लिए",
   chooseDay: "कौन सा दिन आपके लिए ठीक रहेगा? (भारतीय समय)",
+  listButtonDays: "दिन चुनें",
+  rowDayBoth: "दोपहर और शाम का समय",
+  rowDayAfternoon: "दोपहर का समय",
+  rowDayEvening: "शाम का समय",
   timesFor: (day) => `${day} के लिए खाली समय (भारतीय समय)। हर कॉल ${config.slots.callMinutes} मिनट की होती है।`,
   sessionTimesFor: (day) => `${day} के लिए खाली समय (भारतीय समय)। हर सेशन ${config.slots.sessionMinutes} मिनट का होता है।`,
   sectionAfternoon: "दोपहर",
@@ -565,9 +581,9 @@ const hi: Copy = {
     `अगर बटन न खुले, तो यह लिंक खोलें: ${link}`,
   payLabel: `${intro} भुगतान करें`,
   payFailed: "माफ़ कीजिए, भुगतान लिंक नहीं बन पाया। कोई पैसा नहीं कटा है। कृपया फिर से कोशिश करें।",
-  confirmed: (day, time, callLang, number) =>
-    `हमें आपके ${intro} मिल गए हैं। शांता राव जी ${day} को ${time} बजे ${number} से आपको कॉल करेंगी। कॉल ${callLang === "hi" ? "हिंदी" : "अंग्रेज़ी"} में होगी। ` +
-    "वह नंबर सिर्फ़ उनकी कॉल के लिए है, इसलिए मैसेज यहीं भेजें।",
+  confirmed: (day, time, callLang) =>
+    `हमें आपके ${intro} मिल गए हैं। शांता राव जी ${day} को ${time} बजे (भारतीय समय) आपको उसी नंबर पर कॉल करेंगी जिससे आप मैसेज कर रहे हैं। कॉल ${callLang === "hi" ? "हिंदी" : "अंग्रेज़ी"} में होगी। ` +
+    "कॉल किसी अनजान नंबर से आ सकती है, इसलिए कृपया फ़ोन पास रखें। यह WhatsApp नंबर सिर्फ़ मैसेज के लिए है, कॉल के लिए नहीं।",
   btnChooseTime: "समय चुनें",
   sessionOfferBody: `शांता राव जी से बात करने के लिए धन्यवाद। वे आपको पूरा सेशन देना चाहेंगी। नीचे एक विकल्प चुनें: एक सेशन, या ${p10.sessions} या ${p20.sessions} सेशन का पैकेज।`,
   noSessionSlots: "अभी सेशन का कोई खाली समय नहीं है। नए समय खुलते ही हम आपको मैसेज करेंगे।",
@@ -583,8 +599,9 @@ const hi: Copy = {
     "कृपया किसी शांत जगह पर फ़ोन साथ रखें। एक दिन पहले हम आपको याद दिलाएँगे।",
   notFitRefund: `शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी सेशन आपके लिए सही नहीं है, इसलिए आपके ${intro} वापस कर दिए गए हैं।`,
   missedOffer: "माफ़ कीजिए, हमारी बात नहीं हो पाई। अपनी कॉल के लिए नया समय चुनें। आपको कोई और भुगतान नहीं करना है।",
-  rescheduled: (day, time, number) =>
-    `आपकी कॉल अब ${day} को ${time} बजे बुक है। शांता राव जी ${number} से कॉल करेंगी। आपको कोई और भुगतान नहीं करना है।`,
+  rescheduled: (day, time) =>
+    `आपकी कॉल अब ${day} को ${time} बजे (भारतीय समय) बुक है। शांता राव जी आपको उसी नंबर पर कॉल करेंगी जिससे आप मैसेज कर रहे हैं। ` +
+    "कॉल किसी अनजान नंबर से आ सकती है, इसलिए कृपया फ़ोन पास रखें। आपको कोई और भुगतान नहीं करना है। यह WhatsApp नंबर सिर्फ़ मैसेज के लिए है, कॉल के लिए नहीं।",
   rescheduleNotAvailable: "माफ़ कीजिए, यह कॉल दोबारा नहीं बदली जा सकती। हमारी टीम इसे देखेगी।",
   missedFinal:
     "दूसरी बार भी आपसे बात नहीं हो पाई, इसलिए हम यह बुकिंग बंद कर रहे हैं। आपकी रुचि के लिए धन्यवाद। आप कभी भी हमें फिर से लिख सकते हैं।",
@@ -613,6 +630,7 @@ const hi: Copy = {
   reprompt: (hint) => `${hint ? `${hint} ` : ""}कृपया नीचे दिए विकल्पों में से चुनें।`,
   hintDays: hintDaysText("hi"),
   repromptHelp: "अगर आप हमारी टीम के किसी व्यक्ति से बात करना चाहें, तो नीचे टैप करें।",
+  callRequest: `इस WhatsApp नंबर पर हम कॉल नहीं लेते। शांता राव जी से बात करने का सबसे आसान तरीका ${intro} की ${config.slots.callMinutes} मिनट की कॉल है: आप समय चुनें, और वे आपको कॉल करेंगी।`,
   repromptQuestion: "पूछने के लिए धन्यवाद। शांता राव जी कॉल पर इसे समझा सकती हैं। जब आप तैयार हों, नीचे दिए विकल्पों में से चुनें।",
   alreadyBookedStart: (day, time) => `आपकी कॉल पहले से ${day} को ${time} बजे बुक है। शांता राव जी उसी समय कॉल करेंगी।`,
   btnKeep: "ठीक है",

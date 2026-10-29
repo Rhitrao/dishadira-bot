@@ -6,8 +6,10 @@ import { csrf, verifiedEmail } from "./auth";
 import { config } from "./config";
 import { copyFor, langOf, type AmmaCopy, type ForWhom } from "./copy";
 import type { Env } from "./env";
+import { consoleCopy } from "./console-copy";
+import { addHoliday, anyDate, bookingsOn, holidayBounds, holidayDate, removeHoliday, upcomingHolidays } from "./holidays";
 import { recordOutcome, undoOutcome } from "./outcomes";
-import { formatIstParts, iso, istDay } from "./slots";
+import { dayLabelFor, formatIstParts, iso, istDay } from "./slots";
 
 type Ctx = Context<{ Bindings: Env; Variables: { jwt: string; email: string } }>;
 const t = (): AmmaCopy => copyFor("en").amma; // Amma's page is English
@@ -38,7 +40,9 @@ a.btn,button{display:block;width:100%;min-height:56px;margin:8px 0;padding:12px;
 a.call,button.go{background:#000;color:#fff}
 .rude{margin-top:40px}.rude a.btn{min-height:56px;font-size:18px;font-weight:normal;color:#b00000;border-color:#b00000}
 .msg{font-size:22px;margin:16px 0}a.refresh{margin:0 0 8px}
-form{margin:0}`;
+form{margin:0}
+label{display:block;font-weight:bold;margin:8px 0 4px}input[type=date]{display:block;width:100%;min-height:56px;font:20px system-ui,sans-serif;padding:8px 12px;border:2px solid #000;border-radius:8px;background:#fff;color:#000}
+.warn{border-color:#8a5a00;background:#fff8e6}.note{font-size:18px}`;
 
 const page = (body: unknown) =>
   html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -166,7 +170,55 @@ amma.get("/", async (c) => {
   const dayAfter = istDay(now + 2 * 86_400_000);
   const todayHtml = await section(cp.today, today, tomorrow, cp.nothingToday);
   const tomorrowHtml = await section(cp.tomorrow, tomorrow, dayAfter, cp.nothingTomorrow);
-  return c.html(page(html`<h1>${cp.title}</h1><a class="btn go refresh" href="/amma">${cp.refresh}</a>${todayHtml}${tomorrowHtml}`));
+  const flash = holidayFlash(c.req.query("h"), c.req.query("d"));
+  return c.html(page(html`<h1>${cp.title}</h1>${flash ? html`<p class="msg" role="status">${flash}</p>` : ""}<a class="btn go refresh" href="/amma">${cp.refresh}</a>${todayHtml}${tomorrowHtml}${await daysOff(c)}`));
+});
+
+// ---- days off (ticket 30): a date and one button; no note here (this page has no free text). Bookings already on a day off stay. ----
+const hw = () => consoleCopy("en");
+function holidayFlash(code: string | undefined, d: string | undefined): string | null {
+  const day = anyDate(d);
+  if (code === "added" && day) return hw().holAdded(dayLabelFor(day, "en"));
+  if (code === "removed" && day) return hw().holRemoved(dayLabelFor(day, "en"));
+  if (code === "bad") return hw().holBadDate(config.holidays.maxDaysAhead);
+  return null;
+}
+async function daysOff(c: Ctx) {
+  const w = hw();
+  const b = holidayBounds();
+  const list = await Promise.all(
+    (await upcomingHolidays(c.env.DB)).map(async (h) => {
+      const label = dayLabelFor(h.ymd, "en");
+      const booked = await bookingsOn(c.env.DB, h.ymd);
+      const warn = booked.length
+        ? html`<p class="note">${w.holWarnTeam(booked.length, label)}</p><p class="note">${booked.map((x, i) => html`${i ? ", " : ""}${formatIstParts(x.startUtc).time} ${firstName(x.name)}`)}</p>`
+        : "";
+      return html`<div class="row${booked.length ? " warn" : ""}"><div class="top">${label}</div>${warn}
+<form method="post" action="/amma/holiday/remove"><input type="hidden" name="day" value="${h.ymd}"><input type="hidden" name="csrf" value="${await csrf(c.get("jwt"), `holiday:remove:${h.ymd}`)}"><button type="submit">${w.holRemove}</button></form></div>`;
+    }),
+  );
+  return html`<h2>${w.holTitle}</h2><p class="note">${w.holIntro}</p>
+<form method="post" action="/amma/holiday"><label for="hday">${w.holDate}</label><input id="hday" type="date" name="day" min="${b.min}" max="${b.max}" required>
+<input type="hidden" name="csrf" value="${await csrf(c.get("jwt"), "holiday:add")}"><button class="go" type="submit">${w.holMark}</button></form>
+<h2>${w.holUpcoming}</h2>${list.length ? list : html`<p class="msg">${w.holNone}</p>`}`;
+}
+
+amma.post("/holiday", async (c) => {
+  const f = await c.req.parseBody();
+  if (f.csrf !== (await csrf(c.get("jwt"), "holiday:add"))) return c.text("Forbidden", 403);
+  const day = holidayDate(f.day);
+  if (!day) return c.redirect("/amma?h=bad", 303);
+  const res = await addHoliday(c.env, day, "");
+  if (res.added) await audit(c, "HOLIDAY_ADDED", `holiday:${day}`, `${res.bookings.length} booked that day`);
+  return c.redirect(`/amma?h=added&d=${day}`, 303);
+});
+
+amma.post("/holiday/remove", async (c) => {
+  const f = await c.req.parseBody();
+  const day = anyDate(f.day);
+  if (!day || f.csrf !== (await csrf(c.get("jwt"), `holiday:remove:${day}`))) return c.text("Forbidden", 403);
+  if (await removeHoliday(c.env, day)) await audit(c, "HOLIDAY_REMOVED", `holiday:${day}`, "");
+  return c.redirect(`/amma?h=removed&d=${day}`, 303);
 });
 
 const message = (c: Ctx, text: string, status: 200 | 400 | 403 | 404 | 409) =>

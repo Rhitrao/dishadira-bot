@@ -16,7 +16,7 @@ import { requestRefund } from "./pay/refund";
 import { creditBalance, hasPackage } from "./packages";
 import { raiseAttention, sendMessage, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
-import { bind, formatIstLang, generateSlots, iso, istDay, PRACTITIONER_SQL } from "./slots";
+import { bind, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
 
 const HOUR = 3_600_000;
 const nowIso = () => iso(Date.now());
@@ -244,6 +244,7 @@ export async function cancelSingle(db: D1Database, convId: number, sid: number, 
 export async function moveSession(db: D1Database, convId: number, ses: SessionRow, startUtc: string, nowMs: number): Promise<boolean> {
   const slot = generateSlots(istDay(Date.parse(startUtc)), "SESSION").find((s) => s.startUtc === startUtc);
   if (!slot || startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000) || slot.startUtc === ses.startUtc) return false;
+  if (await isHoliday(db, istDay(Date.parse(startUtc)))) return false; // a day off takes no new booking
   const p = {
     sid: ses.id, conv: convId, now: iso(nowMs), start: slot.startUtc, end: slot.endUtc, old: ses.slotId,
     min: iso(nowMs + config.sessionRules.changeBeforeHours * HOUR), maxMoves: config.sessionRules.singleMoves,

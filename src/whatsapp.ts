@@ -373,6 +373,12 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       await bookingChoice(env, "menu_book", conv.id, m.id); // the same as tapping Book; in a quiet period it does not end the quiet period
       return;
 
+    case "CALL_REQUEST":
+      // One message: we don't take calls on this number, the ₹99 call is where she calls you, and the menu buttons under it. No number.
+      await clearStep(db, conv.id);
+      await reply(menuOut(cp, false, cp.callRequest), "callreq");
+      return;
+
     case "BUDGET_FALLBACK":
     case "TO_CLASSIFIER":
       await classified(decision);

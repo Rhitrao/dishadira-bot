@@ -47,7 +47,7 @@ describe("the output check: numbers must be on the allowlist", () => {
     ok("The first call is ₹99, a session is ₹799, 10 sessions are ₹5,000 (₹500 each) and 20 sessions are ₹9,000 (₹450 each).");
     ok("Prices are 5000 and 9000 rupees for 10 and 20 sessions.");
     ok("A call is 15 minutes, a session is 60 minutes, and the time is held for 20 minutes.");
-    ok("Calls are Monday to Friday, 2 pm to 7 pm. You can book up to 2 upcoming sessions and change them 3 hours before.");
+    ok("Calls are Monday to Saturday, 2 pm to 7 pm. You can book up to 2 upcoming sessions and change them 3 hours before.");
     ok("It is open 24×7 and you must be 18 or older. Practised in over 120 countries since the 1980s (1980).");
     ok("We keep chat messages for 7 days; payments older than 6 months are refunded by the team. In danger, call 112 or 108.");
     ok("The women's helpline 181 and the child helpline 1098 are free; Tele-MANAS is 14416."); // safety numbers (KNOWLEDGE.md §8)
@@ -83,7 +83,7 @@ describe("the output check: numbers must be on the allowlist", () => {
 
 describe("the output check: script, length, talk about the set-up", () => {
   it("allows Latin, Devanagari, digits, common punctuation, ₹, and only 🙏 🌿", () => {
-    ok("Namaste 🙏 Shantha Rao can listen. (Mon–Fri) — it's “gentle”; ask anything! 🌿");
+    ok("Namaste 🙏 Shantha Rao can listen. (Mon–Sat) — it's “gentle”; ask anything! 🌿");
     ok("नमस्ते 🙏 क्या आप कॉल का समय देखना चाहेंगे? ₹99 की कॉल।");
     bad("Great 😀", "SCRIPT");
     bad("こんにちは", "SCRIPT");

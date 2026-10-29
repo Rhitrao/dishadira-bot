@@ -254,7 +254,7 @@ describe("the soft gate and buying a single session", () => {
       expect(buttonIds(last())).toEqual(["swh_PROTECTION_SELF", "swh_PROTECTION_FAMILY", "swh_PROTECTION_PET"]);
       await tap(from, "swh_PROTECTION_FAMILY");
       expect(last().interactive.body.text).toBe(c.chooseDay);
-      expect(buttonIds(last())[0]).toMatch(/^sdy_PROTECTION_FAMILY_2026-10-0[5-9]$/);
+      expect(rowsOf(last()).map((r) => r.id)).toEqual(["05", "06", "07", "08", "09", "10"].map((d) => `sdy_PROTECTION_FAMILY_2026-10-${d}`)); // six days, Mon to Sat (ticket 30)
       await tap(from, "sdy_PROTECTION_FAMILY_2026-10-06");
       expect(rowsOf(last()).at(-1)).toMatchObject({ id: "smo_PROTECTION_FAMILY", title: c.anotherDay });
       await tap(from, `stm_PROTECTION_FAMILY_${sessionSlot(1, "2026-10-06").startUtc}`);
@@ -621,7 +621,7 @@ describe("My bookings, Move and Cancel (IST, 3 h and 24 h)", () => {
     await creditBook(conv, WED_2PM);
     at(WED_2PM, 3 * HOUR);
     await tap(from, "mv_1");
-    expect(buttonIds(last())[0]).toMatch(/^mdy_1_2026-10-0/);
+    expect(rowsOf(last())[0].id).toMatch(/^mdy_1_2026-10-0/);
     await tap(from, "mdy_1_2026-10-07");
     expect(rowsOf(last()).at(-1)).toMatchObject({ id: "mmo_1" });
     await tap(from, `mtm_1_${sessionSlot(2).startUtc}`);

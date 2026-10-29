@@ -37,6 +37,19 @@ describe("config", () => {
     expect(open % config.slots.callMinutes).toBe(0);
   });
 
+  it("working days are Monday to Saturday, 2 to 7 pm India time; never Sunday (ticket 30)", () => {
+    expect(config.hours.days).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(config.hours.days).not.toContain(0);
+    expect([config.hours.start, config.hours.end]).toEqual(["14:00", "19:00"]);
+  });
+
+  it("the day step fits one WhatsApp list: 6 days, and enough look-ahead to find them past full days and holidays (ticket 30)", () => {
+    expect(config.booking.workingDays).toBe(6);
+    expect(config.booking.workingDays).toBeLessThanOrEqual(config.booking.maxListRows);
+    expect(config.booking.lookaheadDays).toBeGreaterThanOrEqual(2 * config.booking.workingDays);
+    expect(config.holidays.maxDaysAhead).toBe(60);
+  });
+
   it("lists languages, services and FAQ ids", () => {
     expect(config.languages).toEqual(["en", "hi"]);
     expect(config.services).toHaveLength(2);
