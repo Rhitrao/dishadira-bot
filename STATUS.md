@@ -50,7 +50,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 25 Switch over (PR https://github.com/Rhitrao/dishadira-bot/pull/38; CONSOLE_V2 "true" on test only)
 - [x] 27 Calendar and a console polish pass (PR https://github.com/Rhitrao/dishadira-bot/pull/39, merged)
 - [ ] 28 One cron per Worker, so test and live fit the Workers Free limit of 5 (PR https://github.com/Rhitrao/dishadira-bot/pull/41)
-- [ ] 29 Payment links that always open the payment page (our own /p/ link; PR: see the branch `t29-pay-links`)
+- [ ] 29 Payment links that always open the payment page (our own /p/ link; PR https://github.com/Rhitrao/dishadira-bot/pull/44)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
@@ -102,7 +102,7 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
   - docs/COPY.md regenerated (new section 8, the payment page; Amma's page is now section 9); docs/GO-LIVE.md step 12: Razorpay Live payment methods all on (UPI, cards incl. international, net banking) and a check that `/p/x` opens without a sign-in.
 - Checks: `npm run typecheck` clean; every test file run one at a time (the full run stalls on this 2-CPU box): **1,072 passed, 0 failed across 31 files** (settings.test.ts asserted the old "Tap below to pay ₹149" wording; updated to the new body and re-run, 33/33; paylink.test.ts re-run after a last guard, 22/22); `npx wrangler deploy --dry-run --env live` succeeded. New: test/paylink.test.ts (22). Updated to the new behaviour (not deleted): copy, flow, packages, pay (the cta URL is our link), settings (wording), gate (HELP).
 - Open questions: (1) the expired page's WhatsApp button uses `config.businessNumber` (the ticket's choice); on the test bot it opens the live number's chat, and config still calls it a placeholder: confirm it is the bot's WhatsApp number. (2) A payment that arrives after its hold lapsed and finds the time taken still shows "Your booking is confirmed" on the page (WhatsApp tells them the rest). (3) docs/KNOWLEDGE.md still quotes the old pay message in its message table; the assistant never sends pay messages, so it was left for a KNOWLEDGE regeneration. (4) The Hindi lines listed in the PR need a Hindi speaker's read. (5) Whether WhatsApp leaves a link on our own domain alone can only be seen on a real phone: try it on test first.
-- Next: Rohit reviews the PR; merge; **Deploy → test**, book on the test number (the button should open Razorpay's page; also open the link in the message; after 20 minutes it should say expired; after paying it should say paid), then **Deploy → live** and the Razorpay Live payment-methods check in docs/GO-LIVE.md step 12.
+- Next: Rohit reviews https://github.com/Rhitrao/dishadira-bot/pull/44; merge; **Deploy → test**, book on the test number (the button should open Razorpay's page; also open the link in the message; after 20 minutes it should say expired; after paying it should say paid), then **Deploy → live** and the Razorpay Live payment-methods check in docs/GO-LIVE.md step 12.
 
 ## Session notes (Ticket 27: Calendar and a console polish pass)
 - What changed:
