@@ -9,12 +9,14 @@ import { HEARTBEAT_KEY, HEARTBEAT_STALE_MIN, MAIL_LAST_KEY, sendAlerts } from ".
 import { ensureState, noSellActiveFor, personState, quietActive } from "./noise";
 import { markManualRefund, refundUnused, unusedOf } from "./packages";
 import { rupees } from "./copy";
+import { consoleCopy } from "./console-copy";
+import { addHoliday, anyDate, ATTENTION_KIND as HOLIDAY_ITEM, bookingsOn, holidayBounds, holidayDate, removeHoliday, upcomingHolidays } from "./holidays";
 import { approveRefund, declineRefund, requestRefund, retryFailedRefund } from "./pay/refund";
 import { razorpay } from "./pay/razorpay";
 import { bookingsBetween, dayRange, firstName, type DayItem } from "./report";
 import { raiseAwayItems } from "./watch";
 import { sendMessage } from "./send";
-import { formatIstParts, iso, istDay } from "./slots";
+import { dayLabelFor, formatIstParts, iso, istDay } from "./slots";
 import { getSetting, isSwitch, switchStates, type SwitchName } from "./switches";
 import { ago, chip, header, ist, left, mask, page, type Tone } from "./ui";
 
@@ -85,6 +87,7 @@ const WORDS: Record<string, string> = {
   NO_FREE_TIMES: "A customer tried to book but there were no free times in the next working days. They were told to check back or talk to a person.",
   NO_PHONE: "Someone wrote from a WhatsApp username without a phone number. The bot cannot answer them yet (see STATUS: usernames), so nothing was sent.",
   REFUND_NOT_STARTED: "Razorpay did not take a 'not right fit' refund yet. The system keeps retrying; the customer is told only once it goes through.",
+  [HOLIDAY_ITEM]: "A day was marked as a holiday, but calls or sessions were already booked on it. They were not cancelled and nobody was messaged.",
 };
 const REPLY_KINDS = ["CRISIS", "EMERGENCY", "FREE_TEXT", "HUMAN_REQUEST", "MEDIA_FROM_CUSTOMER", "OUTSIDE_WINDOW", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION", "LATE_PAYMENT_NO_SLOT", "NO_FREE_TIMES"];
 const REFUND_KINDS = ["LATE_PAYMENT_NO_SLOT", "PAYMENT_MISMATCH", "DUPLICATE_PAYMENT", "REFUND_FAILED", "REFUND_STUCK", "OUTCOME_FAILED", "NOT_FIT_REFUND_REFUSED", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION"];
@@ -142,6 +145,7 @@ const TITLE: Record<string, string> = {
   MANUAL_REFUND: "Refund to pay by hand", CANCEL_REFUND_FAILED: "Cancelled session: refund did not start", CANCEL_NO_PAYMENT: "Cancelled session: no payment found",
   PAID_NO_PACKAGE: "Package payment, package missing", PAID_PACKAGE_NOT_BOOKABLE: "Package payment for a closed package",
   THREAT: "Threatening message", NO_FREE_TIMES: "Wanted to book: no free times", NO_PHONE: "Wrote without a phone number", REFUND_NOT_STARTED: "Refund not taken by Razorpay yet",
+  [HOLIDAY_ITEM]: "Bookings on a holiday",
 };
 const TODO: Record<string, string> = {
   CRISIS: "Write to them yourself now. Tap Done once you have.",
@@ -159,6 +163,7 @@ const TODO: Record<string, string> = {
   THREAT: "Read it; block them from the chat if needed, then tap Done.",
   NO_FREE_TIMES: "Open more times, or message them once a time is free, then tap Done.",
   REFUND_NOT_STARTED: "Check the refund in Razorpay; tap Done once it has gone through.",
+  [HOLIDAY_ITEM]: "Move each booking from the person's page (see Days off), then tap Done.",
 };
 const MONEY_KINDS = new Set([...REFUND_KINDS, "REFUND_NOT_STARTED", "MANUAL_REFUND", "RUDE_REFUND_APPROVAL", "PARTIAL_PAYMENT", "UNSUPPORTED_PAYMENT", "UNKNOWN_PAYMENT_LINK", "NOT_FIT_NO_PAYMENT", "CANCEL_REFUND_FAILED", "CANCEL_NO_PAYMENT", "PAID_NO_PACKAGE", "PAID_PACKAGE_NOT_BOOKABLE"]);
 // 0: someone may be in danger, 1: someone is waiting for a person, 2: money, 3: everything else.
@@ -383,8 +388,9 @@ ${sorted.length ? itemsHtml : html`<div class="card"><p class="empty"><b>Nothing
     String(wk.later),
     was(prev.later),
   )}${kpi("Money in", rupees(wk.paise), `refunds ${rupees(wk.refundPaise)} · last week ${rupees(prev.paise)}`)}</div>
-<h2>Controls</h2>${cards}</aside></div>`;
-  return c.html(page({ title: urgent ? `(${urgent}) Home` : "Home", tab: "home", body, flash: m && MSG[m] ? MSG[m] : null, badge: sorted.length }));
+<h2>Controls</h2>${cards}${await daysOff(c)}</aside></div>`;
+  const flash = m && MSG[m] ? MSG[m] : holidayFlash(m, c.req.query("d"));
+  return c.html(page({ title: urgent ? `(${urgent}) Home` : "Home", tab: "home", body, flash, badge: sorted.length }));
 });
 
 // ---- POST actions: each re-checks its own CSRF token, then makes one conditional change and one audit row ----
@@ -814,6 +820,59 @@ admin.post("/session", async (c) => {
   if (!res.meta.changes) return back(c, "notyet");
   await audit(c, "ADMIN_SESSION", `session:${id}`, v);
   return back(c, "done");
+});
+
+// ---- days off (ticket 30): mark a date as a holiday (no new bookings that day) and remove it again. Bookings already on it stay. ----
+const hw = () => consoleCopy("en");
+function holidayFlash(code: string | undefined, d: string | undefined): string | null {
+  const day = anyDate(d);
+  if (code === "holiday" && day) return hw().holAdded(dayLabelFor(day, "en"));
+  if (code === "holidayoff" && day) return hw().holRemoved(dayLabelFor(day, "en"));
+  if (code === "holidaybad") return hw().holBadDate(config.holidays.maxDaysAhead);
+  return null;
+}
+async function daysOff(c: Ctx) {
+  const w = hw();
+  const b = holidayBounds();
+  const items = await Promise.all(
+    (await upcomingHolidays(c.env.DB)).map(async (h) => {
+      const label = dayLabelFor(h.ymd, "en");
+      const booked = await bookingsOn(c.env.DB, h.ymd);
+      const warn = booked.length
+        ? html`<p class="todo">${w.holWarn(booked.length, label)}</p>${booked.map(
+            (x) => html`<p><a class="btn" href="/admin/conv/${x.convId}">${formatIstParts(x.startUtc).time} ${firstName(x.name)} ${mask(x.waId)}</a></p>`,
+          )}`
+        : "";
+      return html`<div class="card${booked.length ? " amber" : ""}"><div class="head"><h3>${label}</h3>${chip(w.calHoliday, booked.length ? "amber" : "")}</div>
+${h.note ? html`<p class="small muted">${h.note}</p>` : ""}${warn}<div class="actions">${await form(c, "holiday-remove", `holiday:remove:${h.ymd}`, { day: h.ymd }, w.holRemove)}</div></div>`;
+    }),
+  );
+  const token = await csrf(c.get("jwt"), "holiday:add");
+  return html`<h2 id="days-off">${w.holTitle}</h2><div class="card"><h3>${w.holMarkTitle}</h3><p class="small muted">${w.holIntro}</p>
+<form method="post" action="/admin/holiday"><input type="hidden" name="csrf" value="${token}">
+<p><label for="hday"><b>${w.holDate}</b></label><input id="hday" type="date" name="day" min="${b.min}" max="${b.max}" required></p>
+<p><label for="hnote"><b>${w.holReason}</b></label><input id="hnote" type="text" name="note" maxlength="200" autocomplete="off"></p>
+<div class="actions"><button class="primary" type="submit">${w.holMark}</button></div></form></div>
+${items.length ? items : html`<div class="card"><p class="empty">${w.holNone}</p></div>`}`;
+}
+
+admin.post("/holiday", async (c) => {
+  const f = await c.req.parseBody();
+  if (f.csrf !== (await csrf(c.get("jwt"), "holiday:add"))) return bad(c);
+  const day = holidayDate(f.day);
+  if (!day) return back(c, "holidaybad");
+  const note = String(f.note ?? "").trim().slice(0, 200);
+  const res = await addHoliday(c.env, day, note);
+  if (res.added) await audit(c, "HOLIDAY_ADDED", `holiday:${day}`, `${res.bookings.length} booked that day${note ? `; note: ${note}` : ""}`);
+  return c.redirect(`/admin?m=holiday&d=${day}#days-off`, 303);
+});
+
+admin.post("/holiday-remove", async (c) => {
+  const f = await c.req.parseBody();
+  const day = anyDate(f.day);
+  if (!day || f.csrf !== (await csrf(c.get("jwt"), `holiday:remove:${day}`))) return bad(c);
+  if (await removeHoliday(c.env, day)) await audit(c, "HOLIDAY_REMOVED", `holiday:${day}`, "");
+  return c.redirect(`/admin?m=holidayoff&d=${day}#days-off`, 303);
 });
 
 async function sha(s: string): Promise<string> {

@@ -299,12 +299,13 @@ describe("₹799 session", () => {
   it("choose a time -> days -> times (max 10 rows) -> hold + payment + link expiring with the hold -> paid -> CONFIRMED", async () => {
     const a = await offered();
     await sessionChoice(env(), `sess_offer_${a.sid}`, a.conv, "m1");
-    const days: { reply: { id: string } }[] = waSent().find((m) => m.interactive?.type === "button").interactive.action.buttons;
+    // The day step is one list of up to 6 days (ticket 30).
+    const days: { id: string }[] = waSent().find((m) => m.interactive?.type === "list").interactive.action.sections.flatMap((x: { rows: never[] }) => x.rows);
     expect(days.length).toBeGreaterThan(0);
-    expect(days.length).toBeLessThanOrEqual(3);
-    expect(days[0].reply.id).toMatch(new RegExp(`^sday_${a.sid}_\\d{4}-\\d{2}-\\d{2}$`));
-    await sessionChoice(env(), days[0].reply.id, a.conv, "m1b");
-    const rows: { id: string; title: string }[] = waSent().find((m) => m.interactive?.type === "list").interactive.action.sections.flatMap((x: { rows: never[] }) => x.rows);
+    expect(days.length).toBeLessThanOrEqual(6);
+    expect(days[0].id).toMatch(new RegExp(`^sday_${a.sid}_\\d{4}-\\d{2}-\\d{2}$`));
+    await sessionChoice(env(), days[0].id, a.conv, "m1b");
+    const rows: { id: string; title: string }[] = waSent().filter((m) => m.interactive?.type === "list").at(-1).interactive.action.sections.flatMap((x: { rows: never[] }) => x.rows);
     expect(rows.length).toBeGreaterThan(1);
     expect(rows.length).toBeLessThanOrEqual(10);
     expect(rows.at(-1)!.id).toBe(`smore_${a.sid}`); // "Another day"

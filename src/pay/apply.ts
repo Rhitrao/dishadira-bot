@@ -420,8 +420,8 @@ async function confirm(env: Env, conversationId: number, paymentId: number, star
   await sendOrTemplate(
     env,
     conversationId,
-    { type: "text", text: copyFor(lang).confirmed(p.day, p.time, langOf(intro?.callLang ?? conv?.locale), config.businessNumber) },
-    { type: "template", name: "call_booked", params: [en.day, en.time, config.businessNumber], paramsHi: [hi.day, hi.time, config.businessNumber] },
+    { type: "text", text: copyFor(lang).confirmed(p.day, p.time, langOf(intro?.callLang ?? conv?.locale)) },
+    { type: "template", name: "call_booked", params: [en.day, en.time], paramsHi: [hi.day, hi.time] },
     `paid:${paymentId}`, // dedupe key: one confirmation per payment
   );
 }

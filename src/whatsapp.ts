@@ -8,7 +8,7 @@ import type { Env } from "./env";
 import { bookingChoice } from "./booking";
 import { bookingsChoice } from "./mybookings";
 import { creditBalance, packChoice, sessionOfferOut } from "./packages";
-import { classifyWithoutAI, gate, isJobText, isMenuWord, isThreat, plainWord } from "./gate";
+import { classifyWithoutAI, gate, isCallRequest, isJobText, isMenuWord, isThreat, plainWord } from "./gate";
 import { requestHuman } from "./handoff";
 import { menuOut } from "./menu";
 import { applyLabel, ensureState, noSellActive } from "./noise";
@@ -386,6 +386,12 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       await bookingChoice(env, "menu_book", conv.id, m.id); // the same as tapping Book; in a quiet period it does not end the quiet period
       return;
 
+    case "CALL_REQUEST":
+      // One message: we don't take calls on this number, the ₹99 call is where she calls you, and the menu buttons under it. No number.
+      await clearStep(db, conv.id);
+      await reply(menuOut(cp, false, cp.callRequest), "callreq");
+      return;
+
     case "BUDGET_FALLBACK":
     case "TO_CLASSIFIER":
       await classified(decision);
@@ -537,7 +543,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       const cp2 = copyFor(locale);
       if (conv!.firstQuestion) {
         // The question the person asked before choosing a language: the assistant answers it (its text may already be wiped, and then it cannot).
-        // Without the assistant it gets what any typed question gets: one acknowledgement and an item for Rohit.
+        // Without the assistant: the fixed-answer router (ticket 31), or the call-request line (ticket 30).
         const asked = await firstQuestion(db, conv!.firstQuestion);
         const key = conv!.firstQuestion;
         const answered = asked
@@ -548,7 +554,12 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
           : "off";
         if (answered === "finished") return; // the answer carried its own buttons, or nothing more is to be said
         if (answered === "off" || answered === "reprompt") {
-          // Without the assistant: the fixed-answer router, in the language just chosen (ticket 31, I1). Its answer carries the menu.
+          // Without the assistant: "call me" gets the call-request line (ticket 30); otherwise the fixed-answer router, in the language just
+          // chosen (ticket 31, I1). Either carries the menu.
+          if (asked && isCallRequest(asked.text)) {
+            await sendMessage(env, conv!.id, menuOut(cp2, false, cp2.callRequest), `${key}:callreq`);
+            return;
+          }
           const topic = asked && classifyWithoutAI(asked.text) === "TO_CLASSIFIER" && !isJobText(asked.text) ? matchTopic(asked.text) : null;
           if (topic) {
             await routeTopic(topic, cp2, (out, step) => sendMessage(env, conv!.id, out, `${key}:${step}`));

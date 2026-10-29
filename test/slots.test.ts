@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { D1Database } from "@cloudflare/workers-types";
 import { config } from "../src/config";
-import { availableSlots, generateSlots, holdSlot } from "../src/slots";
+import { availableSlots, generateSlots, holdSlot, isHoliday, nextWorkingDays } from "../src/slots";
 import { addPerson, newDb } from "./db";
 
 // 2026-10-05 is a Monday, 2026-10-10 a Saturday, 2026-10-11 a Sunday.
@@ -26,11 +26,13 @@ describe("slot generator", () => {
     expect(sessions[4].endUtc).toBe("2026-10-05T13:30:00Z");
   });
 
-  it("never generates weekend slots, and nothing outside 14:00-19:00 IST", () => {
-    for (const day of ["2026-10-10", "2026-10-11"]) {
-      expect(generateSlots(day, "CALL")).toEqual([]);
-      expect(generateSlots(day, "SESSION")).toEqual([]);
-    }
+  it("Saturday is a working day; Sunday never has slots; nothing outside 14:00-19:00 IST (ticket 30)", () => {
+    expect(generateSlots("2026-10-10", "CALL")).toHaveLength(20);
+    expect(generateSlots("2026-10-10", "SESSION")).toHaveLength(config.slots.maxSessionsPerDay);
+    expect(generateSlots("2026-10-10", "CALL")[0].startUtc).toBe("2026-10-10T08:30:00Z"); // Sat 2 pm India time
+    expect(generateSlots("2026-10-11", "CALL")).toEqual([]);
+    expect(generateSlots("2026-10-11", "SESSION")).toEqual([]);
+    expect(nextWorkingDays(NOW, 7)).toEqual(["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10", "2026-10-12"]);
     for (const s of [...generateSlots(MON, "CALL"), ...generateSlots(MON, "SESSION")]) {
       expect(s.startUtc >= "2026-10-05T08:30:00Z").toBe(true);
       expect(s.endUtc <= "2026-10-05T13:30:00Z").toBe(true);
@@ -115,6 +117,19 @@ describe("holds", () => {
     expect(await hold("SESSION", session(MON, 0).startUtc, b)).toEqual({ ok: false, reason: "UNAVAILABLE" });
   });
 
+  it("a holiday has no free times and takes no hold; the next day is untouched (ticket 30)", async () => {
+    await db.prepare("INSERT INTO settings (key, value) VALUES ('holiday:2026-10-06', '')").run();
+    expect(await isHoliday(db, "2026-10-06")).toBe(true);
+    expect(await isHoliday(db, "2026-10-07")).toBe(false);
+    expect(await availableSlots(db, "CALL", "2026-10-06", NOW)).toEqual([]);
+    expect(await availableSlots(db, "SESSION", "2026-10-06", NOW)).toEqual([]);
+    expect(await hold("CALL", call("2026-10-06", 0).startUtc, a)).toEqual({ ok: false, reason: "UNAVAILABLE" });
+    expect(await hold("SESSION", session("2026-10-06", 0).startUtc, a)).toEqual({ ok: false, reason: "UNAVAILABLE" });
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM slots").first()).toEqual({ n: 0 });
+    expect(await availableSlots(db, "CALL", "2026-10-07", NOW)).toHaveLength(20);
+    expect((await hold("CALL", call("2026-10-07", 0).startUtc, a)).ok).toBe(true);
+  });
+
   it("a replayed request cannot extend a hold", async () => {
     const s = call(MON, 0);
     const first = await hold("CALL", s.startUtc, a);
@@ -125,7 +140,7 @@ describe("holds", () => {
   });
 
   it("refuses times that are not generated slots", async () => {
-    expect(await hold("CALL", "2026-10-10T08:30:00Z", a)).toEqual({ ok: false, reason: "NOT_A_SLOT" }); // Saturday
+    expect(await hold("CALL", "2026-10-11T08:30:00Z", a)).toEqual({ ok: false, reason: "NOT_A_SLOT" }); // Sunday
     expect(await hold("CALL", "2026-10-05T08:35:00Z", a)).toEqual({ ok: false, reason: "NOT_A_SLOT" }); // off-grid
     expect(await hold("CALL", "2026-10-05T03:30:00Z", a)).toEqual({ ok: false, reason: "NOT_A_SLOT" }); // 09:00 IST
   });

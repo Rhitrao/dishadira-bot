@@ -51,7 +51,8 @@ describe("the calendar's days", () => {
       { from: "2026-10-29T08:30:00Z", to: "2026-10-29T09:00:00Z" },
       { from: "2026-10-29T10:00:00Z", to: "2026-10-29T13:30:00Z" },
     ]);
-    expect(freeRanges("2026-10-31", [], NOW)).toEqual([]); // Saturday
+    expect(freeRanges("2026-10-31", [], NOW)).toEqual([{ from: "2026-10-31T08:30:00Z", to: "2026-10-31T13:30:00Z" }]); // Saturday is a working day (ticket 30)
+    expect(freeRanges("2026-11-01", [], NOW)).toEqual([]); // Sunday
     expect(freeRanges("2026-10-28", [], Date.parse("2026-10-28T13:30:00Z"))).toEqual([]); // today, after 7 pm
   });
 });
@@ -72,8 +73,8 @@ describe("week and day views", () => {
     expect(body).toContain("15-minute call");
     expect(body).toContain("Confirmed");
     expect(plain(body)).toContain("Free: 2:00 pm – 2:30 pm · 2:45 pm – 4:00 pm · 4:15 pm – 7:00 pm"); // Thursday
-    expect(body).toContain("Calls are Monday to Friday, 2 pm to 7 pm (India time).");
-    expect(body).toContain("Changing working hours and time off comes in a later release.");
+    expect(body).toContain("Calls are Monday to Saturday, 2 pm to 7 pm (India time).");
+    expect(body).toContain("Changing working hours comes in a later release.");
     expect(body).toContain('href="/app/calendar?view=week&d=2026-10-19"'); // previous week
     expect(body).toContain('href="/app/calendar?view=week&d=2026-11-02"'); // next week
     expect(body).toContain('href="/app/calendar?view=day&d=2026-10-29"'); // each day opens its Day view
@@ -109,12 +110,16 @@ describe("week and day views", () => {
     expect(plain(body)).toContain("Free: 2:00 pm – 3:00 pm · 3:15 pm – 7:00 pm");
   });
 
-  it("a weekend day says plainly that it isn't a working day", async () => {
+  it("Sunday says plainly that it isn't a working day; Saturday is one (ticket 30)", async () => {
     const week = await page("/app/calendar");
-    expect(week).toMatch(/Sat, 31 Oct<\/b><span>Not a working day/);
+    expect(week).toMatch(/Sun, 1 Nov<\/b><span>Not a working day/);
+    expect(week).not.toMatch(/Sat, 31 Oct<\/b><span>Not a working day/);
+    const sun = await page("/app/calendar?view=day&d=2026-11-01");
+    expect(sun).toContain("Not a working day");
+    expect(sun).not.toContain("Free:");
     const sat = await page("/app/calendar?view=day&d=2026-10-31");
-    expect(sat).toContain("Not a working day");
-    expect(sat).not.toContain("Free:");
+    expect(plain(sat)).toContain("Free: 2:00 pm – 7:00 pm");
+    expect(sat).toContain("Open 2:00 pm – 7:00 pm");
   });
 
   it("an empty week says so and names the next booking", async () => {

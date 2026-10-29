@@ -23,7 +23,7 @@ import { startSession } from "./session";
 import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
 import { pausedOut } from "./menu";
-import { bind, formatIstLang, generateSlots, iso, istDay, PRACTITIONER_SQL } from "./slots";
+import { bind, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
 
 const nowIso = () => iso(Date.now());
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -351,6 +351,7 @@ export async function bookCredit(db: D1Database, convId: number, service: string
   const slot = generateSlots(istDay(Date.parse(startUtc)), "SESSION").find((s) => s.startUtc === startUtc);
   if (!slot) return { ok: false, reason: "SLOT_TAKEN" };
   if (startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000)) return { ok: false, reason: "TOO_SOON" }; // passed, or too soon (ticket 31, B1)
+  if (await isHoliday(db, istDay(Date.parse(startUtc)))) return { ok: false, reason: "SLOT_TAKEN" }; // a day off takes no new booking
   const now = iso(nowMs);
   const params = { conv: convId, start: slot.startUtc, end: slot.endUtc, now, service, who: forWhom, lang, max: config.sessionRules.maxUpcoming };
   const stmt = (sql: string) => bind(db, sql, params);

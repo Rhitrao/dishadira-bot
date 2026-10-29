@@ -154,6 +154,7 @@ export async function packageLines(env: Env, nowMs = Date.now()): Promise<string
 
 // What each kind of open item means, in the console's words (no codes, no names). Kinds not listed count as "Other things to look at".
 const NEEDS_WORDS: Record<string, string> = {
+  HOLIDAY_BOOKINGS: "Bookings on a day marked as a holiday",
   CRISIS: "Crisis messages to follow up", EMERGENCY: "Possible medical emergencies to check", HUMAN_REQUEST: "Asked for a person",
   FREE_TEXT: "Wrote something the bot couldn't answer", MEDIA_FROM_CUSTOMER: "Sent a photo, voice note or file",
   OUTSIDE_WINDOW: "Couldn't be messaged after WhatsApp's 24 hours", TEMPLATE_UNAPPROVED: "A WhatsApp follow-up message isn't approved yet",

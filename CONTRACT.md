@@ -1,5 +1,5 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-10-27 (v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-10-29 (v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
   read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
@@ -11,7 +11,8 @@ Also from the menu at any time (with a soft nudge to the ₹99 call first): sing
   are booked later from credits, with no payment per session; max 2 upcoming per buyer; packages never expire.
 Defaults (config holds them; the owner may change prices in Settings; never in code): intro 9900 paise, single session 79900 paise, packages 10 x 500000 paise
   and 20 x 900000 paise, both services;
-  hours Mon-Fri 14:00-19:00 IST; call slots 15 min; session slots 60 min, max 5/day; holds 20 min.
+  hours Mon-Sat 14:00-19:00 IST, except holidays the owner or practitioner marks (no new bookings that day; existing ones stay);
+  call slots 15 min; session slots 60 min, max 5/day; holds 20 min.
 Hours, copy, FAQ answers, limits and the default prices live in one config module; the owner's price changes from Settings live
   in the settings table (config is the fallback). Disha Dira specifics never hard-coded elsewhere.
 

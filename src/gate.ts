@@ -3,7 +3,7 @@
 // gate() only decides (it reads, it never writes or sends); src/whatsapp.ts acts on the answer.
 import { config } from "./config";
 import type { Env } from "./env";
-import { budgetUsedUp, isPayingCustomer, personState, quietActive, type Label } from "./noise";
+import { budgetUsedUp, isPayingCustomer, noSellActiveFor, personState, quietActive, type Label } from "./noise";
 import { detectSafety, hasPhrase, normalize } from "./safety";
 
 export type Gate =
@@ -18,6 +18,7 @@ export type Gate =
   | "ACK_WORD" // "ok", "thanks": no reply, no strike
   | "MENU" // "hi", "menu"
   | "BOOKING_WORD" // "book"
+  | "CALL_REQUEST" // "call me", "number please": we don't take calls on this number; the ₹99 call, where she calls you, and the menu
   | "BUDGET_FALLBACK" // the day's AI budget is used up
   | "TO_CLASSIFIER" // a real question or remark: the classifier (the AI from ticket 14) decides
   | "TAP"; // a button or list tap (or a template quick reply): the booking, FAQ and menu handlers take it
@@ -62,6 +63,15 @@ export function isAckWord(text: string): boolean {
 export const isHandoffWords = (text: string) =>
   normalize(text).split(" ").length <= config.words.handoffMaxWords && hasPhrase(text.replace(/\bin[\s-]+person\b/gi, " "), config.words.handoff);
 
+// "Call me", "can I call?", "number please", "मुझे कॉल करो": a short message (at most callRequestMaxWords words) asking to call us or for a number.
+// Not when it is about a call she makes ("she didn't call me", "can she call me now?"): the assistant answers those.
+export const isCallRequest = (text: string) =>
+  normalize(text).split(" ").length <= config.words.callRequestMaxWords && hasPhrase(text, config.words.callRequest) && !hasPhrase(text, config.words.callRequestNot);
+
+// Someone with a call or session booked that hasn't ended (or a paying customer, below): "call me" from them is about their booking, so the assistant (or a person) answers.
+const hasUpcomingBooking = async (env: Env, convId: number, nowMs: number) =>
+  (await env.DB.prepare("SELECT 1 AS x FROM slots WHERE owner_id = ?1 AND state = 'BOOKED' AND end_utc > ?2 LIMIT 1").bind(convId, new Date(nowMs).toISOString().slice(0, 19) + "Z").first()) !== null;
+
 export async function gate(env: Env, conv: GateConv, message: GateMessage, nowMs = Date.now()): Promise<Gate> {
   const text = message.text;
   const isTap = message.choice !== null || message.type === "button";
@@ -97,6 +107,11 @@ export async function gate(env: Env, conv: GateConv, message: GateMessage, nowMs
   // 11. Menu words, and "book".
   if (isMenuWord(text)) return "MENU";
   if (isBookingWord(text)) return "BOOKING_WORD";
+  // 11b. Asking to call us or for a number: not during the no-selling week after a crisis message, nor for someone with a booking coming up.
+  if (
+    isCallRequest(text) && !noSellActiveFor(await personState(env.DB, conv.id), nowMs) &&
+    !(await hasUpcomingBooking(env, conv.id, nowMs)) && !(await isPayingCustomer(env.DB, conv.id, nowMs))
+  ) return "CALL_REQUEST";
   // 12. The day's AI budget.
   if (await budgetUsedUp(env.DB, conv.id, await isPayingCustomer(env.DB, conv.id, nowMs), nowMs)) return "BUDGET_FALLBACK";
   // 13. The classifier.

@@ -72,7 +72,7 @@ First message? ──► Greeting (bilingual) + [English] [हिंदी]
    - "Energy cleansing" is the customer-facing name for the PROTECTION service, which stays the internal code.
    - This is pending Rohit's confirmation; see §8.
 3. **Who for:** [Me] [Family member] [Pet]. Stored on the intro and shown on Amma's page. Children are booked by a parent, who is on the call.
-4. **Day:** up to 3 buttons, e.g. "Wed, 21 Oct", for days inside the booking window that still have a free slot. Days with none are skipped.
+4. **Day:** one list message ([Choose a day]) with up to 6 rows, e.g. "Wed, 21 Oct" with "Afternoon and evening times" under it: the first 6 working days (Monday to Saturday) that still have a free slot. Full days, Sundays and holidays the team has marked are skipped (ticket 30). Old day buttons from earlier messages still work.
 5. **Time:** a list for that day.
    - At most 9 times, in time order: prefer :00 and :30, and fill a taken half hour with :15 or :45. Drop the latest ones if there are more than 9.
    - A final "Another day" row.
@@ -105,7 +105,7 @@ First message? ──► Greeting (bilingual) + [English] [हिंदी]
 ### 3.1c Re-prompts during booking
 If a typed message arrives while a booking step is open (language, age, service, who for, day, time, pay, soft gate, my bookings), and it isn't a safety, handoff, opt-out or menu word:
 - Before the AI (ticket 12): resend that step with `reprompt(hint)`. For the day and time steps the hint is `hintDays`; otherwise there's no hint.
-- With the AI (ticket 14): the AI answers in one line ("Calls are only Monday to Friday"), and the same step is resent as the body of one message.
+- With the AI (ticket 14): the AI answers in one line ("Calls are only Monday to Saturday"), and the same step is resent as the body of one message.
 - A re-prompt never counts as a strike. After 3 re-prompts in a row, offer "Talk to a person".
 
 ### 3.1d Chat wipe
@@ -152,6 +152,7 @@ If a typed message arrives while a booking step is open (language, age, service,
    - Media is never downloaded.
 10. **Short acknowledgements** ("ok", "thanks", "thank you", "ok thank you", "thank you so much ji", "dhanyavad", "👍", "🙏", "ji", "धन्यवाद", "शुक्रिया"): no reply, no strike, no AI. When a booking step is open, "ok" or "ji" at a yes/no step is the Yes button (ticket 31).
 11. **Menu words** (hi, hello, menu, start, namaste, namaste ji, good morning, नमस्ते, …): show the menu. No AI. A greeting within 10 minutes of a menu nobody has tapped gets nothing more and counts as small talk (ticket 31).
+   - 11b. **Asking to call us** (ticket 30): a short message (at most `config.words.callRequestMaxWords` words) with a phrase from `config.words.callRequest` ("call me", "can I call", "phone number", "number please", "video call", "मुझे कॉल करो", "नंबर दो", …) gets one message: `callRequest` ("We don't take calls on this WhatsApp number. The quickest way to talk to Shantha Rao is the ₹99 15-minute call: you choose a time, and she calls you.") with the menu buttons. No number, no AI. Not when the message is about a call she makes (`config.words.callRequestNot`: "she didn't call me", "can she call me now?"), not in the no-selling week after a crisis message, and not for a paying customer or someone with a call or session booked that hasn't ended (those go to the AI, which knows their booking). HUMAN, blocked and quiet chats never get here (steps 2, 6 and 8).
 12. **Budget:** if this person has reached their daily AI cap, or the global daily cap is used up, send the menu with "Talk to a person". No AI.
 13. **The AI** returns a label and a reply (section 6). Before it, a typed answer to an open booking step ("yes", "haan", "1", the button's words, "English"/"hindi", "tomorrow", "4 pm") is taken as that tap (ticket 31).
     - **With the AI off** (or its budget used up), the code word lists label noise (threats, spam and promotions, flirting, abuse, influencing another person), then the fixed-answer router (`src/router.ts`, word lists in `config.router.topics`) answers the common topics from the Help copy and KNOWLEDGE.md with the menu buttons: illness (Help and Talk to a person only), payment trouble, my booking, refunds, abroad, in person, is it real, price, how it works, timings, what it is, and "book" (starts booking). Job seekers get one line pointing to a person, once a day. Anything else gets "I'm the booking assistant and can't answer typed questions…" with the menu, at most once every 30 minutes, and no queue item. A person's reply is promised only after "Talk to a person".
