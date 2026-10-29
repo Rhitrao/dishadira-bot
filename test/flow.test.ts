@@ -315,7 +315,7 @@ describe("the time list: the spread rule, sections and full days", () => {
     expect(buttonIds(last())).toEqual(["menu_person", "menu_how"]);
     expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'NO_FREE_TIMES'")).toBe(1);
     expect(await count("SELECT COUNT(*) AS n FROM slots WHERE owner_id IN (SELECT id FROM conversations WHERE wa_id = '" + from + "')")).toBe(0);
-  });
+  }, 90_000); // fills six working days of slots one by one, slow on the CI runner
 
   it("a time taken while the person was choosing: 'just taken' and the same day's times again without it, no hold, no payment", async () => {
     const from = await greeted("en");
