@@ -525,7 +525,7 @@ describe("I8: typed answers to an open step", () => {
 describe("I10: no free times", () => {
   it("a clear message with Talk to a person and Help, and an item", async () => {
     const owner = (await w.db.prepare("INSERT INTO conversations (wa_id) VALUES ('test-full')").run()).meta.last_row_id;
-    for (const ymd of nextWorkingDays(NOW, 14))
+    for (const ymd of nextWorkingDays(NOW, config.booking.lookaheadDays))
       for (const s of generateSlots(ymd, "CALL"))
         await w.db.prepare("INSERT INTO slots (kind, start_utc, end_utc, owner_id, state) VALUES ('CALL', ?1, ?2, ?3, 'BOOKED')").bind(s.startUtc, s.endUtc, owner).run();
     const from = await w.greeted();
@@ -701,5 +701,44 @@ describe("I2: no reminder promise the bot can't keep", () => {
     expect(EN.sessionConfirmed("Thu, 8 Oct", "2:00 pm", false)).toContain("Please note the time; we'll message you here if anything changes.");
     expect(EN.sessionConfirmed("Thu, 8 Oct", "2:00 pm", false)).not.toContain("remind");
     expect(HI.sessionConfirmed("x", "y", false)).not.toContain("याद दिलाएँगे");
+  });
+});
+
+describe("with Ticket 30's six-day list and holidays", () => {
+  it("I8 on the day list: 'saturday', a row number, 'kal'", async () => {
+    const from = await w.greeted();
+    await w.ageOk(from);
+    await w.tap(from, "who_HEALING_SELF");
+    expect(w.last().interactive.type).toBe("list");
+    await w.typed(from, "saturday");
+    expect(body(w.last())).toContain("Sat, 10 Oct");
+    await w.tapRow(from, "more_HEALING_SELF");
+    await w.typed(from, "2");
+    expect(body(w.last())).toContain("Tue, 6 Oct");
+    await w.tapRow(from, "more_HEALING_SELF");
+    await w.typed(from, "kal");
+    expect(body(w.last())).toContain("Tue, 6 Oct");
+  });
+
+  it("I10: every day ahead a holiday is 'no free times' with Talk to a person, and an item", async () => {
+    for (let i = 0; i < 30; i++) await setSetting(w.db, `holiday:${iso(NOW + i * 86_400_000).slice(0, 10)}`, "closed");
+    const from = await w.greeted();
+    await w.ageOk(from);
+    await w.tap(from, "who_HEALING_SELF");
+    expect(body(w.last())).toBe(EN.noSlots);
+    expect(ids(w.last())).toEqual(["menu_person", "menu_how"]);
+    expect(await items("NO_FREE_TIMES")).toBe(1);
+  });
+
+  it("B1 and B2 still hold with the day list: a past row is refused, the same row again re-sends the pay step", async () => {
+    const from = await holding(call(2).startUtc);
+    const url = w.last().interactive.action.parameters.url;
+    await w.tapRow(from, `time_HEALING_SELF_${call(2).startUtc}`);
+    expect(w.last().interactive.action.parameters.url).toBe(url);
+    vi.setSystemTime(NOW + 2 * 86_400_000);
+    w.fetchMock.mockClear();
+    await w.tapRow(from, `time_HEALING_SELF_${call(4).startUtc}`);
+    expect(w.texts()[0]).toBe(EN.timePassed);
+    expect(w.last().interactive.type).toBe("list"); // the day list again (that day has no times left)
   });
 });
