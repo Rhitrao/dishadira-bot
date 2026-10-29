@@ -196,16 +196,18 @@ export const config = {
   // Template registry. Flip approved to true only after Meta approves the template (owner decision).
   // `hi` is the Hindi version of the same template, with its own name and its own approved flag: a Hindi customer gets it
   // only when it is approved, and otherwise the English template (if that one is approved).
+  // Meta approval as seen in WhatsApp Manager (30 Oct 2026). Four Hindi templates were re-created as *_hind because the first copies were
+  // filed under language English; a name stays blocked for 30 days after deletion. Flip a flag only once Meta shows the template Active.
   templates: {
-    call_booked: { approved: false, language: "en", hi: { name: "call_booked_hi", approved: false, language: "hi" } },
-    session_offer: { approved: false, language: "en", hi: { name: "session_offer_hi", approved: false, language: "hi" } },
-    session_confirmed: { approved: false, language: "en", hi: { name: "session_confirmed_hi", approved: false, language: "hi" } },
-    reminder: { approved: false, language: "en", hi: { name: "reminder_hi", approved: false, language: "hi" } },
-    payment_update: { approved: false, language: "en", hi: { name: "payment_update_hi", approved: false, language: "hi" } },
-    package_confirmed: { approved: false, language: "en", hi: { name: "package_confirmed_hi", approved: false, language: "hi" } },
-    session_booked: { approved: false, language: "en", hi: { name: "session_booked_hi", approved: false, language: "hi" } },
+    call_booked: { approved: true, language: "en", hi: { name: "call_booked_hi", approved: true, language: "hi" } },
+    session_offer: { approved: true, language: "en", hi: { name: "session_offer_hi", approved: true, language: "hi" } },
+    session_confirmed: { approved: true, language: "en", hi: { name: "session_confirmed_hind", approved: false, language: "hi" } },
+    reminder: { approved: true, language: "en", hi: { name: "reminder_hind", approved: false, language: "hi" } },
+    payment_update: { approved: true, language: "en", hi: { name: "payment_update_hi", approved: true, language: "hi" } },
+    package_confirmed: { approved: true, language: "en", hi: { name: "package_confirmed_hind", approved: true, language: "hi" } },
+    session_booked: { approved: true, language: "en", hi: { name: "session_booked_hi", approved: false, language: "hi" } },
     // The Inbox's follow-up once the 24-hour window has closed (ticket 22; not yet in the CONTRACT's template list, see STATUS "Blocked").
-    follow_up: { approved: false, language: "en", hi: { name: "follow_up_hi", approved: false, language: "hi" } },
+    follow_up: { approved: true, language: "en", hi: { name: "follow_up_hind", approved: true, language: "hi" } },
   },
   languages: ["en", "hi"],
   faqIds: ["what_is_this", "how_it_works", "price", "timings", "refund", "privacy"],

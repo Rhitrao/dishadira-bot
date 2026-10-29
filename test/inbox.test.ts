@@ -268,7 +268,7 @@ describe("PRD check 7: the reply window", () => {
     const id = await chat({ lastMin: 25 * 60, locale: "hi" });
     expect(await page(`/app/inbox/${id}`, STAFF)).toContain(FOLLOW_UP_TEXT.hi);
     await act(STAFF, id, "follow-up");
-    expect(waSent().map((p) => p.template?.name)).toEqual(["follow_up_hi"]);
+    expect(waSent().map((p) => p.template?.name)).toEqual(["follow_up_hind"]);
   });
 
   it("while the follow-up isn't approved yet, it says so and nothing can be sent", async () => {

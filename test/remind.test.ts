@@ -180,7 +180,7 @@ describe("Hindi reminders (ticket 11)", () => {
     templates.reminder.hi.approved = true;
     await call(await hindi(false), "2026-10-06", 0);
     expect(await sendReminders(env())).toBe(1);
-    expect(sent()[0].template.name).toBe("reminder_hi");
+    expect(sent()[0].template.name).toBe("reminder_hind");
     expect(sent()[0].template.language.code).toBe("hi");
     expect(params(sent()[0])).toEqual(["कॉल", "मंगल, 6 अक्टूबर", "दोपहर 2:00"]);
   });
@@ -205,7 +205,7 @@ describe("Hindi reminders (ticket 11)", () => {
     templates.reminder.hi.approved = true; // Hindi approved, English not
     await call(await person(false), "2026-10-06", 1);
     expect(await sendReminders(env())).toBe(1); // only the Hindi person (their reminder was never recorded as sent)
-    expect(sent().map((p) => p.template.name)).toEqual(["reminder_hi"]);
+    expect(sent().map((p) => p.template.name)).toEqual(["reminder_hind"]);
     expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'TEMPLATE_UNAPPROVED'")).toBe(2);
   });
 
