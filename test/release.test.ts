@@ -24,13 +24,15 @@ describe("wrangler environments", () => {
     expect(value(section("env.test.vars"), "PAYMENT_MODE")).toBe("test");
     expect(value(section("env.live.vars"), "PAYMENT_MODE")).toBe("live");
   });
-  it("the three flags are off at the top level and in live; test may switch them, but only to a plain true or false", () => {
+  it("the three flags are off at the top level; test and live may switch them, but only to a plain true or false", () => {
     const flags = ["OWNER_APPROVED", "NEW_BOOKINGS", "SENDS"];
-    for (const name of ["vars", "env.live.vars"]) {
-      const s = section(name);
-      expect(flags.map((k) => value(s, k)), name).toEqual(["false", "false", "false"]);
-    }
-    for (const k of flags) expect(["true", "false"], `env.test.vars ${k}`).toContain(value(section("env.test.vars"), k));
+    expect(flags.map((k) => value(section("vars"), k)), "vars").toEqual(["false", "false", "false"]);
+    for (const env of ["env.test.vars", "env.live.vars"]) for (const k of flags) expect(["true", "false"], `${env} ${k}`).toContain(value(section(env), k));
+  });
+  it("live follows the launch order: bookings only once the bot can reply, and the sign-off flag last", () => {
+    const l = section("env.live.vars");
+    if (value(l, "NEW_BOOKINGS") === "true") expect(value(l, "SENDS")).toBe("true");
+    if (value(l, "OWNER_APPROVED") === "true") expect(value(l, "NEW_BOOKINGS")).toBe("true");
   });
   it("AI_REPLIES is \"false\" at the top level and in live; test may be either", () => {
     for (const name of ["vars", "env.live.vars"]) expect(value(section(name), "AI_REPLIES"), name).toBe("false");
