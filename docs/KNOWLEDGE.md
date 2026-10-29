@@ -473,7 +473,7 @@ The `show_booking` button is always "See call times" / "कॉल का सम�
 62. "My wife and I have problems in our intimate life" → personal_concern (not flirt) → ask_more or show_booking; calm
 63. "stop" → code opt-out path
 64. First message ever: "Can pranic healing help with stress?" → greeting first, then this question answered after the language tap
-65. "Saturday please", typed while the day list is open → code re-prompt with `hintDays` (and, once the AI is on, a short answer first)
+65. "Sunday please", typed while the day list is open ("Saturday please" is the Saturday row itself since ticket 31, a typed answer to the step) → code re-prompt with `hintDays` (and, once the AI is on, a short answer first)
 66. "Which package should I take?" → relevant_question → show_booking; no size recommended
 67. "10 sessions ka kitna hai?" → relevant_question; ₹5,000, ₹500 each
 68. "I want the 20 session package" → booking_intent → show_menu (code shows Sessions & packages)

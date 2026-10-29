@@ -772,9 +772,9 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
   const hours = (lang: Lang) => allCopy[lang].hintDays;
 
   for (const lang of ["en", "hi"] as const) {
-    it(`${lang}: language, age, service, who for, day, time and pay each come back with the re-prompt, and 'Saturday please' gets the hours`, async () => {
+    it(`${lang}: language, age, service, who for, day, time and pay each come back with the re-prompt, and 'Sunday please' gets the hours`, async () => {
       const c = allCopy[lang];
-      const ask = lang === "en" ? "Saturday please" : "शनिवार चाहिए";
+      const ask = lang === "en" ? "Sunday please" : "रविवार चाहिए"; // (Saturday is a working day since ticket 30, so "Saturday please" is now that day's row: a typed answer, ticket 31)
       const from = newPhone();
       await typed(from, "hello");
       await typed(from, ask); // the language step is open
@@ -909,7 +909,7 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
     const s = await db.prepare("INSERT INTO sessions (conversation_id, intro_id, service, state) VALUES (?1, ?2, 'HEALING', 'OFFERED')").bind(c, i.meta.last_row_id).run();
     await tap(from, `sess_offer_${s.meta.last_row_id}`);
     expect(last().interactive.body.text).toBe(allCopy.en.chooseDay);
-    await typed(from, "Saturday please");
+    await typed(from, "Sunday please");
     expect(last().interactive.body.text).toBe(reprompt("en", allCopy.en.hintDays, allCopy.en.chooseDay));
     expect(last().interactive.action.sections[0].rows[0].id).toMatch(/^sday_/); // the day step is a list (ticket 30)
   });

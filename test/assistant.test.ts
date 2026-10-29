@@ -389,11 +389,11 @@ describe("in the middle of a booking: one message, the answer on top of the step
     const from = await atDayStep();
     w.fetchMock.mockClear();
     w.ai = () => new Response("{}", { status: 500 });
-    await w.typed(from, "Saturday please");
+    await w.typed(from, "Sunday please");
     expect(w.sent()).toHaveLength(1);
     expect(w.last().interactive.body.text).toBe(`${en.repromptQuestion}\n\n${en.chooseDay}`);
     w.ai = out("relevant_question", "That is 100% possible", "none");
-    await w.typed(from, "Saturday please, really");
+    await w.typed(from, "Sunday please, really");
     expect(w.last().interactive.body.text).toBe(`${en.repromptQuestion}\n\n${en.chooseDay}`);
     expect(w.last().interactive.body.text).not.toContain("100%");
     expect(w.last().interactive.body.text).not.toContain(en.reprompt(""));
