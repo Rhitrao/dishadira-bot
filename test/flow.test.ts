@@ -299,7 +299,9 @@ describe("the time list: the spread rule, sections and full days", () => {
     expect(buttonTitles(last())).toEqual(["Thu, 8 Oct", "Fri, 9 Oct", "Mon, 12 Oct"]);
     for (const ymd of nextWorkingDays(Date.now(), config.booking.lookaheadDays)) if (!["2026-10-05", "2026-10-06", "2026-10-07"].includes(ymd)) await fill(ymd);
     await tapButton(from, "more_HEALING_SELF");
-    expect(last().text.body).toBe(allCopy.en.noSlots);
+    expect(last().interactive.body.text).toBe(allCopy.en.noSlots); // with Talk to a person and Help (ticket 31)
+    expect(buttonIds(last())).toEqual(["menu_person", "menu_how"]);
+    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'NO_FREE_TIMES'")).toBe(1);
     expect(await count("SELECT COUNT(*) AS n FROM slots WHERE owner_id IN (SELECT id FROM conversations WHERE wa_id = '" + from + "')")).toBe(0);
   });
 
@@ -581,6 +583,7 @@ describe("talk to a person, and HUMAN mode", () => {
     expect(sent()).toHaveLength(1); // ticket 18: one short acknowledgement for this handoff, nothing more
     expect(last().text.body).toBe(allCopy.en.humanWaitAck);
     await typed(from, "hi");
+    vi.setSystemTime(Date.now() + 11 * 60_000); // a greeting right after an untapped menu gets nothing (ticket 31, I13)
     await typed(from, "menu");
     expect(sent()).toHaveLength(3); // the menu, twice
     expect(last().interactive.body.text).toBe(allCopy.en.menuBody);
@@ -780,7 +783,7 @@ describe("the session picker uses the same day and time steps", () => {
       for (const s of generateSlots(ymd, "SESSION")) await db.prepare("INSERT INTO slots (kind,start_utc,end_utc,owner_id,state) VALUES ('SESSION',?1,?2,?3,'BOOKED')").bind(s.startUtc, s.endUtc, other).run();
     }
     await tapButton(from, `sess_offer_${sid}`);
-    expect(last().text.body).toBe(allCopy.en.noSessionSlots);
+    expect(last().interactive.body.text).toBe(allCopy.en.noSessionSlots); // with Talk to a person and Help (ticket 31)
     expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'NO_SESSION_SLOTS'")).toBe(1);
   });
 });

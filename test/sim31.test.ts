@@ -579,10 +579,14 @@ describe("I12: the Razorpay contact is the full international number", () => {
 
 describe("I13: 'hi' again and again", () => {
   it("after an untapped menu, more greetings get nothing (and count as small talk); a tap or ten minutes bring the menu back", async () => {
-    const from = await w.greeted(); // the menu has just gone out after the language tap
-    for (let i = 0; i < 4; i++) await w.typed(from, "hi");
+    const from = await w.greeted(); // the menu has just gone out after the language tap: a greeting now still gets it
+    await w.typed(from, "hi");
+    expect(body(w.last())).toBe(EN.menuBody);
+    w.fetchMock.mockClear();
+    for (let i = 0; i < 3; i++) await w.typed(from, "hi");
     expect(w.sent()).toHaveLength(0);
-    expect((await w.state(from)).smalltalk_count).toBe(4);
+    expect((await w.state(from)).smalltalk_count).toBe(3); // two free a day, then strikes (three strikes: the closing line and a quiet week)
+    expect((await w.state(from)).strikes).toBe(1);
     await w.tap(from, "menu_how");
     await w.typed(from, "hello");
     expect(body(w.last())).toBe(EN.menuBody);

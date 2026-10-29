@@ -288,7 +288,7 @@ describe("the AI budgets: counted per India day, checked in the gate", () => {
     it(`${lang}: over a cap the person gets the menu with Talk to a person, no AI, and the day is counted for the digest`, async () => {
       const from = await greeted(lang);
       await setState(from, "ai_day = ?2, ai_count = 12", "2026-10-05");
-      await typed(from, lang === "en" ? "how does this work on the phone?" : "यह फ़ोन पर कैसे होता है?");
+      await typed(from, lang === "en" ? "can you sing me a song?" : "क्या आप गाना गा सकते हैं?"); // no fixed answer for it (ticket 31: the router answers the common topics first)
       const c = allCopy[lang];
       expect(sent()).toHaveLength(1);
       expect(last().interactive.body.text).toBe(c.aiFallback);
@@ -301,7 +301,7 @@ describe("the AI budgets: counted per India day, checked in the gate", () => {
   it("while nothing may be sold the fallback has no Book button and no offer of a call", async () => {
     const from = await greeted("en");
     await setState(from, "ai_day = ?2, ai_count = 12, no_sell_until = ?3", "2026-10-05", iso(NOW + DAY));
-    await typed(from, "how does this work on the phone?");
+    await typed(from, "can you sing me a song?");
     expect(last().interactive.body.text).toBe(allCopy.en.aiFallbackNoSell);
     expect(last().interactive.action.buttons.map((b: Wa) => b.reply.id)).toEqual(["menu_how", "menu_person"]);
     expect(allCopy.en.aiFallbackNoSell).not.toMatch(/book/i);
@@ -745,7 +745,7 @@ describe("burst: a newer message from the same person means the older reply is n
   it("the older message's reply is recorded as SKIPPED / NEWER_MESSAGE and nothing goes out", async () => {
     const from = await greeted();
     const t = Math.floor(NOW / 1000);
-    await typed(from, "hello", { timestamp: String(t + 5) }); // the newer message is handled first
+    await typed(from, "price?", { timestamp: String(t + 5) }); // the newer message is handled first
     expect(sent()).toHaveLength(1);
     fetchMock.mockClear();
     await typed(from, "and how long is the call?", { timestamp: String(t) }); // the older one arrives afterwards

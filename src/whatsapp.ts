@@ -414,13 +414,19 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     return true;
   }
 
-  // The last thing sent to this person is the menu, sent within config.router.menuRepeatMinutes, and nothing has been tapped since.
+  // The last thing sent to this person is the menu, sent within config.router.menuRepeatMinutes in reply to a typed greeting (not after a tap),
+  // and nothing has been tapped since.
   async function menuUntapped(): Promise<boolean> {
     const last = await db
       .prepare("SELECT id, dedupe_key AS k, created_at AS at FROM messages WHERE conversation_id = ?1 AND direction = 'OUT' AND status NOT IN ('SKIPPED', 'FAILED') ORDER BY id DESC LIMIT 1")
       .bind(conv!.id)
       .first<{ id: number; k: string | null; at: string }>();
     if (!last?.k?.endsWith(":menu") || Date.now() - Date.parse(last.at) >= config.router.menuRepeatMinutes * 60_000) return false;
+    const typedGreeting = await db
+      .prepare("SELECT 1 FROM messages WHERE conversation_id = ?1 AND direction = 'IN' AND kind = 'text' AND wa_message_id = ?2")
+      .bind(conv!.id, last.k.slice(0, -":menu".length))
+      .first();
+    if (!typedGreeting) return false;
     const tap = await db
       .prepare("SELECT 1 FROM messages WHERE conversation_id = ?1 AND direction = 'IN' AND kind IN ('interactive', 'button') AND id > ?2 LIMIT 1")
       .bind(conv!.id, last.id)
