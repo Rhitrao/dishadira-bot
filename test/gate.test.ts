@@ -712,8 +712,7 @@ describe("first-message and media logic, now in the gate", () => {
     expect((await conv(from)).first_question_msg).not.toBeNull();
     expect((await conv(from)).greeted_at).toBe(iso(NOW));
     await tap(from, "lang_hi");
-    expect(sent()[1].text.body).toBe(allCopy.hi.ack);
-    expect((await conv(from)).last_ack_at).toBe(iso(NOW));
+    expect(sent()[1].interactive.body.text).toBe(allCopy.hi.faqAnswers.what_is_this); // the fixed answer, in Hindi (ticket 31)
   });
 
   it("media: the notice and menu once a day, kept on the person, not in the messages", async () => {
@@ -729,15 +728,14 @@ describe("first-message and media logic, now in the gate", () => {
     expect((await state(from)).media_notice_day).toBe("2026-10-06");
   });
 
-  it("the ack is once per 24 hours, kept on the conversation", async () => {
+  it("the 'can't answer typed questions' line is at most once per 30 minutes (ticket 31)", async () => {
     const from = await greeted();
-    await typed(from, "can you tell me more about how this works");
+    await typed(from, "can you sing me a song");
     expect(sent()).toHaveLength(1);
-    expect(last().text.body).toBe(allCopy.en.ack);
-    expect((await conv(from)).last_ack_at).toBe(iso(NOW));
+    expect(last().interactive.body.text).toBe(allCopy.en.ack);
     await typed(from, "hello? anyone there");
     expect(sent()).toHaveLength(1);
-    vi.setSystemTime(NOW + 25 * 3_600_000);
+    vi.setSystemTime(NOW + 31 * 60_000);
     await typed(from, "hello? anyone there?");
     expect(sent()).toHaveLength(2);
   });
@@ -754,8 +752,8 @@ describe("burst: a newer message from the same person means the older reply is n
     expect(sent()).toHaveLength(0);
     const row = await db.prepare("SELECT status, skip_reason, body FROM messages WHERE skip_reason IS NOT NULL").first();
     expect(row).toEqual({ status: "SKIPPED", skip_reason: "NEWER_MESSAGE", body: null });
-    // The state changes of the older message still happen (the item for Rohit); only the reply is skipped.
-    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(1);
+    // Only the reply is skipped (a question with no fixed answer raises no item since ticket 31).
+    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(0);
     expect((await conv(from)).last_ack_at).toBeNull(); // an acknowledgement that did not go out is not remembered
   });
 
@@ -891,7 +889,7 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
     expect((await conv(from)).pending_step).toBeNull();
     fetchMock.mockClear();
     await typed(from, "when is my call exactly?");
-    expect(last().text.body).toBe(allCopy.en.ack);
+    expect(last().text?.body ?? last().interactive?.body?.text).toContain("Your bookings: call on Tue, 6 Oct at 2:30 pm"); // My bookings (ticket 31)
 
     const other = await greeted();
     await ageOk(other);
@@ -899,7 +897,7 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
     vi.setSystemTime(NOW + 25 * 3_600_000); // the step is a day old: not open any more
     fetchMock.mockClear();
     await typed(other, "are you there?");
-    expect(last().text.body).toBe(allCopy.en.ack);
+    expect(last().interactive.body.text).toBe(allCopy.en.ack);
   });
 
   it("the session picker's day and time steps are re-sent too", async () => {
@@ -1012,7 +1010,7 @@ describe("the chat wipe (test settings: 10 minutes)", () => {
     expect(last().interactive.body.text).toBe(allCopy.hi.menuBody); // the menu in Hindi, not the greeting
     expect(await count("SELECT COUNT(*) AS n FROM messages WHERE dedupe_key LIKE 'greet:%'")).toBe(1);
     await typed(from, "what is the price");
-    expect(last().text.body).toBe(allCopy.hi.ack); // the 24h ack check does not need the old rows either
+    expect(last().interactive.body.text).toBe(allCopy.hi.faqAnswers.price); // the repeat check does not need the old rows either
   });
 
   it("only conversations whose last message is old are wiped; a missing setting means 7 days", async () => {

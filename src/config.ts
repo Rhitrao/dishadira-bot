@@ -71,8 +71,7 @@ export const config = {
       // ticket 31: closings that used to get the 24-hour promise
       "ok thank you", "ok thanks", "okay thanks", "okay thank you", "thank you so much", "thank you ji", "thank you so much ji", "thanks ji", "thanks a lot",
       "thank u", "thanku", "thankyou", "ok ji", "okay ji", "theek hai", "thik hai", "dhanyavad", "dhanyawad", "shukriya", "धन्यवाद जी", "ठीक है जी"],
-    booking: ["book", "booking", "book call", "book a call", "बुक", "बुकिंग",
-      "book karna hai", "book karni hai", "call book karna hai", "call book karni hai", "booking karni hai", "booking chahiye", "appointment", "बुक करना है", "कॉल बुक करनी है"],
+    booking: ["book", "booking", "book call", "book a call", "बुक", "बुकिंग"], // a sentence with "book" in it is the router's (config.router.topics.book)
     // "Reply HELP" (the payment reminder, ticket 29): the whole message asks for a person, like "Talk to a person".
     help: ["help", "help me", "need help", "please help", "madad", "मदद", "मदद करें", "मदद चाहिए"],
     // A short message (at most handoffMaxWords words) containing one of these as a word asks for a person.
@@ -272,11 +271,11 @@ export const config = {
         "payment failed", "payment fail", "money deducted", "amount deducted", "deducted", "debited", "paid but", "i paid", "i have paid", "already paid", "payment done",
         "no confirmation", "not confirmed", "pay kiya", "paise kat", "paisa kat", "paise kat gaye", "भुगतान कर दिया", "पैसे कट",
       ],
+      refund: ["refund", "refunds", "money back", "paisa wapas", "paise wapas", "return my money", "cancel", "cancellation", "रिफंड", "पैसे वापस", "रद्द"],
       my_booking: [
         "my call", "my booking", "my bookings", "my appointment", "my session", "when is my", "booking status", "is my call", "meri call", "meri booking", "mera appointment",
         "call kab hai", "मेरी कॉल", "मेरी बुकिंग",
       ],
-      refund: ["refund", "refunds", "money back", "paisa wapas", "paise wapas", "return my money", "cancel", "cancellation", "रिफंड", "पैसे वापस", "रद्द"],
       abroad: [
         "dubai", "uae", "abroad", "outside india", "another country", "other country", "usa", "america", "uk", "london", "canada", "australia", "singapore", "time zone",
         "timezone", "time difference", "international", "foreign", "overseas", "videsh", "विदेश", "paypal",

@@ -58,7 +58,9 @@ export function isAckWord(text: string): boolean {
 }
 
 // A short message with "human" or "person" in it ("Talk to a human", "insaan se baat karni hai"); a long message that mentions a person is not a request.
-export const isHandoffWords = (text: string) => normalize(text).split(" ").length <= config.words.handoffMaxWords && hasPhrase(text, config.words.handoff);
+// "in person" (a visit, ticket 31) is not a request for a person.
+export const isHandoffWords = (text: string) =>
+  normalize(text).split(" ").length <= config.words.handoffMaxWords && hasPhrase(text.replace(/\bin[\s-]+person\b/gi, " "), config.words.handoff);
 
 export async function gate(env: Env, conv: GateConv, message: GateMessage, nowMs = Date.now()): Promise<Gate> {
   const text = message.text;

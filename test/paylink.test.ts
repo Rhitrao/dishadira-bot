@@ -73,17 +73,25 @@ describe("the token", () => {
 });
 
 describe("GET /p/:token", () => {
-  it("pending and inside the hold: 302 to the stored Razorpay link, no-store, and no Razorpay call", async () => {
+  // Ticket 31: a tiny "Opening Razorpay's secure payment page…" page that moves on by meta refresh (a bare 302 showed a black screen on a phone).
+  const opensRazorpay = async (res: Response, ref: string) => {
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain(`<meta http-equiv="refresh" content="0;url=https://rzp.io/i/${ref}">`);
+    expect(body).toContain(`href="https://rzp.io/i/${ref}"`);
+    expect(body).toContain(allCopy.en.pageOpeningTitle.replace(/'/g, "&#39;"));
+  };
+  it("pending and inside the hold: the short page on to the stored Razorpay link, no-store, and no Razorpay call", async () => {
     const { pay } = await heldCall();
     const calls = t.fake.log.length;
     const res = await open(`/p/${await payToken(t.env(), pay.id)}`);
-    expect(res.status).toBe(302);
-    expect(res.headers.get("Location")).toBe(`https://rzp.io/i/${pay.ref}`);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(res.headers.get("Content-Security-Policy")).toBe(PAYLINK_CSP);
+    await opensRazorpay(res, pay.ref);
     expect(t.fake.log.length).toBe(calls);
-    // a CREATING payment (the link is made, the row not yet moved on) redirects too
+    // a CREATING payment (the link is made, the row not yet moved on) goes on too
     await t.db.prepare("UPDATE payments SET state = 'CREATING' WHERE id = ?1").bind(pay.id).run();
-    expect((await open(`/p/${await payToken(t.env(), pay.id)}`)).status).toBe(302);
+    await opensRazorpay(await open(`/p/${await payToken(t.env(), pay.id)}`), pay.ref);
   });
 
   it("paid (or refunded): a page that says so, so nobody pays twice", async () => {
@@ -99,7 +107,7 @@ describe("GET /p/:token", () => {
     }
   });
 
-  it("past the hold, or failed or unknown: the expired page with a button to WhatsApp", async () => {
+  it("past the hold, or failed: the expired page with a button to WhatsApp (unknown: 'we're checking it', ticket 31)", async () => {
     const { pay } = await heldCall();
     const path = `/p/${await payToken(t.env(), pay.id)}`;
     const expired = async () => {
@@ -118,10 +126,12 @@ describe("GET /p/:token", () => {
       await t.db.prepare("UPDATE settings SET value = ?2 WHERE key = ?1").bind(`paylink:${pay.id}`, value).run();
       await expired(); // an unreadable or incomplete row never redirects and never errors
     }
-    for (const state of ["FAILED", "UNKNOWN"]) {
-      await t.db.prepare("UPDATE payments SET state = ?2 WHERE id = ?1").bind(pay.id, state).run();
-      await expired();
-    }
+    await t.db.prepare("UPDATE payments SET state = 'FAILED' WHERE id = ?1").bind(pay.id).run();
+    await expired();
+    await t.db.prepare("UPDATE payments SET state = 'UNKNOWN' WHERE id = ?1").bind(pay.id).run();
+    const unknown = await (await open(path)).text();
+    expect(unknown).toContain(allCopy.en.pageCheckTitle.replace(/'/g, "&#39;"));
+    expect(unknown).not.toContain("This payment link has expired");
   });
 
   it("a Hindi chat gets the Hindi page", async () => {
@@ -154,7 +164,7 @@ describe("GET /p/:token", () => {
   it("is public: no Access sign-in, no console flag needed", async () => {
     const { pay } = await heldCall();
     const env = { ...(t.env() as object), CONSOLE_V2: "false", ACCESS_AUD: "", ACCESS_TEAM: "" };
-    expect((await open(`/p/${await payToken(t.env(), pay.id)}`, env)).status).toBe(302);
+    expect((await open(`/p/${await payToken(t.env(), pay.id)}`, env)).status).toBe(200);
   });
 
   it("if the database does not answer, a try-again page (never an error)", async () => {

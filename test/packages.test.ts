@@ -311,7 +311,7 @@ describe("the soft gate and buying a single session", () => {
     const off = { ...(env() as object), NEW_BOOKINGS: "false" } as never;
     const raw = JSON.stringify(wrap(from, { type: "interactive", interactive: { type: "button_reply", button_reply: { id: "go_p10", title: "x" } } }));
     await app.request("/wa/webhook", { method: "POST", body: raw, headers: { "X-Hub-Signature-256": await sign(raw) } }, off);
-    expect(last().text.body).toBe(allCopy.en.bookSoon);
+    expect(last().interactive.body.text).toBe(allCopy.en.bookSoon); // with Talk to a person and Help (ticket 31)
     expect(await count("SELECT COUNT(*) AS n FROM packages")).toBe(0);
     await db.prepare("INSERT INTO blocks (wa_id, reason, by) VALUES (?1, 'ADMIN', 'test')").bind(from).run();
     fetchMock.mockClear();

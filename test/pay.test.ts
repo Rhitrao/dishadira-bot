@@ -3,6 +3,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import app from "../src/index";
 import { bookingChoice } from "../src/booking";
 import { config } from "../src/config";
+import { allCopy } from "../src/copy";
 import { razorpay } from "../src/pay/razorpay";
 import { payToken } from "../src/paylink";
 import { reconcile } from "../src/pay/apply";
@@ -268,7 +269,7 @@ describe("bot flow", () => {
   it("the booking switch off keeps booking closed", async () => {
     const c = await person("test-a");
     await bookingChoice({ ...(env() as object), NEW_BOOKINGS: "false" } as never, "menu_book", c, "m-off");
-    expect(waSent()[0].text.body).toBe("Booking opens soon.");
+    expect(waSent()[0].interactive.body.text).toBe(allCopy.en.bookSoon); // with Talk to a person and Help (ticket 31)
   });
 
   it("a blocked contact gets no hold, no intro, no link", async () => {

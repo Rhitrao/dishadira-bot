@@ -417,13 +417,13 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
   // The last thing sent to this person is the menu, sent within config.router.menuRepeatMinutes, and nothing has been tapped since.
   async function menuUntapped(): Promise<boolean> {
     const last = await db
-      .prepare("SELECT dedupe_key AS k, created_at AS at FROM messages WHERE conversation_id = ?1 AND direction = 'OUT' AND status NOT IN ('SKIPPED', 'FAILED') ORDER BY id DESC LIMIT 1")
+      .prepare("SELECT id, dedupe_key AS k, created_at AS at FROM messages WHERE conversation_id = ?1 AND direction = 'OUT' AND status NOT IN ('SKIPPED', 'FAILED') ORDER BY id DESC LIMIT 1")
       .bind(conv!.id)
-      .first<{ k: string | null; at: string }>();
+      .first<{ id: number; k: string | null; at: string }>();
     if (!last?.k?.endsWith(":menu") || Date.now() - Date.parse(last.at) >= config.router.menuRepeatMinutes * 60_000) return false;
     const tap = await db
-      .prepare("SELECT 1 FROM messages WHERE conversation_id = ?1 AND direction = 'IN' AND kind IN ('interactive', 'button') AND created_at >= ?2 LIMIT 1")
-      .bind(conv!.id, last.at)
+      .prepare("SELECT 1 FROM messages WHERE conversation_id = ?1 AND direction = 'IN' AND kind IN ('interactive', 'button') AND id > ?2 LIMIT 1")
+      .bind(conv!.id, last.id)
       .first();
     return tap === null;
   }
@@ -488,8 +488,13 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     const topic = viaAI ? null : matchTopic(said);
     // A booking step is open: send it again, with the answer on top when the question has one, otherwise with the hint. A re-prompt is not a strike.
     const open = await openStep(db, conv!.id);
+    if (open && topic === "my_booking") {
+      await routeTopic(topic); // "when is my call?" in the middle of a booking: My bookings
+      return;
+    }
     if (open) {
-      const info = topic && !ACTION_TOPICS.includes(topic) ? topicText(cp, topic) : null;
+      // (Timings: the re-prompt's hint already says the hours on the day and time steps.)
+      const info = topic && topic !== "timings" && !ACTION_TOPICS.includes(topic) ? topicText(cp, topic) : null;
       const withAnswer = info ? stepWithLine(open, info) : null;
       const res = await reply(withAnswer ?? repromptOut(cp, open, viaAI), "reprompt");
       if (res !== "BURST" && !withAnswer) {

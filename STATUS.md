@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-29 (Ticket 29: payment links that always open the payment page)
+Updated: 2026-10-29 (Ticket 31: fixes from the launch simulations)
 
 ## Payment provider
 Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
@@ -51,6 +51,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [x] 27 Calendar and a console polish pass (PR https://github.com/Rhitrao/dishadira-bot/pull/39, merged)
 - [ ] 28 One cron per Worker, so test and live fit the Workers Free limit of 5 (PR https://github.com/Rhitrao/dishadira-bot/pull/41)
 - [ ] 29 Payment links that always open the payment page (our own /p/ link; PR https://github.com/Rhitrao/dishadira-bot/pull/44)
+- [ ] 31 Fixes from the launch simulations (PR: see the branch `t31-sim-fixes`)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
