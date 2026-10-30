@@ -148,6 +148,9 @@ describe("logging", () => {
         'src/whatsapp.ts: console.log("wa webhook ignored: no entry");',
         'src/whatsapp.ts: console.log("wa webhook ignored: not json");',
         'src/whatsapp.ts: console.log("wa webhook skipped", reason);',
+        'src/social.ts: console.log("social profile check failed", reason);',
+        'src/social.ts: console.log("social send failed", reason);',
+        'src/social.ts: console.log("social webhook ignored", reason);',
       ].sort(),
     );
   });

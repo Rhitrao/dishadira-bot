@@ -15,6 +15,11 @@ export const SECRET_NAMES = [
   "AMMA_EMAIL",
   "ROHIT_EMAIL",
   "ANTHROPIC_API_KEY",
+  // Instagram DMs and Messenger (ticket 32, docs/SOCIAL.md). The same Meta app as WhatsApp, so the signature uses WA_APP_SECRET.
+  "META_VERIFY_TOKEN", // the verify token typed into the app's Messenger / Instagram webhook settings (not the WhatsApp one)
+  "META_PAGE_TOKEN", // the long-lived Page access token of the Page "Disha Dira Pranic Healing"
+  "META_PAGE_ID", // that Page's id (not secret, but kept with the token so a deploy never wipes it)
+  "META_IG_ID", // the id of the Instagram professional account linked to the Page
 ] as const;
 
 export type SecretName = (typeof SECRET_NAMES)[number];
@@ -29,6 +34,8 @@ export type Env = {
   PAYMENT_MODE: string;
   // "true" opens the role-based console under /app (src/console.ts); "false" at the top level and in live: /app is then a plain 404.
   CONSOLE_V2?: string;
+  // "true" lets the bot answer Instagram DMs and Messenger (src/social.ts); anything else: /meta/webhook checks and answers 200, and sends nothing.
+  SOCIAL_REPLIES?: string;
   // Minutes after a person's last message that their chat text is wiped: live "10080" (7 days), test "10".
   CHAT_RETENTION_MINUTES: string;
   // The Worker's public address, for links in emails to Rohit (https://bot.disha-dira.com); unset: a relative /admin link.

@@ -66,8 +66,8 @@ export function verifyWebhook(c: C) {
   return ok ? c.text(c.req.query("hub.challenge") ?? "") : c.text("forbidden", 403);
 }
 
-// subtle.verify compares in constant time.
-async function validSignature(raw: string, header: string | undefined, secret: string): Promise<boolean> {
+// subtle.verify compares in constant time. Also used by the Instagram / Messenger webhook (src/social.ts): the same Meta app, the same secret.
+export async function validSignature(raw: string, header: string | undefined, secret: string): Promise<boolean> {
   if (!secret || !header || !/^sha256=[0-9a-f]{64}$/.test(header)) return false;
   const sig = Uint8Array.from(header.slice(7).match(/../g)!, (h) => parseInt(h, 16));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);

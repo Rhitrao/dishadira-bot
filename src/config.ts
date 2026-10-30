@@ -324,6 +324,35 @@ export const config = {
       ],
     },
   },
+  // Automatic replies to Instagram DMs and Facebook Messenger (ticket 32, src/social.ts), behind SOCIAL_REPLIES. Public addresses only.
+  social: {
+    instagramUrl: "https://www.instagram.com/disha_dira/", // the "Visit profile" button on Instagram
+    facebookPageUrl: "", // the "Visit our Page" button on Messenger; empty: https://www.facebook.com/<META_PAGE_ID>
+    contactEmail: "dishadirahealing@gmail.com", // the contact address on the website's privacy page, for the data deletion page
+    maxAutosPerDay: 3, // automated messages to one person in 24 hours, at most (the WhatsApp link itself always goes, once)
+    nudgeEveryHours: 24, // after the link: "message us on WhatsApp" at most this often, otherwise nothing
+    restartAfterDays: 30, // no message from them for this long: the flow starts again
+    pauseHours: 24, // a person from the team wrote by hand (or a safety message went): no automation in that chat for this long
+    repeatAskMinutes: 10, // the same follow ask is not sent again within this long (unless a question got an answer line)
+    ownEchoSeconds: 60, // an Instagram echo this soon after our own send is ours (its id may not be stored yet)
+    graphTimeoutMs: 2500, // per Graph call; Meta answers in well under a second, and wants the webhook's 200 within 5 seconds
+    keepSeenDays: 7, // message ids kept for dedupe
+    forgetAfterDays: 90, // a person's row is deleted this long after their last message
+    // Roman Hindi words that make a message Hindi (Devanagari always does). Whole words, after normalising.
+    hinglish: [
+      "kya", "hai", "hain", "kitna", "kitne", "kitni", "kaise", "kahan", "kaha", "kab", "aap", "aapka", "aapki", "mujhe", "mera", "meri", "mere", "karna", "karni",
+      "chahiye", "batao", "bataiye", "bataye", "haan", "nahi", "nahin", "hoga", "hota", "mein", "liye", "kripya", "dhanyavad", "shukriya", "ji", "bhai", "didi",
+    ],
+    // A message with one of these gets one short line of facts before the follow ask. Tried in this order; the first match wins.
+    keywords: {
+      price: ["price", "prices", "pricing", "cost", "costs", "fee", "fees", "charge", "charges", "how much", "rate", "rates", "kitna", "kitne", "kitni", "paise", "kitne ka",
+        "कितना", "कितने", "कितनी", "फ़ीस", "फीस", "कीमत", "दाम", "शुल्क"],
+      book: ["book", "booking", "appointment", "session", "sessions", "slot", "slots", "consult", "consultation", "बुक", "बुकिंग", "अपॉइंटमेंट", "सेशन"],
+      where: ["where", "address", "location", "located", "in person", "visit", "kahan", "kaha", "कहाँ", "कहां", "पता"],
+      what: ["what is pranic", "what is pranic healing", "what is this", "how does it work", "how it works", "how does pranic", "pranic healing kya", "kya hai",
+        "kaise kaam", "क्या है", "कैसे काम", "प्राणिक हीलिंग क्या"],
+    },
+  },
 } as const;
 
 export type Config = typeof config;

@@ -18,6 +18,7 @@ import { REMINDER_AT, sendReminders } from "./remind";
 import { runDigest } from "./report";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat, returnStaleHumans } from "./watch";
 import { istDay, iso } from "./slots";
+import { cleanSocial, dataDeletionPage, receiveMetaWebhook, verifyMetaWebhook } from "./social";
 import { sendsOn } from "./switches";
 import { switchOver } from "./switchover";
 import { wipeChats } from "./wipe";
@@ -45,6 +46,11 @@ app.get("/app/fonts/:file", serveFont);
 
 app.get("/wa/webhook", verifyWebhook);
 app.post("/wa/webhook", receiveWebhook);
+// Instagram DMs and Messenger (ticket 32, src/social.ts): its own route and verify token, the same app secret. Public, like /wa/webhook.
+app.get("/meta/webhook", verifyMetaWebhook);
+app.post("/meta/webhook", receiveMetaWebhook);
+// The data deletion instructions URL for Meta App Review (public).
+app.get("/data-deletion", dataDeletionPage);
 app.post("/pay/razorpay/webhook", (c) => razorpayWebhook(c));
 // Our own payment link (ticket 29): public, outside /amma, /admin and /app, so Cloudflare Access never stands in front of it.
 app.get("/p/:token", payLinkPage);
@@ -92,7 +98,7 @@ const scheduled = async (event: { cron: string; scheduledTime?: number }, env: E
   await recordHeartbeat(env).catch(() => 0);
   // One failing job must not stop the others; each is safe to run again.
   for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);
-  for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests, nudgeUnpaidHolds, resendSkippedPaid, sendRefundNotices]) await job(env).catch(() => 0);
+  for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests, nudgeUnpaidHolds, resendSkippedPaid, sendRefundNotices, cleanSocial]) await job(env).catch(() => 0);
   await runDailyJobs(env, event.scheduledTime ?? Date.now()).catch(() => undefined);
 };
 
