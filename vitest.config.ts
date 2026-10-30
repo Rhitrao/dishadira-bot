@@ -1,9 +1,10 @@
-// `npm test`. The only addition to vitest's defaults: a .woff2 import is the file's bytes (an ArrayBuffer), as wrangler's Data rule
+// `npm test`. Additions to vitest's defaults: test/setup.ts runs first in every file, and a .woff2 import is the file's bytes (an ArrayBuffer), as wrangler's Data rule
 // makes it in the Worker, instead of Vite's asset URL. The manual eval uses vitest.eval.config.ts instead.
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  test: { setupFiles: ["test/setup.ts"] }, // every test starts with no template approved (test/setup.ts)
   plugins: [
     {
       name: "woff2-as-data",

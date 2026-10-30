@@ -144,6 +144,8 @@ No variables, so no sample values.
 
 Seven more templates, one per template above, with the same variables in the same order. **Name:** the English name plus `_hi` (for example `reminder_hi`). **Language:** Hindi. Category, header, footer and buttons as for the English one. The values the bot sends are in Hindi too: the day as `मंगल, 6 अक्टूबर` and the time as `दोपहर 2:00` or `शाम 5:30`. These drafts are built from the sentences in `docs/KNOWLEDGE.md` §11; Amma should read them before they are submitted. Set the template's `hi.approved` flag in `src/config.ts` when Meta approves it.
 
+**As submitted (30 Oct 2026):** `session_confirmed`, `reminder`, `package_confirmed` and `follow_up` are named with `_hind` (for example `reminder_hind`), because their first `_hi` copies were filed under language English and were deleted; a deleted name stays blocked for 30 days. `src/config.ts` uses these names. Meta filed `session_offer`, `package_confirmed`, `session_offer_hi`, `package_confirmed_hind` and `follow_up_hind` under Marketing rather than Utility.
+
 ### 1. call_booked_hi
 
 ```
@@ -160,7 +162,7 @@ Samples: {{1}} मंगल, 6 अक्टूबर · {{2}} दोपहर 2:
 
 One Quick reply button, text `विकल्प देखें`. No variables.
 
-### 3. session_confirmed_hi
+### 3. session_confirmed_hind
 
 ```
 शांता राव जी के साथ आपका सेशन {{1}} को {{2}} बजे (भारतीय समय) तय हो गया है। यह दूर से होने वाला सेशन है: आप जहाँ हैं वहीं रहें, वे तय समय पर आपको कॉल करेंगी। कृपया किसी शांत जगह पर फ़ोन साथ रखें। एक दिन पहले हम आपको याद दिलाएँगे।
@@ -168,7 +170,7 @@ One Quick reply button, text `विकल्प देखें`. No variables.
 
 Samples: {{1}} बुध, 7 अक्टूबर · {{2}} दोपहर 3:00
 
-### 4. reminder_hi
+### 4. reminder_hind
 
 ```
 याद दिला दें: शांता राव जी के साथ आपकी बुकिंग ({{1}}) कल, {{2}} को {{3}} बजे (भारतीय समय) है। कृपया फ़ोन अपने पास रखें।
@@ -184,7 +186,7 @@ Samples: {{1}} बुध, 7 अक्टूबर · {{2}} दोपहर 3:00
 
 Sample: {{1}} ₹99
 
-### 6. package_confirmed_hi
+### 6. package_confirmed_hind
 
 ```
 भुगतान मिल गया। आपके पास {{1}} सेशन हैं। क्या अभी पहला सेशन बुक करें?
@@ -200,7 +202,7 @@ One Quick reply button, text `सेशन बुक करें`. Sample: {{1}
 
 Samples: {{1}} बुध, 7 अक्टूबर · {{2}} दोपहर 2:00 · {{3}} 9
 
-### 8. follow_up_hi
+### 8. follow_up_hind
 
 ```
 हमारी टीम को भेजे आपके संदेश के बारे में हम फिर से संपर्क कर रहे हैं। जब सुविधा हो, यहीं जवाब दें, हम वहीं से बात आगे बढ़ाएँगे।
