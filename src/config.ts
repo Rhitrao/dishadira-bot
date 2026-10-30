@@ -347,12 +347,16 @@ export const config = {
     // Typed instead of tapping "I'm following" (a short message, at the follow ask): counts as the tap.
     followedWords: ["following", "followed", "i'm following", "im following", "i am following", "i followed", "i have followed", "follow kiya", "follow kar liya",
       "follow kar diya", "फ़ॉलो किया", "फॉलो किया", "फ़ॉलो कर लिया", "फॉलो कर लिया", "फ़ॉलो कर दिया", "फॉलो कर दिया"],
-    // A message with one of these gets one short line of facts before the follow ask. Tried in this order; the first match wins.
+    // The topic of their first message (a code, never the text), answered in one line once they follow. Tried in this order; the first
+    // match wins. A message that names an illness (config.router.topics.medical) gets no topic: no medical answer, only the way to book.
     keywords: {
       price: ["price", "prices", "pricing", "cost", "costs", "fee", "fees", "charge", "charges", "how much", "rate", "rates", "kitna", "kitne", "kitni", "paise", "kitne ka",
         "कितना", "कितने", "कितनी", "फ़ीस", "फीस", "कीमत", "दाम", "शुल्क"],
+      refund: ["refund", "refunds", "money back", "paisa wapas", "paise wapas", "रिफंड", "रिफ़ंड", "पैसे वापस"],
+      how: ["how does the call work", "how the call works", "how is the call", "what happens on the call", "what happens in the call", "call kaise", "कॉल कैसे"],
       book: ["book", "booking", "appointment", "session", "sessions", "slot", "slots", "consult", "consultation", "बुक", "बुकिंग", "अपॉइंटमेंट", "सेशन"],
-      where: ["where", "address", "location", "located", "in person", "visit", "kahan", "kaha", "कहाँ", "कहां", "पता"],
+      where: ["where", "address", "location", "located", "in person", "visit", "kahan", "kaha", "dubai", "uae", "abroad", "outside india", "another country", "usa", "uk",
+        "canada", "australia", "singapore", "online", "by phone", "on phone", "phone pe", "phone par", "कहाँ", "कहां", "पता", "विदेश", "दुबई"],
       what: ["what is pranic", "what is pranic healing", "what is this", "how does it work", "how it works", "how does pranic", "pranic healing kya", "kya hai",
         "kaise kaam", "क्या है", "कैसे काम", "प्राणिक हीलिंग क्या"],
     },

@@ -15,11 +15,12 @@ export const SECRET_NAMES = [
   "AMMA_EMAIL",
   "ROHIT_EMAIL",
   "ANTHROPIC_API_KEY",
-  // Instagram DMs and Messenger (ticket 32, docs/SOCIAL.md). The same Meta app as WhatsApp, so the signature uses WA_APP_SECRET.
+  // Instagram DMs and Messenger (ticket 32, docs/SOCIAL.md). With the same Meta app as WhatsApp the signature uses WA_APP_SECRET.
   "META_VERIFY_TOKEN", // the verify token typed into the app's Messenger / Instagram webhook settings (not the WhatsApp one)
   "META_PAGE_TOKEN", // the long-lived Page access token of the Page "Disha Dira Pranic Healing"
   "META_PAGE_ID", // that Page's id (not secret, but kept with the token so a deploy never wipes it)
   "META_IG_ID", // the id of the Instagram professional account linked to the Page
+  "META_APP_SECRET", // only if Instagram / Messenger use a different Meta app from WhatsApp: that app's secret (unset: WA_APP_SECRET)
 ] as const;
 
 export type SecretName = (typeof SECRET_NAMES)[number];

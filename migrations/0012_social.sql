@@ -6,6 +6,7 @@
 --   last_auto_at / autos_since / autos_today: our last automated message, and the count in the current 24 hours (at most 3)
 --   nudge_at: the last "message us on WhatsApp" line after the link (at most one a day)
 --   paused_until: a person from the team wrote to them by hand, so the automation keeps out of that chat until then
+--   topic: price, refund, how, book, where or what, from their first message, answered in one line once they follow
 --   commenter_id: the id a comment webhook gave for them, when it is not the messaging id (a private reply to a comment, ticket 32)
 CREATE TABLE social_contacts (
   platform TEXT NOT NULL CHECK (platform IN ('instagram', 'messenger')),
@@ -21,6 +22,7 @@ CREATE TABLE social_contacts (
   nudge_at TEXT,
   paused_until TEXT,
   commenter_id TEXT,
+  topic TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at TEXT,
   PRIMARY KEY (platform, user_id)

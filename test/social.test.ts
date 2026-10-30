@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { D1Database } from "@cloudflare/workers-types";
 import app from "../src/index";
 import { config } from "../src/config";
+import { allCopy } from "../src/copy";
 import { cleanSocial, detectLang, FOLLOWING, METADATA, socialWords } from "../src/social";
 import { iso } from "../src/slots";
 import { newDb } from "./db";
@@ -22,8 +23,9 @@ let commentRecipient: string | null; // the messaging id Meta answers a private 
 let refuseTemplateReply: boolean;
 let n = 0;
 
+let emails: { to: string; subject: string; text: string }[];
 const env = () =>
-  ({ DB: db, ...flags, WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "wa-verify", WA_TOKEN: "tok", WA_PHONE_ID: "1000", META_VERIFY_TOKEN: "meta-verify", META_PAGE_TOKEN: "ptok", META_PAGE_ID: "PAGE1", META_IG_ID: "IG1" }) as never;
+  ({ DB: db, ...flags, DIGEST_TO: "owner@example.invalid", EMAIL: { send: async (m: { to: string; subject: string; text: string }) => void emails.push(m) }, WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "wa-verify", WA_TOKEN: "tok", WA_PHONE_ID: "1000", META_VERIFY_TOKEN: "meta-verify", META_PAGE_TOKEN: "ptok", META_PAGE_ID: "PAGE1", META_IG_ID: "IG1" }) as never;
 
 async function sign(raw: string, secret = SECRET) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -42,6 +44,14 @@ const from = (user: string, p: P, extra: object) => ({ sender: { id: user }, rec
 let mid = 0;
 const dm = (p: P, user: string, text: string) => wrap(p, [from(user, p, { message: { mid: `m_in${++mid}`, text } })]);
 const tap = (p: P, user: string) => wrap(p, [from(user, p, { postback: { mid: `m_pb${++mid}`, title: "I'm following", payload: FOLLOWING } })]);
+const qr = (p: P, user: string, topic: string, id: string) => wrap(p, [from(user, p, { message: { mid: `m_${id}`, text: "tapped title", quick_reply: { payload: `SOCIAL_Q_${topic.toUpperCase()}` } } })]);
+const WA_BOOK = `https://wa.me/${config.businessNumber.replace(/\D/g, "")}?text=${encodeURIComponent("Hi, I'd like to book a ₹99 call")}`;
+const QR_EN = [
+  { content_type: "text", title: "Book a ₹99 call", payload: "SOCIAL_Q_BOOK" },
+  { content_type: "text", title: "Prices", payload: "SOCIAL_Q_PRICE" },
+  { content_type: "text", title: "About Pranic Healing", payload: "SOCIAL_Q_WHAT" },
+  { content_type: "text", title: "How the call works", payload: "SOCIAL_Q_HOW" },
+];
 const echo = (p: P, user: string, message: object) => wrap(p, [{ sender: { id: ids[p] }, recipient: { id: user }, timestamp: Date.now(), message: { mid: `m_echo${++mid}`, is_echo: true, ...message } }]);
 
 const calls = () => fetchMock.mock.calls.map((c) => ({ url: String(c[0]), init: c[1] as { method?: string; body?: string; headers: Record<string, string> } }));
@@ -60,6 +70,7 @@ beforeEach(async () => {
   flags = { SOCIAL_REPLIES: "true", SENDS: "true" };
   follows = true;
   commentRecipient = "IGSID1";
+  emails = [];
   refuseTemplateReply = false;
   social.publicReply = false;
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -109,6 +120,17 @@ describe("POST /meta/webhook", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("with META_APP_SECRET set (a separate Meta app), only that secret signs; unset, WA_APP_SECRET does", async () => {
+    const raw = JSON.stringify(dm("instagram", "U1", "hi"));
+    const req = async (secret: string, extra: object) =>
+      (await app.request("/meta/webhook", { method: "POST", body: raw, headers: { "X-Hub-Signature-256": await sign(raw, secret) } }, { ...(env() as object), ...extra } as never)).status;
+    expect(await req(SECRET, { META_APP_SECRET: "other-app-secret" })).toBe(401);
+    expect(await req("other-app-secret", { META_APP_SECRET: "other-app-secret" })).toBe(200);
+    expect(await req(SECRET, { META_APP_SECRET: "" })).toBe(200);
+    // The WhatsApp webhook keeps WA_APP_SECRET only.
+    expect((await app.request("/wa/webhook", { method: "POST", body: "{}", headers: { "X-Hub-Signature-256": await sign("{}", "other-app-secret") } }, { ...(env() as object), META_APP_SECRET: "other-app-secret" } as never)).status).toBe(401);
+  });
+
   it("ignores reads, deliveries, reactions, story mentions, deleted messages, no sender, another account and odd bodies, with a 200", async () => {
     const items = [
       from("U1", "instagram", { read: { mid: "m_x" } }),
@@ -136,7 +158,7 @@ describe("POST /meta/webhook", () => {
     expect(m.recipient).toEqual({ id: "U1" });
     expect(m.messaging_type).toBeUndefined();
     expect(bodyOf(m)).toBe(en().ask);
-    expect(bodyOf(m)).toContain("We share a short Pranic Healing tip every week here. Follow us, then tap below");
+    expect(bodyOf(m)).toBe("Namaste, and thank you for your interest in Disha Dira! We share a short Pranic Healing tip every week. Please follow us, then tap below and our booking assistant will help you with a session.");
     expect(buttonsOf(m)).toEqual([
       { type: "web_url", url: config.social.instagramUrl, title: "Visit profile" },
       { type: "postback", title: "I'm following", payload: FOLLOWING },
@@ -150,52 +172,73 @@ describe("POST /meta/webhook", () => {
     expect(m.messaging_type).toBe("RESPONSE");
     expect(m.message.metadata).toBe(METADATA);
     expect(buttonsOf(m)).toEqual([
-      { type: "web_url", url: "https://www.facebook.com/PAGE1", title: "Visit our Page" },
+      { type: "web_url", url: "https://www.facebook.com/PAGE1", title: "Open our Page" },
       { type: "postback", title: "I've followed", payload: FOLLOWING },
     ]);
   });
 
-  it("keyword lines in English come first, in the same message, from the prices in force", async () => {
-    const cases: [string, string][] = [
-      ["How much does it cost?", "A first 15-minute call with Shantha Rao is ₹99. A session is ₹799, or 10 sessions for ₹5,000 and 20 for ₹9,000."],
-      ["Can I book an appointment", "You can book a ₹99 15-minute call with Shantha Rao on WhatsApp."],
-      ["where is your address", "All sessions are by phone, so you can join from anywhere."],
-      ["what is pranic healing?", en().lines.what],
+  it("every first message gets only the follow ask, keyword or not; the topic is kept as a code, and answered once they follow", async () => {
+    const cases: [string, string | null][] = [
+      ["How much does it cost?", "price"],
+      ["Can I book an appointment", "book"],
+      ["I live in Dubai, can I join?", "where"],
+      ["what is pranic healing?", "what"],
+      ["how does the call work", "how"],
+      ["do you give a refund", "refund"],
+      ["hello", null],
+      ["Can it cure my diabetes? what is the price", null], // never a medical answer
     ];
-    for (const [i, [text, line]] of cases.entries()) {
+    for (const [i, [text, topic]] of cases.entries()) {
       await post(dm("instagram", `K${i}`, text));
-      expect(bodyOf(sent().at(-1)), text).toBe(`${line}\n\n${en().ask}`);
+      expect(bodyOf(sent().at(-1)), text).toBe(en().ask);
+      expect((await contact("instagram", `K${i}`)).topic, text).toBe(topic);
     }
+    expect(sent()).toHaveLength(cases.length);
+    // Once K0 follows: the price line first, then the way to book.
+    await post(tap("instagram", "K0"));
+    const [guide, questions] = sent().slice(-2);
+    expect(bodyOf(guide)).toBe(`A first 15-minute call with Shantha Rao is ₹99. A session is ₹799, or 10 sessions for ₹5,000 and 20 for ₹9,000.\n\n${en().guide}`);
+    expect(buttonsOf(guide)).toEqual([{ type: "web_url", url: WA_BOOK, title: "Book on WhatsApp" }]);
+    expect(guide.message.quick_replies).toBeUndefined(); // Instagram: quick replies only on text
+    expect(questions.message).toEqual({ text: en().questions, quick_replies: QR_EN });
+    expect((await contact("instagram", "K0")).topic).toBeNull();
+    // The medical one gets no answer line: only the way to book (where the WhatsApp bot's safety rules apply).
+    await post(tap("instagram", "K7"));
+    expect(bodyOf(sent().at(-2))).toBe(en().guide);
     expect(en().lines.what).toContain("complements medical care and is not a substitute");
-    expect(new Set(sent().map((m) => m.recipient.id)).size).toBe(4);
+    expect(en().guide).toContain("automated booking assistant");
   });
 
-  it("Hindi: Devanagari or Roman Hindi gets the Hindi line, ask and buttons", async () => {
+  it("Hindi: Devanagari or Roman Hindi gets the Hindi ask and buttons, and the Hindi answer after the follow", async () => {
     await post(dm("instagram", "H1", "इसकी फीस कितनी है?"));
-    expect(bodyOf(sent()[0])).toBe(`${hi().lines.price}\n\n${hi().ask}`);
+    expect(bodyOf(sent()[0])).toBe(hi().ask);
     expect(buttonsOf(sent()[0]).map((b: Json) => b.title)).toEqual(["प्रोफ़ाइल देखें", "मैंने फ़ॉलो किया"]);
     await post(dm("messenger", "H2", "pranic healing kya hai"));
-    expect(bodyOf(sent()[1])).toBe(`${hi().lines.what}\n\n${hi().ask}`);
+    expect(bodyOf(sent()[1])).toBe(hi().ask);
+    expect(buttonsOf(sent()[1]).map((b: Json) => b.title)).toEqual(["हमारा पेज खोलें", "मैंने फ़ॉलो किया"]);
+    await post(tap("messenger", "H2"));
+    expect(bodyOf(sent().at(-1))).toBe(`${hi().lines.what}\n\n${hi().guide}`);
+    expect(sent().at(-1).message.quick_replies.map((q: Json) => q.title)).toEqual(["₹99 कॉल बुक करें", "फ़ीस", "प्राणिक हीलिंग", "कॉल कैसे होती है"]);
     expect((await contact("messenger", "H2")).lang).toBe("hi");
     expect(detectLang("hello, I want to know more", "hi")).toBe("en");
     expect(detectLang("ok", "hi")).toBe("hi");
   });
 
-  it("Instagram, following: the profile check says yes, so the WhatsApp link goes", async () => {
+  it("Instagram, following: the profile check says yes, so the way to book goes (guide, then the questions)", async () => {
     await post(dm("instagram", "U1", "hi"));
     await post(tap("instagram", "U1"));
     expect(profileCalls()).toHaveLength(1);
     expect(profileCalls()[0].url).toContain("/U1?fields=is_user_follow_business");
-    const m = sent().at(-1);
-    expect(bodyOf(m)).toBe(en().link);
-    const url = `https://wa.me/${config.businessNumber.replace(/\D/g, "")}?text=${encodeURIComponent("Hi, I'd like to book a ₹99 call")}`;
-    expect(buttonsOf(m)).toEqual([{ type: "web_url", url, title: "Book on WhatsApp" }]);
+    const [guide, questions] = sent().slice(-2);
+    expect(bodyOf(guide)).toBe(en().guide);
+    expect(buttonsOf(guide)).toEqual([{ type: "web_url", url: WA_BOOK, title: "Book on WhatsApp" }]);
+    expect(questions.message.quick_replies).toEqual(QR_EN);
     const row = await contact("instagram", "U1");
     expect(row.step).toBe("LINKED");
     expect(row.link_sent_at).toBe(iso(NOW));
   });
 
-  it("Instagram, not following: 'not yet' with the two buttons; the second tap gets the link anyway, without another check", async () => {
+  it("Instagram, not following: 'not yet' with the two buttons; the second tap goes through anyway, without another check", async () => {
     follows = false;
     await post(dm("instagram", "U1", "hi"));
     await post(tap("instagram", "U1"));
@@ -204,33 +247,50 @@ describe("POST /meta/webhook", () => {
     expect((await contact("instagram", "U1")).step).toBe("RECHECK");
     await post(tap("instagram", "U1"));
     expect(profileCalls()).toHaveLength(1);
-    expect(bodyOf(sent().at(-1))).toBe(en().link);
+    expect(bodyOf(sent().at(-2))).toBe(en().guide);
     expect((await contact("instagram", "U1")).step).toBe("LINKED");
   });
 
-  it("Instagram: a failed or timed-out profile check sends the link (fail open)", async () => {
+  it("Instagram: a failed or timed-out profile check sends the way to book (fail open)", async () => {
     for (const [i, f] of (["error", "timeout"] as const).entries()) {
       follows = f;
       await post(tap("instagram", `F${i}`));
-      expect(bodyOf(sent().at(-1)), f).toBe(en().link);
+      expect(bodyOf(sent().at(-2)), f).toBe(en().guide);
     }
   });
 
-  it("Messenger: 'I've followed' sends the link straight away (the Page follow can't be checked); Hindi gets the Hindi link", async () => {
+  it("Messenger: 'I've followed' sends the way to book straight away, in one message with the questions; Hindi gets Hindi", async () => {
     await post(dm("messenger", "P1", "namaste ji"));
     await post(tap("messenger", "P1"));
     expect(profileCalls()).toHaveLength(0);
+    expect(sent()).toHaveLength(2);
     const m = sent().at(-1);
-    expect(bodyOf(m)).toBe(hi().link);
+    expect(bodyOf(m)).toBe(hi().guide);
     expect(buttonsOf(m)[0].title).toBe("WhatsApp पर बुक करें");
     expect(buttonsOf(m)[0].url).toContain(`?text=${encodeURIComponent("नमस्ते, मुझे ₹99 की कॉल बुक करनी है")}`);
+    expect(m.message.quick_replies).toHaveLength(4);
   });
 
-  it("after the link: one 'message us on WhatsApp' line a day, otherwise nothing", async () => {
+  it("after the follow, each question tapped gets one line and [Book on WhatsApp], once a day per question", async () => {
+    await post(tap("messenger", "P1"));
+    const before = sent().length;
+    for (const [i, t] of (["book", "price", "what", "how", "price"] as const).entries()) await post(qr("messenger", "P1", t, `qa${i}`));
+    const answers = sent().slice(before);
+    expect(answers.map(bodyOf)).toEqual([en().lines.book, en().lines.price, en().lines.what, en().lines.how]);
+    for (const a of answers) expect(buttonsOf(a)).toEqual([{ type: "web_url", url: WA_BOOK, title: "Book on WhatsApp" }]);
+    expect(en().lines.how).toContain("calls the number you book from on WhatsApp, at the time you pick");
+    // Instagram: the answer is the line and the button (quick replies only go on text there).
+    await post(tap("instagram", "U1"));
+    await post(qr("instagram", "U1", "how", "qa9"));
+    expect(bodyOf(sent().at(-1))).toBe(en().lines.how);
+    expect(sent().at(-1).message.quick_replies).toBeUndefined();
+  });
+
+  it("after the follow: one 'message us on WhatsApp' line a day for messages, otherwise nothing", async () => {
     await post(tap("messenger", "P1"));
     const before = sent().length;
     await post(dm("messenger", "P1", "thanks!"));
-    expect(bodyOf(sent().at(-1))).toBe(en().after(`https://wa.me/${config.businessNumber.replace(/\D/g, "")}?text=${encodeURIComponent("Hi, I'd like to book a ₹99 call")}`));
+    expect(bodyOf(sent().at(-1))).toBe(en().after(WA_BOOK));
     expect(bodyOf(sent().at(-1))).toMatch(/^For bookings and questions, message us on WhatsApp:\nhttps:\/\/wa\.me\/\d+\?text=.*\nWe reply there\.$/);
     await post(dm("messenger", "P1", "how much is it"));
     await post(tap("messenger", "P1"));
@@ -240,29 +300,35 @@ describe("POST /meta/webhook", () => {
     expect(sent()).toHaveLength(before + 2);
   });
 
-  it("at most 3 automated messages per person in 24 hours; the link itself still goes once", async () => {
-    for (const t of ["price?", "book a session", "where are you", "what is pranic healing"]) await post(dm("instagram", "U1", t));
+  it("at most 3 automated messages per person in 24 hours; the messages after the follow still go", async () => {
+    follows = false;
+    for (const [i, t] of ["price?", "book a session", "where are you", "what is pranic healing"].entries()) {
+      at(NOW + i * 11 * 60_000);
+      await post(dm("instagram", "U1", t));
+    }
     expect(sent()).toHaveLength(3);
     expect((await contact("instagram", "U1")).autos_today).toBe(3);
-    await post(tap("instagram", "U1"));
-    expect(sent()).toHaveLength(4);
-    expect(bodyOf(sent().at(-1))).toBe(en().link);
+    await post(tap("instagram", "U1")); // "not yet" is over the limit: nothing
+    expect(sent()).toHaveLength(3);
+    await post(tap("instagram", "U1")); // the second tap goes through, past the limit
+    expect(sent()).toHaveLength(5);
+    expect(bodyOf(sent().at(-2))).toBe(`${en().lines.price}\n\n${en().guide}`);
     await post(dm("instagram", "U1", "thanks"));
-    expect(sent()).toHaveLength(4); // the after-link line counts toward the limit
+    expect(sent()).toHaveLength(5); // the after-follow line counts toward the limit
     at(NOW + 25 * HOUR);
     await post(dm("instagram", "U1", "thanks"));
-    expect(sent()).toHaveLength(5);
+    expect(sent()).toHaveLength(6);
   });
 
-  it("the same follow ask is not repeated within 10 minutes, unless a question gets a line", async () => {
+  it("the same follow ask is not repeated within 10 minutes", async () => {
     await post(dm("instagram", "U1", "hi"));
     await post(dm("instagram", "U1", "hello?"));
-    expect(sent()).toHaveLength(1);
     await post(dm("instagram", "U1", "how much?"));
-    expect(sent()).toHaveLength(2);
+    expect(sent()).toHaveLength(1);
+    expect((await contact("instagram", "U1")).topic).toBe("price"); // a later question still sets the topic
     at(NOW + 11 * 60_000);
     await post(dm("instagram", "U1", "hi"));
-    expect(sent()).toHaveLength(3);
+    expect(sent()).toHaveLength(2);
   });
 
   it("spam links and promotions get the first follow ask at most, then nothing", async () => {
@@ -352,7 +418,7 @@ describe("POST /meta/webhook", () => {
     const t = tap("instagram", "U1");
     await post(t);
     await post(t);
-    expect(sent()).toHaveLength(2);
+    expect(sent()).toHaveLength(3); // the ask, then the guide and the questions
     expect(profileCalls()).toHaveLength(1);
   });
 
@@ -383,16 +449,37 @@ describe("POST /meta/webhook", () => {
     expect(bodyOf(sent().at(-1))).toBe(en().deleted);
   });
 
-  it("a crisis message gets the fixed safety message (no follow ask), a day's pause and an item for the owner", async () => {
+  it("a crisis message gets the WhatsApp bot's Tele-MANAS message (no follow ask), no selling for a week, an item and an email", async () => {
     await post(dm("instagram", "U1", "I want to die"));
     expect(sent()).toHaveLength(1);
+    expect(bodyOf(sent()[0])).toBe(allCopy.en.crisis.replaceAll("*", ""));
     expect(bodyOf(sent()[0])).toContain("14416");
-    expect(bodyOf(sent()[0])).not.toContain("*");
-    expect((await contact("instagram", "U1")).paused_until).not.toBeNull();
+    expect(Date.parse((await contact("instagram", "U1")).paused_until)).toBe(NOW + config.safety.noSellDays * 24 * HOUR);
     const item = await db.prepare("SELECT kind, target FROM attention").first<Json>();
     expect(item.kind).toBe("SOCIAL_SAFETY");
     expect(item.target).toMatch(/^instagram:[0-9a-f]{12}$/);
+    expect(emails).toHaveLength(1);
+    expect(emails[0]).toMatchObject({ to: "owner@example.invalid", subject: "Urgent: crisis message on Instagram" });
+    expect(emails[0].text).not.toMatch(/want to die|U1/);
+    at(NOW + 2 * 24 * HOUR);
     await post(dm("instagram", "U1", "hi"));
+    expect(sent()).toHaveLength(1);
+    // A second crisis message still gets the safety message, but no second item or email.
+    await post(dm("instagram", "U1", "I want to die"));
+    expect(sent()).toHaveLength(2);
+    expect(emails).toHaveLength(1);
+    // Even while SENDS is paused in /admin (never when the env flag is off).
+    await db.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('SENDS', 'false', '2026-10-30T00:00:00Z')").run();
+    await post(dm("messenger", "P9", "मरना चाहता हूँ"));
+    expect(bodyOf(sent().at(-1))).toBe(allCopy.hi.crisis.replaceAll("*", ""));
+  });
+
+  it("an emergency gets the 112 / 108 message and a day's pause, no email; a crisis comment gets no private reply", async () => {
+    await post(dm("messenger", "P1", "my father is having a stroke"));
+    expect(bodyOf(sent()[0])).toBe(allCopy.en.emergency.replaceAll("*", ""));
+    expect(Date.parse((await contact("messenger", "P1")).paused_until)).toBe(NOW + 24 * HOUR);
+    expect(emails).toHaveLength(0);
+    await post({ object: "instagram", entry: [{ id: "IG1", changes: [{ field: "comments", value: { from: { id: "AUTH1" }, id: "cx1", text: "I want to end my life", media: { id: "M1" } } }] }] });
     expect(sent()).toHaveLength(1);
   });
 
@@ -409,12 +496,12 @@ describe("POST /meta/webhook", () => {
 
   it("every button title is at most 20 characters and every text fits Meta's limits, in both languages", () => {
     for (const w of [en(), hi()]) {
-      for (const t of [...Object.values(w.btnVisit), ...Object.values(w.btnFollowing), w.btnBook]) expect(t.length, t).toBeLessThanOrEqual(20);
-      for (const line of Object.values(w.lines)) expect(`${line}\n\n${w.ask}`.length).toBeLessThanOrEqual(640);
-      for (const t of [w.notYet, w.link]) expect(t.length).toBeLessThanOrEqual(640);
+      for (const t of [...Object.values(w.btnVisit), ...Object.values(w.btnFollowing), w.btnBook, ...Object.values(w.qrTitles)]) expect(t.length, t).toBeLessThanOrEqual(20);
+      for (const line of Object.values(w.lines)) expect(`${line}\n\n${w.guide}`.length).toBeLessThanOrEqual(640);
+      for (const t of [w.ask, w.notYet, w.questions]) expect(t.length).toBeLessThanOrEqual(640);
       expect(new TextEncoder().encode(w.after("https://wa.me/1?text=" + "x".repeat(120))).length).toBeLessThan(1000);
       // No phone number anywhere except inside the wa.me link.
-      for (const t of [w.ask, w.notYet, w.link, w.deleted, ...Object.values(w.lines)]) expect(t).not.toMatch(/\d{6,}|\+91/);
+      for (const t of [w.ask, w.notYet, w.guide, w.questions, w.deleted, ...Object.values(w.lines)]) expect(t).not.toMatch(/\d{6,}|\+91/);
     }
   });
 });
@@ -468,7 +555,7 @@ describe("comments: a private reply starts the same flow", () => {
     expect(row).toMatchObject({ step: "ASKED", commenter_id: "AUTH1", autos_today: 1 });
     // ... and the flow goes on from their tap.
     await post(tap("instagram", "IGSID1"));
-    expect(bodyOf(sent().at(-1))).toBe(en().link);
+    expect(bodyOf(sent().at(-2))).toBe(`${en().lines.what}\n\n${en().guide}`); // the comment's topic, answered after the follow
     // No comment text, username or name is kept.
     const dump = JSON.stringify([...(await db.prepare("SELECT * FROM social_contacts").all()).results, ...(await db.prepare("SELECT * FROM social_seen").all()).results]);
     for (const t of ["Lovely", "some_user", "Some Name"]) expect(dump).not.toContain(t);
@@ -482,6 +569,7 @@ describe("comments: a private reply starts the same flow", () => {
     expect(sent()).toHaveLength(1);
     at(NOW + 30 * 60_000);
     commentRecipient = "IGSID1";
+  emails = [];
     await post(igComment("AUTH1", "MEDIA2"));
     expect(sent()).toHaveLength(2);
     await post(igComment("AUTH2", "MEDIA1"));
@@ -530,7 +618,7 @@ describe("comments: a private reply starts the same flow", () => {
     expect(bodyOf(m)).toBe(hi().ask);
     expect((await contact("messenger", "PSID1"))).toMatchObject({ commenter_id: "AUTH1", lang: "hi", step: "ASKED" });
     await post(tap("messenger", "PSID1"));
-    expect(bodyOf(sent().at(-1))).toBe(hi().link);
+    expect(bodyOf(sent().at(-1))).toBe(`${hi().lines.price}\n\n${hi().guide}`);
   });
 
   it("Instagram: if the buttons are refused in a private reply, the ask goes as text, and a typed 'following' counts as the tap", async () => {
@@ -540,7 +628,7 @@ describe("comments: a private reply starts the same flow", () => {
     expect(m.message.text).toBe(`${en().ask}\n\n${config.social.instagramUrl}\n${en().typeFollowing}`);
     await post(dm("instagram", "IGSID1", "Following!"));
     expect(profileCalls()).toHaveLength(1);
-    expect(bodyOf(sent().at(-1))).toBe(en().link);
+    expect(bodyOf(sent().at(-2))).toBe(en().guide);
   });
 
   it("the public answer under the comment is off by default; when on, it goes after the private reply, in their language", async () => {

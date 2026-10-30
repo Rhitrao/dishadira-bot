@@ -57,7 +57,7 @@ describe("config", () => {
   });
 
   it("names every required secret", () => {
-    expect(SECRET_NAMES).toHaveLength(17);
+    expect(SECRET_NAMES).toHaveLength(18);
   });
 
   it("Razorpay's secrets are the payment secrets, and the provider config is complete", () => {

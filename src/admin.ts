@@ -89,7 +89,7 @@ const WORDS: Record<string, string> = {
   REFUND_NOT_STARTED: "Razorpay did not take a 'not right fit' refund yet. The system keeps retrying; the customer is told only once it goes through.",
   [HOLIDAY_ITEM]: "A day was marked as a holiday, but calls or sessions were already booked on it. They were not cancelled and nobody was messaged.",
   // ticket 32
-  SOCIAL_SAFETY: "Someone wrote on Instagram or Messenger something that may mean a crisis or a medical emergency. The bot sent the fixed safety message (helpline, 112) and stays quiet in that chat for a day. The bot keeps no message text: read today's messages in the Instagram or Page inbox.",
+  SOCIAL_SAFETY: "Someone wrote on Instagram or Messenger something that may mean a crisis or a medical emergency. The bot sent the fixed safety message (helpline, 112) and stays quiet in that chat (a week after a crisis message, a day after an emergency; a crisis also emails the safety contact). The bot keeps no message text: read today's messages in the Instagram or Page inbox.",
 };
 const REPLY_KINDS = ["CRISIS", "EMERGENCY", "FREE_TEXT", "HUMAN_REQUEST", "MEDIA_FROM_CUSTOMER", "OUTSIDE_WINDOW", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION", "LATE_PAYMENT_NO_SLOT", "NO_FREE_TIMES"];
 const REFUND_KINDS = ["LATE_PAYMENT_NO_SLOT", "PAYMENT_MISMATCH", "DUPLICATE_PAYMENT", "REFUND_FAILED", "REFUND_STUCK", "OUTCOME_FAILED", "NOT_FIT_REFUND_REFUSED", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION"];
