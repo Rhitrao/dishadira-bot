@@ -88,6 +88,8 @@ const WORDS: Record<string, string> = {
   NO_PHONE: "Someone wrote from a WhatsApp username without a phone number. The bot cannot answer them yet (see STATUS: usernames), so nothing was sent.",
   REFUND_NOT_STARTED: "Razorpay did not take a 'not right fit' refund yet. The system keeps retrying; the customer is told only once it goes through.",
   [HOLIDAY_ITEM]: "A day was marked as a holiday, but calls or sessions were already booked on it. They were not cancelled and nobody was messaged.",
+  // ticket 32
+  SOCIAL_SAFETY: "Someone wrote on Instagram or Messenger something that may mean a crisis or a medical emergency. The bot sent the fixed safety message (helpline, 112) and stays quiet in that chat (a week after a crisis message, a day after an emergency; a crisis also emails the safety contact). The bot keeps no message text: read today's messages in the Instagram or Page inbox.",
 };
 const REPLY_KINDS = ["CRISIS", "EMERGENCY", "FREE_TEXT", "HUMAN_REQUEST", "MEDIA_FROM_CUSTOMER", "OUTSIDE_WINDOW", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION", "LATE_PAYMENT_NO_SLOT", "NO_FREE_TIMES"];
 const REFUND_KINDS = ["LATE_PAYMENT_NO_SLOT", "PAYMENT_MISMATCH", "DUPLICATE_PAYMENT", "REFUND_FAILED", "REFUND_STUCK", "OUTCOME_FAILED", "NOT_FIT_REFUND_REFUSED", "AMMA_AWAY_CALL", "AMMA_AWAY_SESSION"];
@@ -145,7 +147,7 @@ const TITLE: Record<string, string> = {
   MANUAL_REFUND: "Refund to pay by hand", CANCEL_REFUND_FAILED: "Cancelled session: refund did not start", CANCEL_NO_PAYMENT: "Cancelled session: no payment found",
   PAID_NO_PACKAGE: "Package payment, package missing", PAID_PACKAGE_NOT_BOOKABLE: "Package payment for a closed package",
   THREAT: "Threatening message", NO_FREE_TIMES: "Wanted to book: no free times", NO_PHONE: "Wrote without a phone number", REFUND_NOT_STARTED: "Refund not taken by Razorpay yet",
-  [HOLIDAY_ITEM]: "Bookings on a holiday",
+  [HOLIDAY_ITEM]: "Bookings on a holiday", SOCIAL_SAFETY: "Safety message on Instagram or Messenger",
 };
 const TODO: Record<string, string> = {
   CRISIS: "Write to them yourself now. Tap Done once you have.",
@@ -164,10 +166,11 @@ const TODO: Record<string, string> = {
   NO_FREE_TIMES: "Open more times, or message them once a time is free, then tap Done.",
   REFUND_NOT_STARTED: "Check the refund in Razorpay; tap Done once it has gone through.",
   [HOLIDAY_ITEM]: "Move each booking from the person's page (see Days off), then tap Done.",
+  SOCIAL_SAFETY: "Open the Instagram or Page inbox, write to them yourself, then tap Done.",
 };
 const MONEY_KINDS = new Set([...REFUND_KINDS, "REFUND_NOT_STARTED", "MANUAL_REFUND", "RUDE_REFUND_APPROVAL", "PARTIAL_PAYMENT", "UNSUPPORTED_PAYMENT", "UNKNOWN_PAYMENT_LINK", "NOT_FIT_NO_PAYMENT", "CANCEL_REFUND_FAILED", "CANCEL_NO_PAYMENT", "PAID_NO_PACKAGE", "PAID_PACKAGE_NOT_BOOKABLE"]);
 // 0: someone may be in danger, 1: someone is waiting for a person, 2: money, 3: everything else.
-const rank = (kind: string) => (kind === "CRISIS" || kind === "EMERGENCY" || kind === "THREAT" ? 0 : kind === "HUMAN_REQUEST" ? 1 : MONEY_KINDS.has(kind) ? 2 : 3);
+const rank = (kind: string) => (kind === "CRISIS" || kind === "EMERGENCY" || kind === "THREAT" || kind === "SOCIAL_SAFETY" ? 0 : kind === "HUMAN_REQUEST" ? 1 : MONEY_KINDS.has(kind) ? 2 : 3);
 const toneOf = (kind: string): Tone => (rank(kind) === 0 ? "red" : rank(kind) <= 2 ? "amber" : "");
 export const sortItems = <T extends { kind: string; id: number }>(items: T[]) => [...items].sort((a, b) => rank(a.kind) - rank(b.kind) || a.id - b.id);
 const titleOf = (kind: string) => TITLE[kind] ?? kind.charAt(0) + kind.slice(1).toLowerCase().replaceAll("_", " ");

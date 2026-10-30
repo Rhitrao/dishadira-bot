@@ -44,6 +44,11 @@ describe("wrangler environments", () => {
     // Exactly the three sections set it (no fourth environment, no second line that could win).
     expect(wrangler.match(/^CONSOLE_V2\s*=/gm)?.length).toBe(3);
   });
+  it("SOCIAL_REPLIES (Instagram / Messenger, ticket 32) is \"false\" at the top level; test and live are a plain true or false", () => {
+    expect(value(section("vars"), "SOCIAL_REPLIES")).toBe("false");
+    for (const name of ["env.test.vars", "env.live.vars"]) expect(["true", "false"], name).toContain(value(section(name), "SOCIAL_REPLIES"));
+    expect(wrangler.match(/^SOCIAL_REPLIES\s*=/gm)?.length).toBe(3);
+  });
   it("chat text is wiped after 7 days on live and at the top level, after 10 minutes on test", () => {
     expect(value(section("vars"), "CHAT_RETENTION_MINUTES")).toBe("10080");
     expect(value(section("env.live.vars"), "CHAT_RETENTION_MINUTES")).toBe("10080");

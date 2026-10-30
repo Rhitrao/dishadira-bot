@@ -121,7 +121,7 @@ export async function gate(env: Env, conv: GateConv, message: GateMessage, nowMs
 // The rule-based stand-in for the AI's label (ticket 14 replaces it when AI_REPLIES is on): from the config word lists.
 // Ticket 31 (I1, I16): threats count as abuse (a strike, no reply; src/whatsapp.ts also raises an urgent THREAT item), promotions and scams
 // are spam even without a link, and influencing or harming another person is prohibited_request (a strike and one firm line).
-const LINK = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|in|net|org|io|me|co|xyz|info|link)\b/i;
+export const LINK = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|in|net|org|io|me|co|xyz|info|link)\b/i;
 export const isThreat = (text: string) => hasPhrase(text, config.noise.threatWords);
 export const isJobText = (text: string) => hasPhrase(text, config.noise.jobWords);
 export function classifyWithoutAI(text: string): Extract<Label, "spam_or_promo" | "flirt_or_sexual" | "abuse" | "prohibited_request"> | "TO_CLASSIFIER" {

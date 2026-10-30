@@ -324,6 +324,43 @@ export const config = {
       ],
     },
   },
+  // Automatic replies to Instagram DMs and Facebook Messenger (ticket 32, src/social.ts), behind SOCIAL_REPLIES. Public addresses only.
+  social: {
+    instagramUrl: "https://www.instagram.com/disha_dira/", // the "Visit profile" button on Instagram
+    facebookPageUrl: "https://www.facebook.com/profile.php?id=61588921902210", // the [Open our Page] button on Messenger (the Page's public address); empty: https://www.facebook.com/<META_PAGE_ID>
+    contactEmail: "dishadirahealing@gmail.com", // the contact address on the website's privacy page, for the data deletion page
+    maxAutosPerDay: 3, // automated messages to one person in 24 hours, at most (the WhatsApp link itself always goes, once)
+    nudgeEveryHours: 24, // after the link: "message us on WhatsApp" at most this often, otherwise nothing
+    restartAfterDays: 30, // no message from them for this long: the flow starts again
+    pauseHours: 24, // a person from the team wrote by hand (or a safety message went): no automation in that chat for this long
+    repeatAskMinutes: 10, // the same follow ask is not sent again within this long (unless a question got an answer line)
+    ownEchoSeconds: 60, // an Instagram echo this soon after our own send is ours (its id may not be stored yet)
+    graphTimeoutMs: 2500, // per Graph call; Meta answers in well under a second, and wants the webhook's 200 within 5 seconds
+    keepSeenDays: 7, // message ids kept for dedupe (a "one private reply per commenter per post" key: forgetAfterDays)
+    publicReply: false, // also answer a comment in public ("Sent you a DM 🙏") after its private reply; the owner may turn it on
+    forgetAfterDays: 90, // a person's row is deleted this long after their last message
+    // Roman Hindi words that make a message Hindi (Devanagari always does). Whole words, after normalising.
+    hinglish: [
+      "kya", "hai", "hain", "kitna", "kitne", "kitni", "kaise", "kahan", "kaha", "kab", "aap", "aapka", "aapki", "mujhe", "mera", "meri", "mere", "karna", "karni",
+      "chahiye", "batao", "bataiye", "bataye", "haan", "nahi", "nahin", "hoga", "hota", "mein", "liye", "kripya", "dhanyavad", "shukriya", "ji", "bhai", "didi",
+    ],
+    // Typed instead of tapping "I'm following" (a short message, at the follow ask): counts as the tap.
+    followedWords: ["following", "followed", "i'm following", "im following", "i am following", "i followed", "i have followed", "follow kiya", "follow kar liya",
+      "follow kar diya", "फ़ॉलो किया", "फॉलो किया", "फ़ॉलो कर लिया", "फॉलो कर लिया", "फ़ॉलो कर दिया", "फॉलो कर दिया"],
+    // The topic of their first message (a code, never the text), answered in one line once they follow. Tried in this order; the first
+    // match wins. A message that names an illness (config.router.topics.medical) gets no topic: no medical answer, only the way to book.
+    keywords: {
+      price: ["price", "prices", "pricing", "cost", "costs", "fee", "fees", "charge", "charges", "how much", "rate", "rates", "kitna", "kitne", "kitni", "paise", "kitne ka",
+        "कितना", "कितने", "कितनी", "फ़ीस", "फीस", "कीमत", "दाम", "शुल्क"],
+      refund: ["refund", "refunds", "money back", "paisa wapas", "paise wapas", "रिफंड", "रिफ़ंड", "पैसे वापस"],
+      how: ["how does the call work", "how the call works", "how is the call", "what happens on the call", "what happens in the call", "call kaise", "कॉल कैसे"],
+      book: ["book", "booking", "appointment", "session", "sessions", "slot", "slots", "consult", "consultation", "बुक", "बुकिंग", "अपॉइंटमेंट", "सेशन"],
+      where: ["where", "address", "location", "located", "in person", "visit", "kahan", "kaha", "dubai", "uae", "abroad", "outside india", "another country", "usa", "uk",
+        "canada", "australia", "singapore", "online", "by phone", "on phone", "phone pe", "phone par", "कहाँ", "कहां", "पता", "विदेश", "दुबई"],
+      what: ["what is pranic", "what is pranic healing", "what is this", "how does it work", "how it works", "how does pranic", "pranic healing kya", "kya hai",
+        "kaise kaam", "क्या है", "कैसे काम", "प्राणिक हीलिंग क्या"],
+    },
+  },
 } as const;
 
 export type Config = typeof config;
