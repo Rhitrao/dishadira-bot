@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-29 (Ticket 31: fixes from the launch simulations)
+Updated: 2026-10-30 (Ticket 32: Instagram and Messenger replies)
 
 ## Payment provider
 Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
@@ -14,6 +14,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - Privacy page wording (docs/KNOWLEDGE.md §10). Confirm "Energy cleansing" as the customer-facing name for PROTECTION.
 - Submit Hindi versions of the 5 utility templates to Meta.
 - Amma reads docs/KNOWLEDGE.md and the Hindi copy.
+- Website privacy page: mention Instagram and Messenger replies (wording in docs/SOCIAL.md "Also needed"); turn off the Business Suite instant reply once the bot answers there.
 
 ## Owner setup
 - [x] Domain disha-dira.com registered (Hostinger), moving DNS to Cloudflare
@@ -53,6 +54,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 29 Payment links that always open the payment page (our own /p/ link; PR https://github.com/Rhitrao/dishadira-bot/pull/44)
 - [ ] 30 Six booking days Mon–Sat, holidays, "she calls you" and "call me" (no migration; PR https://github.com/Rhitrao/dishadira-bot/pull/45)
 - [ ] 31 Fixes from the launch simulations (PR https://github.com/Rhitrao/dishadira-bot/pull/46; merged with Ticket 30)
+- [ ] 32 Instagram and Messenger DM and comment replies (migration 0012, SOCIAL_REPLIES "false"; PR: see the branch `t32-social-dms`)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
@@ -92,6 +94,15 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
 5. [ ] From your own phone: choose a language, then type a question ("what is pranic healing?"). You get one message back. Try the cases in `test/agent-evals/cases.json`: a worry about stress, a refund, "Saturday please" at the day buttons, a rude message, "I feel hopeless". The 9pm digest has an "Assistant" section (answers written, replies replaced by the output check, calls that failed).
 6. [ ] Add the GitHub secret `ANTHROPIC_API_KEY` (repository Settings → Secrets and variables → Actions) and run **Actions → Assistant eval** (manual). It runs the 63 cases the assistant decides against the real model, never sends anything to WhatsApp, and writes a table plus tokens and cost per call to the job summary. Bar: 95% of labels right, every safety case right, no banned word. **The cost per reply was not measured in this session (no key here); the first run of the eval gives it.**
 7. [ ] Shadow week on the test number: read every reply. Amma reads `docs/KNOWLEDGE.md` and the Hindi messages. Only then think about live.
+
+## Session notes (Ticket 32: Instagram and Messenger replies)
+- Why: the owner wants free automatic replies on Instagram (@disha_dira) and Messenger (the Page "Disha Dira Pranic Healing"), and to comments, instead of ManyChat: follow first, then the way to book on WhatsApp.
+- What changed: new `src/social.ts` (webhook `GET/POST /meta/webhook`, the flow, the Send API, the Instagram follow check, comment private replies, the clean-up job, `GET /data-deletion`); `migrations/0012_social.sql` (`social_contacts`, `social_seen`); `config.social` (links, contact email from the website privacy page, limits, keywords, Roman Hindi words); `SOCIAL_REPLIES` flag ("false" at the top level, test and live; release test); five secret names (`META_VERIFY_TOKEN`, `META_PAGE_TOKEN`, `META_PAGE_ID`, `META_IG_ID`, `META_APP_SECRET` optional, falls back to `WA_APP_SECRET`); `validSignature` (src/whatsapp.ts) and `LINK` (src/gate.ts) exported, no behaviour change; a SOCIAL_SAFETY item kind in /admin and the digest; docs/SOCIAL.md; Ticket 32 in tickets.md.
+- The flow is the owner's order of 30 Oct 2026, 16:21: every first DM or comment gets only the follow ask; the topic of the first message (price, refund, how the call works, booking, where/abroad, what it is) is kept as a code and answered in one line after the follow, then the guide with [Book on WhatsApp] and four quick replies. Messages naming an illness get no topic. Crisis words: the WhatsApp Tele-MANAS message, an item and an email, no selling for a week (config.safety.noSellDays).
+- Choices to review: the messages after the follow (topic line, guide, quick-reply answers, each question once a day) go past the 3-a-day limit, so nobody who followed is left without the way to book; the follow ask is not repeated within 10 minutes; on Instagram the guide is two messages (quick replies only go on text there); the post-link line puts the link on its own line instead of "<link>. We reply there."; the quick reply "What is Pranic Healing?" is "About Pranic Healing" (20-character limit; Hindi "प्राणिक हीलिंग"); "delete my data" in the chat deletes the person's row at once (for the deletion page); typed "following" counts as the tap (for a private reply that had to go as text).
+- Checks run: see the PR (typecheck, every test file one at a time, `wrangler deploy --dry-run --env live`).
+- Open questions for Rohit: (1) does Standard Access reach the public for an app in the Page's own portfolio? Meta's overview pages say yes, the Send API / webhooks / private-reply pages say only people with a role; test with a friend (docs/SOCIAL.md); (2) whether @disha_dira is in the practitioner's portfolio; (3) whether the Page comment webhooks (`feed`) carry the commenter's id with the permissions we have (if not, Facebook comments are skipped, Instagram is unaffected); (4) whether Instagram takes a button template in a private reply (if not, the bot sends the same ask as text).
+- Next step: merge, Deploy → test, then live (SOCIAL_REPLIES stays "false"), follow docs/SOCIAL.md, test with your own account and a friend without a role, then flip SOCIAL_REPLIES on live. Update the website privacy page (docs/SOCIAL.md "Also needed").
 
 ## Session notes (Ticket 31: fixes from the launch simulations)
 - Why: a QA run (29 Oct 2026) simulated 84 launch-day scenarios against main with the live flags (AI_REPLIES "false", SENDS "true", NEW_BOOKINGS "true", no template approved): 54% passed; 4 BROKEN, 35 ISSUE. This ticket fixes them in the report's order. Ticket 30 (day list, Mon–Sat hours, holidays, the call wording without a number, "call me" replies) was built at the same time on `t30-days-holidays`; none of that is here, and new strings sit at the ends of their blocks.

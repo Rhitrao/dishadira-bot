@@ -612,10 +612,10 @@ h1{font-size:24px;line-height:1.3;margin:0 0 12px}h2{font-size:19px;margin:20px 
 .btn{display:flex;align-items:center;justify-content:center;min-height:52px;padding:12px 20px;border-radius:12px;background:var(--accent);color:var(--accent-ink);font-weight:600;text-decoration:none;margin-top:8px}
 </style></head><body><main><div class="card">
 <h1>Delete your data</h1>
-<p>Disha Dira Pranic Healing answers Instagram and Facebook Messenger messages automatically, to send you the link to book on WhatsApp.</p>
+<p>Disha Dira Pranic Healing answers Instagram and Facebook Messenger messages, and comments on our posts, automatically, to send you the link to book on WhatsApp.</p>
 <h2>What we keep</h2>
 <ul><li>The id that Instagram or Facebook gives us for you (not your name or username).</li><li>Your language (English or Hindi) and which reply you have had.</li><li>The times of your last message and of our replies.</li></ul>
-<p>We do not keep the text of your messages. Message ids are kept for ${config.social.keepSeenDays} days, only so the same message is not answered twice. Everything is deleted ${config.social.forgetAfterDays} days after your last message.</p>
+<p>We do not keep the text of your messages or comments. Message ids are kept for ${config.social.keepSeenDays} days, and the ids of posts you commented on for ${config.social.forgetAfterDays} days, only so nothing is answered twice. Everything is deleted ${config.social.forgetAfterDays} days after your last message.</p>
 <h2>How to delete it now</h2>
 <ul><li>Send <b>delete my data</b> to us in the same Instagram or Messenger chat. It is deleted at once, and you get a short reply to say so.</li>
 <li>Or email <a href="mailto:${email}">${email}</a>, or message us on WhatsApp, and say which account (Instagram or Facebook) you wrote from. We delete it within 7 working days and tell you when it is done.</li></ul>
