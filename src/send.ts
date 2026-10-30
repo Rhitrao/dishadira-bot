@@ -145,8 +145,8 @@ export async function sendMessage(env: Env, conversationId: number, out: Out, de
   const payload = buildPayload(out, conv.wa_id, conv.locale); // throws on bad shape, before anything is stored
 
   const ins = await db
-    .prepare("INSERT OR IGNORE INTO messages (conversation_id, direction, dedupe_key, kind, body) VALUES (?1, 'OUT', ?2, ?3, ?4)")
-    .bind(conversationId, dedupeKey, out.type, summary(out))
+    .prepare("INSERT OR IGNORE INTO messages (conversation_id, direction, dedupe_key, kind, body, created_at) VALUES (?1, 'OUT', ?2, ?3, ?4, ?5)")
+    .bind(conversationId, dedupeKey, out.type, summary(out), nowIso()) // the Worker's clock, like the IN rows' times (src/whatsapp.ts)
     .run();
   let id = ins.meta.last_row_id;
   if (!ins.meta.changes) {

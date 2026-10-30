@@ -5,6 +5,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { config } from "./config";
 import type { Copy } from "./copy";
 import type { Env } from "./env";
+import { hasPhrase, normalize } from "./safety";
 import { sendMessage, type Out, type SendResult } from "./send";
 import { iso } from "./slots";
 
@@ -58,3 +59,81 @@ export const repromptHelpOut = (cp: Copy): Out => ({ type: "buttons", body: cp.r
 
 export const noteReprompt = (db: D1Database, convId: number) => db.prepare("UPDATE conversations SET pending_reprompts = pending_reprompts + 1 WHERE id = ?1 RETURNING pending_reprompts AS n").bind(convId).first<{ n: number }>();
 export const resetReprompts = (db: D1Database, convId: number) => db.prepare("UPDATE conversations SET pending_reprompts = 0 WHERE id = ?1 AND pending_reprompts > 0").bind(convId).run();
+
+// ---- typed answers to an open step (ticket 31, I8) ----
+// "yes", "haan", "ok", "1", the button's own words, "English" / "hindi", "tomorrow", "4 pm" / "4 baje": understood as the tap they mean,
+// when exactly one option fits. Only buttons and list rows (the pay step's link button has nothing to choose). The word lists are
+// config.router.stepWords; a message longer than stepWords.maxWords is never read as a tap (it is a question).
+const W = config.router.stepWords;
+const IST_MS = 330 * 60_000;
+const ID_GROUPS: [RegExp, readonly string[]][] = [
+  [/^age_yes/, W.yes], [/^age_no/, W.no], [/^lang_en$/, W.en], [/^lang_hi$/, W.hi],
+  [/_SELF$/, W.self], [/_FAMILY$/, W.family], [/_PET$/, W.pet], [/_HEALING$/, W.healing], [/_PROTECTION$/, W.cleansing],
+];
+
+function dayWords(ymd: string, nowMs: number): string[] {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const out: string[] = [...W.weekdays[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]];
+  const today = new Date(nowMs + IST_MS).toISOString().slice(0, 10);
+  const tomorrow = new Date(nowMs + IST_MS + 86_400_000).toISOString().slice(0, 10);
+  if (ymd === today) out.push(...W.today);
+  if (ymd === tomorrow) out.push(...W.tomorrow);
+  return out;
+}
+
+// Clock times a short message names: "4", "4 pm", "4:30", "4.30 baje", "शाम 4". A bare hour may be morning or afternoon.
+function timesIn(text: string): { h: number[]; m: number }[] {
+  const out: { h: number[]; m: number }[] = [];
+  for (const x of text.toLowerCase().matchAll(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|a\.m\.|pm|p\.m\.)?/g)) {
+    const h = Number(x[1]);
+    const m = Number(x[2] ?? 0);
+    if (h < 1 || h > 23 || m > 59) continue;
+    const pm = x[3]?.startsWith("p");
+    const am = x[3]?.startsWith("a");
+    out.push({ h: h > 12 ? [h] : pm ? [(h % 12) + 12] : am ? [h % 12] : [h % 12, (h % 12) + 12], m });
+  }
+  return out;
+}
+
+export function typedChoice(open: OpenStep, text: string, nowMs = Date.now()): string | null {
+  const out = open.out;
+  const opts = out.type === "buttons" ? out.buttons : out.type === "list" ? (out.sections?.flatMap((s) => s.rows) ?? out.rows ?? []) : [];
+  const t = normalize(text);
+  if (!opts.length || !t || t.split(" ").length > W.maxWords) return null;
+  const one = (ids: string[]) => (ids.length === 1 ? ids[0] : null);
+  // 1. The option's own words ("Healing", "Family member", "Another day").
+  const own = one(opts.filter((o) => normalize(o.title) === t).map((o) => o.id));
+  if (own) return own;
+  // 2. A time on the time step ("4 pm", "4 baje"): the row with that clock time.
+  const times = timesIn(text);
+  const timeRows = opts.map((o) => ({ id: o.id, utc: /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$/.exec(o.id)?.[1] })).filter((o) => o.utc);
+  if (timeRows.length && times.length === 1) {
+    const hit = one(
+      timeRows
+        .filter((o) => {
+          const d = new Date(Date.parse(o.utc!) + IST_MS);
+          return times[0].h.includes(d.getUTCHours()) && times[0].m === d.getUTCMinutes();
+        })
+        .map((o) => o.id),
+    );
+    if (hit) return hit;
+  }
+  // 3. A number: the n-th option ("1" for the first button).
+  if (/^\d{1,2}$/.test(t)) return opts[Number(t) - 1]?.id ?? null;
+  // 4. Words that mean an option: yes / no, the language, who it is for, the service, a day.
+  const means = opts.filter((o) => {
+    const group = ID_GROUPS.find(([re]) => re.test(o.id))?.[1];
+    if (group && hasPhrase(text, group)) return true;
+    const ymd = /_(\d{4}-\d{2}-\d{2})$/.exec(o.id)?.[1];
+    return ymd !== undefined && hasPhrase(text, dayWords(ymd, nowMs));
+  });
+  return one(means.map((o) => o.id));
+}
+
+// The open step again with a line above it (an answer from src/router.ts), or null when it would not fit WhatsApp's 1024 characters.
+export function stepWithLine(open: OpenStep, line: string): Out | null {
+  const out = open.out;
+  if (out.type === "template" || out.type === "text") return null;
+  const body = `${line}\n\n${out.body}`;
+  return body.length <= config.whatsapp.buttonBodyMax ? { ...out, body } : null;
+}

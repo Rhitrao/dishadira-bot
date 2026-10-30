@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { D1Database } from "@cloudflare/workers-types";
 import app from "../src/index";
 import { config } from "../src/config";
+import { allCopy } from "../src/copy";
 import { sendMessage } from "../src/send";
 import { newDb } from "./db";
 
@@ -147,7 +148,7 @@ describe("POST /wa/webhook", () => {
     fetchMock.mockClear();
 
     await post(button("wamid.E2", "menu_book"));
-    expect(sent()[0].text.body).toBe("Booking opens soon.");
+    expect(sent()[0].interactive.body.text).toBe(allCopy.en.bookSoon); // with Talk to a person and Help (ticket 31)
     expect(await count("SELECT COUNT(*) n FROM attention")).toBe(0);
     fetchMock.mockClear();
 
@@ -164,19 +165,20 @@ describe("POST /wa/webhook", () => {
     expect(await count("SELECT COUNT(*) n FROM attention")).toBe(0);
   });
 
-  it("free text -> one reply and one attention item; repeats within 24h get neither again", async () => {
+  it("free text with no fixed answer -> the 'booking assistant' line with the menu, no item, no promise; a repeat soon after gets nothing (ticket 31)", async () => {
     await post(text("wamid.F0"));
     await post(button("wamid.F1", "lang_en"));
     fetchMock.mockClear();
 
-    await post(text("wamid.F2", "can you help me with my problem")); // ("can you call me" now gets the call-request line, ticket 30: test/days.test.ts)
+    await post(text("wamid.F2", "can you sing a song about my problem"));
     expect(sent()).toHaveLength(1);
-    expect(sent()[0].text.body).toBe("Thanks, a person will reply within 24 hours.");
-    expect(await count("SELECT COUNT(*) n FROM attention WHERE kind = 'FREE_TEXT' AND resolved_at IS NULL")).toBe(1);
+    expect(sent()[0].interactive.body.text).toBe(allCopy.en.ack);
+    expect(sent()[0].interactive.body.text).not.toContain("24 hours");
+    expect(await count("SELECT COUNT(*) n FROM attention")).toBe(0);
 
     await post(text("wamid.F3", "is anyone there"));
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(await count("SELECT COUNT(*) n FROM attention")).toBe(1);
+    expect(await count("SELECT COUNT(*) n FROM attention")).toBe(0);
   });
 
   it("status webhooks update the outbound row and create nothing else", async () => {
@@ -255,7 +257,7 @@ describe("messages written while SENDS was off (ticket 10, step 0)", () => {
     expect(greetings()).toHaveLength(1);
   });
 
-  it("the free-text acknowledgement skipped while SENDS was off is sent once it is back on, then once per 24h", async () => {
+  it("the 'booking assistant' line skipped while SENDS was off is sent once it is back on, then not again for a while (ticket 31)", async () => {
     await post(text("wamid.A0")); // greeting, delivered
     await post(button("wamid.A00", "lang_en")); // language chosen: no booking step is open, so typed text gets the acknowledgement
     fetchMock.mockClear();
@@ -265,7 +267,7 @@ describe("messages written while SENDS was off (ticket 10, step 0)", () => {
 
     sends = "true";
     await post(text("wamid.A2", "my question again"));
-    const acks = () => sent().filter((b) => b.type === "text");
+    const acks = () => sent().filter((b) => b.interactive?.body?.text === allCopy.en.ack);
     expect(acks()).toHaveLength(1);
     await post(text("wamid.A3", "and again"));
     expect(acks()).toHaveLength(1);
@@ -370,8 +372,8 @@ describe("session offer follow-up", () => {
     fetchMock.mockClear();
     await post(text("wamid.G1", "hello, can you help me"));
     expect(lists()).toHaveLength(0);
-    expect(await count("SELECT COUNT(*) n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(1);
-    expect(sent()[0].text.body).toBeTruthy();
+    expect(await count("SELECT COUNT(*) n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(0); // no item since ticket 31
+    expect(sent()[0].interactive.body.text).toBeTruthy();
   });
 
   it("an offer for someone else is not used", async () => {

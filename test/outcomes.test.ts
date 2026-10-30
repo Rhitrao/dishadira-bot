@@ -161,7 +161,7 @@ describe("NOT_FIT refunds", () => {
     expect((await introState(a.introId)).state).toBe("CALLED_NOT_FIT");
     expect(refundPosts()).toEqual([{ amount: 9900, speed: "normal", receipt: `refund-${a.payId}`, notes: { refund_id: `refund-${a.payId}`, reason: expect.any(String) } }]);
     expect(await payState(a.payId)).toBe("REFUND_PENDING");
-    expect(waSent()[0].text.body).toBe("Thank you for speaking with Shantha Rao. She feels a session isn't the right fit just now, so we've refunded your ₹99.");
+    expect(waSent()[0].text.body).toBe("Thank you for speaking with Shantha Rao. She feels a session isn't the right fit just now, so we're refunding your ₹99. It usually reaches your account in 5–7 working days."); // only once Razorpay has taken it (ticket 31)
   });
 
   it("a second refund for the same person (same wa_id) is refused: no refund, no message, attention", async () => {

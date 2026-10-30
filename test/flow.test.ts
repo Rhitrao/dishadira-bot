@@ -311,7 +311,9 @@ describe("the time list: the spread rule, sections and full days", () => {
     expect(titles()).toEqual(["Thu, 8 Oct", "Fri, 9 Oct", "Sat, 10 Oct", "Mon, 12 Oct", "Tue, 13 Oct", "Wed, 14 Oct"]); // never a Sunday
     for (const ymd of nextWorkingDays(Date.now(), config.booking.lookaheadDays)) if (!["2026-10-05", "2026-10-06", "2026-10-07"].includes(ymd)) await fill(ymd);
     await tapButton(from, "more_HEALING_SELF");
-    expect(last().text.body).toBe(allCopy.en.noSlots);
+    expect(last().interactive.body.text).toBe(allCopy.en.noSlots); // with Talk to a person and Help (ticket 31)
+    expect(buttonIds(last())).toEqual(["menu_person", "menu_how"]);
+    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'NO_FREE_TIMES'")).toBe(1);
     expect(await count("SELECT COUNT(*) AS n FROM slots WHERE owner_id IN (SELECT id FROM conversations WHERE wa_id = '" + from + "')")).toBe(0);
   }, 90_000); // fills six working days of slots one by one, slow on the CI runner
 
@@ -458,7 +460,7 @@ describe("the age check is asked once", () => {
     const from = await greeted("en");
     await db.prepare("INSERT INTO settings (key, value) VALUES ('NEW_BOOKINGS', 'false')").run();
     await tapButton(from, "menu_book");
-    expect(last().text.body).toBe(allCopy.en.bookSoon);
+    expect(last().interactive.body.text).toBe(allCopy.en.bookSoon); // with Talk to a person and Help (ticket 31)
   });
 });
 
@@ -560,6 +562,7 @@ describe("menu words", () => {
       const from = await greeted(lang);
       for (const w of ["hi", "Hello!", " MENU ", "नमस्ते", "Namaste 🙏", "start", "हाय", "मेनू", "Hey."]) {
         fetchMock.mockClear();
+        vi.setSystemTime(Date.now() + 11 * 60_000); // a greeting right after an untapped menu gets nothing (ticket 31, I13)
         await typed(from, w);
         expect(sent(), w).toHaveLength(1);
         expect(buttonTitles(last()), w).toEqual([allCopy[lang].btnBook, allCopy[lang].btnPackages, allCopy[lang].btnHelp]);
@@ -569,11 +572,12 @@ describe("menu words", () => {
     }
   });
 
-  it("anything else is free text: one ack and an attention item", async () => {
+  it("anything else: the 'booking assistant' line with the menu, and no item (ticket 31)", async () => {
     const from = await greeted("en");
     await typed(from, "hi there, I need help");
-    expect(last().text.body).toBe(allCopy.en.ack);
-    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(1);
+    expect(last().interactive.body.text).toBe(allCopy.en.ack);
+    expect(buttonIds(last())).toEqual(["menu_book", "menu_how", "menu_person"]);
+    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(0);
   });
 });
 
@@ -600,6 +604,7 @@ describe("talk to a person, and HUMAN mode", () => {
     expect(sent()).toHaveLength(1); // ticket 18: one short acknowledgement for this handoff, nothing more
     expect(last().text.body).toBe(allCopy.en.humanWaitAck);
     await typed(from, "hi");
+    vi.setSystemTime(Date.now() + 11 * 60_000); // a greeting right after an untapped menu gets nothing (ticket 31, I13)
     await typed(from, "menu");
     expect(sent()).toHaveLength(3); // the menu, twice
     expect(last().interactive.body.text).toBe(allCopy.en.menuBody);
@@ -663,15 +668,14 @@ describe("a question in the very first message", () => {
     expect(await count("SELECT COUNT(*) AS n FROM attention")).toBe(0);
 
     await tapButton(from, "lang_hi");
-    expect(sent()).toHaveLength(3);
-    expect(sent()[1].text.body).toBe(allCopy.hi.ack); // in the language just chosen
-    expect(sent()[2].interactive.body.text).toBe(allCopy.hi.menuBody);
-    expect(await count(`SELECT COUNT(*) AS n FROM attention WHERE kind = 'FREE_TEXT' AND target = 'conv:${kept.id}'`)).toBe(1);
+    expect(sent()).toHaveLength(2);
+    expect(sent()[1].interactive.body.text).toBe(allCopy.hi.faqAnswers.what_is_this); // the fixed answer, in the language just chosen (ticket 31)
+    expect(buttonIds(sent()[1])).toEqual(["menu_book", "menu_pack", "menu_how"]);
     expect((await convOf(from)).first_question_msg).toBeNull();
 
     await tapButton(from, "menu_lang"); // changing language later does not answer it again
     await tapButton(from, "lang_en");
-    expect(sent().filter((p) => p.text?.body === allCopy.hi.ack || p.text?.body === allCopy.en.ack)).toHaveLength(1);
+    expect(sent().filter((p) => p.interactive?.body?.text === allCopy.hi.faqAnswers.what_is_this || p.interactive?.body?.text === allCopy.en.faqAnswers.what_is_this)).toHaveLength(1);
   });
 
   it("a greeting, menu word, emoji or button as the first message is not a question", async () => {
@@ -699,7 +703,7 @@ describe("a question in the very first message", () => {
     sends = "true";
     await typed(from, "hi");
     await tapButton(from, "lang_en");
-    expect(sent().some((p) => p.text?.body === allCopy.en.ack)).toBe(true);
+    expect(sent().some((p) => p.interactive?.body?.text === allCopy.en.ack)).toBe(true);
   });
 });
 
@@ -804,7 +808,7 @@ describe("the session picker uses the same day and time steps", () => {
       for (const s of generateSlots(ymd, "SESSION")) await db.prepare("INSERT INTO slots (kind,start_utc,end_utc,owner_id,state) VALUES ('SESSION',?1,?2,?3,'BOOKED')").bind(s.startUtc, s.endUtc, other).run();
     }
     await tapButton(from, `sess_offer_${sid}`);
-    expect(last().text.body).toBe(allCopy.en.noSessionSlots);
+    expect(last().interactive.body.text).toBe(allCopy.en.noSessionSlots); // with Talk to a person and Help (ticket 31)
     expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'NO_SESSION_SLOTS'")).toBe(1);
   });
 });

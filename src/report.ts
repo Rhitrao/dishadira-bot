@@ -169,6 +169,8 @@ const NEEDS_WORDS: Record<string, string> = {
   PAID_NO_PACKAGE: "Paid, but the booking can't be found", PAID_NO_INTRO: "Paid, but the booking can't be found", PAID_NO_SESSION: "Paid, but the booking can't be found",
   PAID_PACKAGE_NOT_BOOKABLE: "Paid for a booking that's closed", PAID_INTRO_NOT_BOOKABLE: "Paid for a booking that's closed", PAID_SESSION_NOT_BOOKABLE: "Paid for a booking that's closed",
   LINK_CREATE_FAILED: "Payment links that couldn't be made", SESSION_NOT_OFFERABLE: "Sessions that couldn't be offered", NO_SESSION_SLOTS: "No free session times to offer",
+  THREAT: "Threatening messages to read", NO_FREE_TIMES: "Wanted to book but found no free times", NO_PHONE: "Wrote from a username without a phone number",
+  REFUND_NOT_STARTED: "Refunds Razorpay hasn't taken yet",
 };
 
 // The switches that are off, in the words of Settings.

@@ -7,14 +7,14 @@ import { serveFont } from "./fonts";
 import { consoleApp } from "./console";
 import { nudgeWaitingChats } from "./inbox";
 import { sendAlerts } from "./mail";
-import { applyDueOutcomes } from "./outcomes";
-import { reconcile } from "./pay/apply";
+import { applyDueOutcomes, sendRefundNotices } from "./outcomes";
+import { reconcile, resendSkippedPaid } from "./pay/apply";
 import { razorpay } from "./pay/razorpay";
 import { retryRefunds } from "./pay/refund";
 import { razorpayWebhook } from "./pay/webhook";
 import { nudgeUnpaidHolds, payLinkPage } from "./paylink";
 import { mailOpenRequests } from "./requests";
-import { sendReminders } from "./remind";
+import { REMINDER_AT, sendReminders } from "./remind";
 import { runDigest } from "./report";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat, returnStaleHumans } from "./watch";
 import { istDay, iso } from "./slots";
@@ -60,7 +60,7 @@ export const RECONCILE_CRON = "*/2 * * * *";
 // The two daily jobs ride on the 2-minute cron. Each runs once per IST day, on the first tick at or after its time (so a missed
 // tick only delays it by 2 minutes); the day's claim is one settings row, released if the job fails so the next tick tries again.
 export const DAILY_JOBS = [
-  { key: "reminders", at: "18:30", needsSends: true, run: (env: Env) => sendReminders(env) },
+  { key: "reminders", at: REMINDER_AT, needsSends: true, run: (env: Env) => sendReminders(env) },
   { key: "digest", at: "21:00", needsSends: false, run: (env: Env) => runDigest(env) },
 ] as const;
 
@@ -92,7 +92,7 @@ const scheduled = async (event: { cron: string; scheduledTime?: number }, env: E
   await recordHeartbeat(env).catch(() => 0);
   // One failing job must not stop the others; each is safe to run again.
   for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);
-  for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests, nudgeUnpaidHolds]) await job(env).catch(() => 0);
+  for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests, nudgeUnpaidHolds, resendSkippedPaid, sendRefundNotices]) await job(env).catch(() => 0);
   await runDailyJobs(env, event.scheduledTime ?? Date.now()).catch(() => undefined);
 };
 

@@ -8,16 +8,18 @@ import type { Env } from "./env";
 import { bookingChoice } from "./booking";
 import { bookingsChoice } from "./mybookings";
 import { creditBalance, packChoice, sessionOfferOut } from "./packages";
-import { classifyWithoutAI, gate, isMenuWord, plainWord } from "./gate";
+import { classifyWithoutAI, gate, isCallRequest, isJobText, isMenuWord, isThreat, plainWord } from "./gate";
 import { requestHuman } from "./handoff";
 import { menuOut } from "./menu";
 import { applyLabel, ensureState, noSellActive } from "./noise";
+import { ACTION_TOPICS, matchTopic, sentRecently, topicOut, topicText, type Topic } from "./router";
 import { rescheduleChoice } from "./outcomes";
 import { botAudit, runCrisis, runEmergency } from "./safety";
 import { openOfferId, sessionChoice } from "./session";
 import { raiseAttention, sendMessage, type Out, type SendResult } from "./send";
 import { iso, istDay } from "./slots";
-import { clearStep, noteReprompt, openStep, repromptHelpOut, repromptOut, sendStep } from "./steps";
+import { clearStep, noteReprompt, openStep, repromptHelpOut, repromptOut, sendStep, stepWithLine, typedChoice } from "./steps";
+import { takeHandback } from "./watch";
 
 // The tests (and the rest of the code) read these from here.
 export { isMenuWord, plainWord };
@@ -118,6 +120,9 @@ export async function receiveWebhook(c: C) {
         const reason = skipReason(m.data);
         if (reason) {
           await skip(c.env, item, reason, m.data.id);
+          // A username-only sender can't be answered yet (identity by BSUID is open, STATUS.md): the owner sees that someone wrote (ticket 31,
+          // I17). One open item per sender, keyed by a short hash of the user id, so no identifier is stored.
+          if (reason === "NO_PHONE") await raiseAttention(c.env.DB, "NO_PHONE", `user:${(await sha256(m.data.from_user_id ?? m.data.id)).slice(0, 12)}`);
           continue;
         }
         failed = !(await once(c.env, m.data.id, { type: m.data.type }, () => handleMessage(c.env, m.data, m.data.from!, names.get(m.data.from!)))) || failed;
@@ -296,6 +301,8 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       return;
     case "EMERGENCY":
       await runEmergency(env, conv, m.id, text);
+      // A first-ever message still gets the greeting and the language buttons after the emergency text (ticket 31, I3).
+      if (!conv.greeted_at && conv.mode !== "BLOCKED") await greet();
       return;
 
     case "GREETING": {
@@ -305,13 +312,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
         await db.prepare("UPDATE conversations SET first_question_msg = COALESCE(first_question_msg, ?2) WHERE id = ?1").bind(conv.id, m.id).run();
       }
       if (await burst("greet", "buttons")) return;
-      const buttons = [
-        { id: "lang_en", title: LANGUAGE_BUTTONS.en },
-        { id: "lang_hi", title: LANGUAGE_BUTTONS.hi },
-      ];
-      const res = await sendStep(env, conv.id, "language", { type: "buttons", body: cp.greeting, buttons }, `greet:${conv.id}`, { resend: { type: "buttons", body: cp.chooseLanguage, buttons } });
-      // Only a greeting that really went out counts: a SKIPPED one (SENDS was off) or a FAILED one is not a greeting.
-      if (wentOut(res)) await db.prepare("UPDATE conversations SET greeted_at = COALESCE(greeted_at, ?2) WHERE id = ?1").bind(conv.id, nowIso()).run();
+      await greet();
       return;
     }
 
@@ -358,12 +359,24 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       return;
     }
 
-    case "ACK_WORD":
-      return; // "ok", "thanks": no reply, no strike
+    case "ACK_WORD": {
+      // "ok", "thanks": no reply, no strike. But "ok" or "ji" at an open yes/no step is the answer (ticket 31, I8).
+      const open = text !== null ? await openStep(db, conv.id) : null;
+      const id = open ? typedChoice(open, text!) : null;
+      if (id) await tapped(id);
+      return;
+    }
 
     case "MENU":
+      if (await handback()) return;
       if (await openOffer()) return;
       await clearStep(db, conv.id);
+      // "hi" again and again (ticket 31, I13): after a menu nobody has tapped yet, a greeting within config.router.menuRepeatMinutes gets
+      // nothing more, and counts as small talk (two free a day, then strikes; never for a paying customer).
+      if (typed && (await menuUntapped())) {
+        await applyLabel(env, conv, "smalltalk", text ?? "", { msgId: m.id, say: (out, step) => reply(out, step) });
+        return;
+      }
       await menu(cp, "menu");
       return;
 
@@ -385,13 +398,80 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       return;
 
     case "TAP":
-      await tapped();
+      await tapped(choice);
       return;
   }
 
-  // ---- typed text that reached the classifier: the assistant when AI_REPLIES is on, otherwise the rule-based one ----
+  // The greeting and the two language buttons (once per person ever; the key makes a second one a no-op).
+  async function greet(): Promise<void> {
+    const buttons = [
+      { id: "lang_en", title: LANGUAGE_BUTTONS.en },
+      { id: "lang_hi", title: LANGUAGE_BUTTONS.hi },
+    ];
+    const res = await sendStep(env, conv!.id, "language", { type: "buttons", body: cp.greeting, buttons }, `greet:${conv!.id}`, { resend: { type: "buttons", body: cp.chooseLanguage, buttons } });
+    // Only a greeting that really went out counts: a SKIPPED one (SENDS was off) or a FAILED one is not a greeting.
+    if (wentOut(res)) await db.prepare("UPDATE conversations SET greeted_at = COALESCE(greeted_at, ?2) WHERE id = ?1").bind(conv!.id, nowIso()).run();
+  }
+
+  // A handoff that went back to the bot unanswered (src/watch.ts): the first message after it gets the honest line and the menu, once.
+  async function handback(): Promise<boolean> {
+    if (!(await takeHandback(env, conv!.id))) return false;
+    await reply(menuOut(cp, await noSellActive(db, conv!.id), cp.handbackNotice, true), "handback");
+    return true;
+  }
+
+  // The last thing sent to this person is the menu, sent within config.router.menuRepeatMinutes in reply to a typed greeting (not after a tap),
+  // and nothing has been tapped since.
+  async function menuUntapped(): Promise<boolean> {
+    const last = await db
+      .prepare("SELECT id, dedupe_key AS k, created_at AS at FROM messages WHERE conversation_id = ?1 AND direction = 'OUT' AND status NOT IN ('SKIPPED', 'FAILED') ORDER BY id DESC LIMIT 1")
+      .bind(conv!.id)
+      .first<{ id: number; k: string | null; at: string }>();
+    if (!last?.k?.endsWith(":menu") || Date.now() - Date.parse(last.at) >= config.router.menuRepeatMinutes * 60_000) return false;
+    const typedGreeting = await db
+      .prepare("SELECT 1 FROM messages WHERE conversation_id = ?1 AND direction = 'IN' AND kind = 'text' AND wa_message_id = ?2")
+      .bind(conv!.id, last.k.slice(0, -":menu".length))
+      .first();
+    if (!typedGreeting) return false;
+    const tap = await db
+      .prepare("SELECT 1 FROM messages WHERE conversation_id = ?1 AND direction = 'IN' AND kind IN ('interactive', 'button') AND id > ?2 LIMIT 1")
+      .bind(conv!.id, last.id)
+      .first();
+    return tap === null;
+  }
+
+  // A topic from the fixed-answer router (src/router.ts): its answer with the menu, once per config.router.answerEveryMinutes (a loop gets
+  // silence), or the action it stands for. `c2` and `send` let the language tap answer the first question in the new language.
+  async function routeTopic(topic: Topic, c2: Copy = cp, send: (out: Out, step: string) => Promise<unknown> = reply): Promise<void> {
+    if (topic === "book") {
+      await db.prepare("UPDATE person_state SET book_tap_at = ?2 WHERE conversation_id = ?1").bind(conv!.id, nowIso()).run();
+      if (await openOffer()) return;
+      await bookingChoice(env, "menu_book", conv!.id, m.id);
+      return;
+    }
+    if (topic === "my_booking") {
+      await bookingsChoice(env, "menu_bookings", conv!.id, m.id);
+      return;
+    }
+    if (await sentRecently(db, conv!.id, `route-${topic}`, config.router.answerEveryMinutes)) return;
+    if (topic === "payment_issue") await raiseAttention(db, "FREE_TEXT", `conv:${conv!.id}`); // money: a person should look, as the answer says
+    const out = topicOut(c2, topic, await noSellActive(db, conv!.id));
+    if (out) await send(out, `route-${topic}`);
+  }
+
+  // ---- typed text that reached the classifier: the assistant when AI_REPLIES is on, otherwise the fixed-answer router (ticket 31) ----
   async function classified(decision: "BUDGET_FALLBACK" | "TO_CLASSIFIER"): Promise<void> {
-    // The assistant (when AI_REPLIES is on) labels and answers the question. Otherwise, or when it cannot answer in the middle of a booking, the old path below.
+    const said = text ?? "";
+    if (text !== null && said.trim() === "") return; // an empty or blank text: nothing to answer, nothing for the queue
+    if (await handback()) return;
+    // A typed answer to the open step ("yes", "haan", "1", "tomorrow", "4 pm") is the tap it means (I8), before any AI.
+    const step = text !== null ? await openStep(db, conv!.id) : null;
+    const meant = step ? typedChoice(step, said) : null;
+    if (meant) {
+      await tapped(meant);
+      return;
+    }
+    // The assistant (when AI_REPLIES is on) labels and answers the question. Otherwise, or when it cannot answer in the middle of a booking, the path below.
     let viaAI = false;
     if (decision === "TO_CLASSIFIER" && text !== null) {
       const answered = await answerWithAI({
@@ -401,19 +481,42 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       if (answered !== "off" && answered !== "reprompt") return;
       viaAI = answered === "reprompt";
     }
-    const label = viaAI ? "TO_CLASSIFIER" : classifyWithoutAI(text ?? "");
+    // Noise, by the code word lists (I16): threats (also an urgent item), spam and promotions, flirting, abuse, influencing another person.
+    const label = viaAI ? "TO_CLASSIFIER" : classifyWithoutAI(said);
     if (label !== "TO_CLASSIFIER") {
-      const res = await applyLabel(env, conv!, label, text ?? "", { msgId: m.id, say: (out, step) => reply(out, step) });
+      if (label === "abuse" && isThreat(said)) await raiseAttention(db, "THREAT", `conv:${conv!.id}`);
+      const res = await applyLabel(env, conv!, label, said, { msgId: m.id, say: (out, step) => reply(out, step) });
       if (res.stop) return; // a strike, a block or a quiet week: nothing more is said
+      if (label === "prohibited_request") {
+        await reply({ type: "text", text: cp.prohibitedLine }, "prohibited");
+        return;
+      }
     }
-    // A booking step is open: send it again, with the hint. A re-prompt is not a strike.
+    // Job seekers, learners, partnerships: one line pointing to a person, once a day; no strike, no item.
+    if (!viaAI && isJobText(said)) {
+      if (!(await sentRecently(db, conv!.id, "jobs", config.router.lineEveryHours * 60))) await reply({ type: "buttons", body: cp.jobsLine, buttons: [{ id: "menu_person", title: cp.btnPerson }] }, "jobs");
+      return;
+    }
+    const topic = viaAI ? null : matchTopic(said);
+    // A booking step is open: send it again, with the answer on top when the question has one, otherwise with the hint. A re-prompt is not a strike.
     const open = await openStep(db, conv!.id);
+    if (open && topic === "my_booking") {
+      await routeTopic(topic); // "when is my call?" in the middle of a booking: My bookings
+      return;
+    }
     if (open) {
-      const res = await reply(repromptOut(cp, open, viaAI), "reprompt");
-      if (res !== "BURST") {
+      // (Timings: the re-prompt's hint already says the hours on the day and time steps.)
+      const info = topic && topic !== "timings" && !ACTION_TOPICS.includes(topic) ? topicText(cp, topic) : null;
+      const withAnswer = info ? stepWithLine(open, info) : null;
+      const res = await reply(withAnswer ?? repromptOut(cp, open, viaAI), "reprompt");
+      if (res !== "BURST" && !withAnswer) {
         const n = await noteReprompt(db, conv!.id);
         if ((n?.n ?? 0) >= config.booking.repromptHelpAfter) await reply(repromptHelpOut(cp), "reprompt-help");
       }
+      return;
+    }
+    if (topic) {
+      await routeTopic(topic);
       return;
     }
     if (await openOffer()) return;
@@ -423,17 +526,15 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       await reply(menuOut(cp, noSell, noSell ? cp.aiFallbackNoSell : cp.aiFallback, true), "fallback");
       return;
     }
-    // Anything else is free text: stays BOT, raises attention, one acknowledgement per 24h.
-    await raiseAttention(db, "FREE_TEXT", `conv:${conv!.id}`);
-    const recent = conv!.last_ack_at !== null && Date.now() - Date.parse(conv!.last_ack_at) < config.windowHours * 3_600_000;
-    if (!recent) {
-      const res = await reply({ type: "text", text: cp.ack }, "ack");
-      if (res !== "BURST" && wentOut(res)) await db.prepare("UPDATE conversations SET last_ack_at = ?2 WHERE id = ?1").bind(conv!.id, nowIso()).run();
-    }
+    // Anything else: one honest line with the menu ("I'm the booking assistant and can't answer typed questions…"), at most once per
+    // config.router.noMatchEveryMinutes. No promise of a person and no queue item: "Talk to a person" is one tap away.
+    if (await sentRecently(db, conv!.id, "ack", config.router.noMatchEveryMinutes)) return;
+    const noSell = await noSellActive(db, conv!.id);
+    await reply(menuOut(cp, noSell, noSell ? cp.aiFallbackNoSell : cp.ack, true), "ack");
   }
 
   // ---- a button or list tap, or a template quick reply ----
-  async function tapped(): Promise<void> {
+  async function tapped(choice: string | null): Promise<void> {
     await clearStep(db, conv!.id); // a tap moves on; the step sent next (if any) becomes the open one
     // lang_kn: a language button from before Hindi replaced the third language; those chats continue in English.
     if (choice === "lang_en" || choice === "lang_hi" || choice === "lang_kn") {
@@ -442,7 +543,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       const cp2 = copyFor(locale);
       if (conv!.firstQuestion) {
         // The question the person asked before choosing a language: the assistant answers it (its text may already be wiped, and then it cannot).
-        // Without the assistant it gets what any typed question gets: one acknowledgement and an item for Rohit.
+        // Without the assistant: the fixed-answer router (ticket 31), or the call-request line (ticket 30).
         const asked = await firstQuestion(db, conv!.firstQuestion);
         const key = conv!.firstQuestion;
         const answered = asked
@@ -453,9 +554,21 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
           : "off";
         if (answered === "finished") return; // the answer carried its own buttons, or nothing more is to be said
         if (answered === "off" || answered === "reprompt") {
-          await raiseAttention(db, "FREE_TEXT", `conv:${conv!.id}`);
-          const res = await sendMessage(env, conv!.id, { type: "text", text: cp2.ack }, `${key}:ack`);
-          if (wentOut(res)) await db.prepare("UPDATE conversations SET last_ack_at = ?2 WHERE id = ?1").bind(conv!.id, nowIso()).run();
+          // Without the assistant: "call me" gets the call-request line (ticket 30); otherwise the fixed-answer router, in the language just
+          // chosen (ticket 31, I1). Either carries the menu.
+          if (asked && isCallRequest(asked.text)) {
+            await sendMessage(env, conv!.id, menuOut(cp2, false, cp2.callRequest), `${key}:callreq`);
+            return;
+          }
+          const topic = asked && classifyWithoutAI(asked.text) === "TO_CLASSIFIER" && !isJobText(asked.text) ? matchTopic(asked.text) : null;
+          if (topic) {
+            await routeTopic(topic, cp2, (out, step) => sendMessage(env, conv!.id, out, `${key}:${step}`));
+            return;
+          }
+          if (asked && classifyWithoutAI(asked.text) === "TO_CLASSIFIER") {
+            await sendMessage(env, conv!.id, menuOut(cp2, await noSellActive(db, conv!.id), cp2.ack, true), `${key}:ack`);
+            return;
+          }
         }
       }
       await menu(cp2, "menu");

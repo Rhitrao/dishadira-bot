@@ -108,7 +108,7 @@ const ACTIVE = "(state = 'BOOKED' OR hold_until > :now)";
 // The per-person limit counts only unexpired HELD rows: a BOOKED call must not stop a later session hold.
 const HELD = "(state = 'HELD' AND hold_until > :now)";
 
-export type HoldResult = { ok: true; holdUntil: string } | { ok: false; reason: "NOT_A_SLOT" | "ALREADY_HOLDING" | "UNAVAILABLE" };
+export type HoldResult = { ok: true; holdUntil: string } | { ok: false; reason: "NOT_A_SLOT" | "ALREADY_HOLDING" | "UNAVAILABLE" | "TOO_SOON" };
 
 // Amma has one calendar: a CALL and a SESSION must never overlap, so the single statement below
 // refuses a slot if ANY active slot overlaps it (either kind) or if this person already has an
@@ -122,6 +122,8 @@ export async function holdSlot(
   const { kind, startUtc, ownerId, nowMs } = args;
   const slot = generateSlots(istDay(Date.parse(startUtc)), kind).find((s) => s.startUtc === startUtc);
   if (!slot) return { ok: false, reason: "NOT_A_SLOT" };
+  // A time that has passed, or starts inside the booking lead (an old list row tapped later), is never held (ticket 31, B1).
+  if (slot.startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000)) return { ok: false, reason: "TOO_SOON" };
   if (await isHoliday(db, istDay(Date.parse(startUtc)))) return { ok: false, reason: "UNAVAILABLE" }; // a day off: nothing new is held
 
   const now = iso(nowMs);

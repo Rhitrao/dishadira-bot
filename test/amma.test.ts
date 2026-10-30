@@ -331,13 +331,14 @@ describe("one open intro per person", () => {
     const bodies = (await db.prepare("SELECT body FROM messages WHERE direction = 'OUT'").all<{ body: string | null }>()).results.map((r) => r.body ?? "");
     expect(bodies.some((b) => b.includes("already booked"))).toBe(false);
   });
-  it("a person with a live HELD intro is told the same, and no new hold is made", async () => {
+  it("a live HELD intro is never called booked: another time lets the old hold go (ticket 31, B2)", async () => {
     const { conv } = await booking("2026-10-05", 3, "Priya", { state: "HELD" });
     await db.prepare("UPDATE slots SET state = 'HELD', hold_until = ?1").bind(new Date(NOW + 600_000).toISOString().slice(0, 19) + "Z").run();
-    await run(conv, 6);
-    expect((await db.prepare("SELECT count(*) AS n FROM slots").first<{ n: number }>())!.n).toBe(1);
-    const m = await db.prepare("SELECT body FROM messages WHERE direction = 'OUT' ORDER BY id DESC LIMIT 1").first<{ body: string }>();
-    expect(m?.body ?? "").toContain("already booked");
+    await run(conv, 12); // 5:00 pm today
+    const bodies = (await db.prepare("SELECT body FROM messages WHERE direction = 'OUT'").all<{ body: string | null }>()).results.map((r) => r.body ?? "");
+    expect(bodies.some((b) => b.includes("already booked"))).toBe(false);
+    expect((await db.prepare("SELECT state FROM intros ORDER BY id LIMIT 1").first<{ state: string }>())!.state).toBe("EXPIRED");
+    expect((await db.prepare("SELECT COUNT(*) AS n FROM slots WHERE state = 'HELD' AND hold_until > ?1").bind(new Date(NOW).toISOString().slice(0, 19) + "Z").first<{ n: number }>())!.n).toBeLessThanOrEqual(1);
   });
 });
 

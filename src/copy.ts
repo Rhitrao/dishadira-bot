@@ -190,7 +190,7 @@ export type Copy = {
   sessionNotAvailable: string;
   sessionPayBody: (day: string, time: string, until: string, link: string) => string;
   sessionPayLabel: string; // max 20 chars
-  sessionConfirmed: (day: string, time: string) => string;
+  sessionConfirmed: (day: string, time: string, remind?: boolean) => string; // remind: the day-before reminder can reach them (ticket 31, I2)
   notFitRefund: string;
   missedOffer: string;
   rescheduled: (day: string, time: string) => string;
@@ -280,6 +280,30 @@ export type Copy = {
   pageNotFoundBody: string;
   pageErrorTitle: string;
   pageErrorBody: string;
+  // ticket 31: fixes from the launch simulations
+  timePassed: string; // B1: an old list row whose time has passed or is too soon
+  stillHeld: (day: string, time: string, until: string, link: string) => string; // B2: the same time tapped again while its hold is unpaid
+  dupRefund: (amount: string) => string; // B3: a second payment, refunded automatically
+  dupKeeps: (day: string, time: string) => string; // B3: ... and the booking that stays
+  latePaidTaken: (amount: string) => string; // B4: paid after the hold ended, and someone else has the time
+  checkingPayment: string; // I19: a payment with the wrong amount
+  holdReleased: string; // I11: a hold that ended unpaid
+  handbackNotice: string; // I14: a handoff nobody answered in time
+  answerCall: string; // I1: the fixed answers (src/router.ts)
+  answerTrust: string;
+  answerAbroad: string;
+  answerInPerson: string;
+  answerMedical: string;
+  answerConcern: string;
+  answerPayment: string;
+  prohibitedLine: string; // I16
+  jobsLine: string;
+  pageLateBody: string; // the /p/ page: paid, but the time went to someone else
+  pageCheckTitle: string; // ... a payment we need to check
+  pageCheckBody: string;
+  pageOpeningTitle: string; // ... the short page before Razorpay's
+  pageOpeningBody: string;
+  pageBtnContinue: string;
   amma: AmmaCopy;
 };
 
@@ -353,8 +377,8 @@ const en: Copy = {
   handoffAck: "Thank you. A person from our team will reply here, usually within 24 hours.",
   humanWaitAck: "Got it. This is with our team, and they'll reply here.",
   askPrompt: "Please type your question below.",
-  ack: "Thanks, a person will reply within 24 hours.",
-  bookSoon: "Booking opens soon.",
+  ack: "I'm the booking assistant and can't answer typed questions. Tap below to book, or \"Talk to a person\".",
+  bookSoon: "New bookings are paused for a short while. Please message us again in a day or two, or tap below to talk to our team.",
   ageCheck: "Are you 18 or older?",
   btnYes: "Yes",
   btnNo: "No",
@@ -379,7 +403,7 @@ const en: Copy = {
   rowSession: `${config.slots.sessionMinutes}-min session`,
   anotherDay: "Another day",
   listButtonTimes: "Choose a time",
-  noSlots: "There are no free call times right now. Please check again later.",
+  noSlots: "There are no free call times in the next few days. Tap \"Talk to a person\", or check back tomorrow.",
   slotTaken: "Sorry, that time was just taken. Please choose another.",
   alreadyHolding: "A time is already held for you. Please use the payment button above, or try again in a few minutes.",
   callAlreadyBooked: (day, time) => `Your call is already booked for ${day} at ${time}. Shantha Rao will call you then.`,
@@ -394,18 +418,18 @@ const en: Copy = {
     "The call may come from a number you don't know, so please keep your phone nearby. This WhatsApp number is for messages only, not calls.",
   btnChooseTime: "Choose a time",
   sessionOfferBody: `Thank you for speaking with Shantha Rao. She would be glad to offer you a full session. Choose an option below: a single session, or a package of ${p10.sessions} or ${p20.sessions}.`,
-  noSessionSlots: "There are no free session times right now. We will message you when new times are open.",
+  noSessionSlots: "There are no free session times in the next few days. Tap \"Talk to a person\", or check back tomorrow.",
   sessionNotAvailable: "Sorry, we cannot book a session from this message. A person will look into it.",
   sessionPayBody: (day, time, until, link) =>
     `${day} at ${time} is held for your session until ${until} (India time).\n\n` +
     `Tap "Pay ${sessionPrice}" below to open Razorpay's secure payment page. Pay by any UPI app, card or net banking. Please don't pay twice.\n\n` +
     `If the button does not open, use this link: ${link}`,
   sessionPayLabel: `Pay ${sessionPrice}`,
-  sessionConfirmed: (day, time) =>
+  sessionConfirmed: (day, time, remind = true) =>
     `Your session with Shantha Rao is confirmed for ${day} at ${time} (India time). ` +
     "It is a distance session: you stay where you are and she calls you at the booked time. " +
-    "Please keep your phone with you in a quiet place. We will remind you the day before.",
-  notFitRefund: `Thank you for speaking with Shantha Rao. She feels a session isn't the right fit just now, so we've refunded your ${intro}.`,
+    `Please keep your phone with you in a quiet place. ${remind ? "We will remind you the day before." : "Please note the time; we'll message you here if anything changes."}`,
+  notFitRefund: `Thank you for speaking with Shantha Rao. She feels a session isn't the right fit just now, so we're refunding your ${intro}. It usually reaches your account in 5–7 working days.`,
   missedOffer: "Sorry we missed each other. Choose a new time for your call. There is nothing more to pay.",
   rescheduled: (day, time) =>
     `Your call is now booked for ${day} at ${time} (India time). Shantha Rao will call you on the number you are messaging from. ` +
@@ -513,7 +537,7 @@ const en: Copy = {
   cancelledSingleRefund: `Cancelled. As it was ${rules.singleRefundBeforeHours} hours or more before, the full amount will be refunded to your original payment method.`,
   cancelledSingleNoRefund: `Between ${rules.changeBeforeHours} and ${rules.singleRefundBeforeHours} hours before, a single session can't be refunded, but you can move it once. Move it instead?`,
   notFitRefundSession: (amount) =>
-    `Thank you for speaking with Shantha Rao. She feels this isn't the right fit just now, so we've refunded your payment of ${amount}.`,
+    `Thank you for speaking with Shantha Rao. She feels this isn't the right fit just now, so we're refunding your payment of ${amount}. It usually reaches your account in 5–7 working days.`,
   packRefunded: (amount) => `We've refunded ${amount} for the sessions you didn't use. It goes back to your original payment method.`,
   payNudge: (until, link) =>
     `Your time is still held until ${until} (India time). Pay here: ${link}\n\nHaving trouble paying? Reply HELP and we will help you.`,
@@ -529,6 +553,46 @@ const en: Copy = {
   pageNotFoundBody: "This payment link is not right. Please go back to WhatsApp and use the latest payment message.",
   pageErrorTitle: "Please try again",
   pageErrorBody: "We couldn't open the payment page just now. Please open the link again in a minute.",
+  // ticket 31
+  timePassed: "Sorry, that time is too soon or has already passed. Please choose another.",
+  stillHeld: (day, time, until, link) =>
+    `${day} at ${time} is still held for you until ${until} (India time). It is booked once you pay.\n\n` +
+    `Tap "Pay ${intro}" below to open Razorpay's secure payment page. Please don't pay twice.\n\n` +
+    `If the button does not open, use this link: ${link}`,
+  dupRefund: (amount) => `We received a second payment of ${amount} by mistake, so we are refunding it. It usually reaches your account in 5–7 working days.`,
+  dupKeeps: (day, time) => `Your booking stays on ${day} at ${time} (India time).`,
+  latePaidTaken: (amount) =>
+    `We received your ${amount}, but the time you picked was booked by someone else after your hold ended. Our team will message you here today with a new time or a full refund.`,
+  checkingPayment: "We received a payment that we need to check. Our team will sort it out and reply here today. Please don't pay again.",
+  holdReleased: "Your held time has been released. Nothing was charged. Tap below to choose a time again.",
+  handbackNotice: "Sorry we couldn't reply in time. You can book below, or ask again for a person.",
+  answerCall:
+    `The first call is ${config.slots.callMinutes} minutes, by phone, at the time you pick. Shantha Rao calls you herself, listens to what is going on, ` +
+    "and explains how she works and whether a full session would suit you. The call is in the language you chat in, English or Hindi.",
+  answerTrust:
+    "That's a fair question. Shantha Rao is a certified Pranic Healer trained in the MCKS system. Payment happens only on Razorpay's secure page, " +
+    `and we never ask for your PIN or OTP. If she feels a session isn't the right fit after your first call, your ${intro} is refunded. We make no health promises.`,
+  answerAbroad:
+    `${hoursText("en")} Please check the time difference where you are. Calls are by phone, so you can join from anywhere. ` +
+    "Payment is on Razorpay's secure page: UPI needs an Indian bank account, and cards may work. If paying doesn't work, tap \"Talk to a person\".",
+  answerInPerson: "Calls and sessions are only by phone, so you can join from anywhere and nobody needs to travel. Shantha Rao is based in Bengaluru.",
+  answerMedical:
+    "Pranic healing is meant to support your wellbeing alongside your doctor's care, not replace it, so we never promise to treat any illness. " +
+    "Please keep following your doctor's advice, and never stop or change a medicine without your doctor.",
+  answerConcern:
+    "We don't look into, confirm or remove anything like that. If you've been feeling stressed or unsettled, Shantha Rao can listen on a call " +
+    "and tell you whether a calming session suits you. If you ever feel unsafe, please call 112.",
+  answerPayment:
+    "Sorry about this. Please don't pay again. If money was taken and no confirmation came, tap \"Talk to a person\" and our team will check. " +
+    "When a payment fails, banks usually return the money on their own.",
+  prohibitedLine: "We can't help with influencing or controlling another person. Our sessions are only about helping you feel calmer and steadier.",
+  jobsLine: "This chat is only for booking calls with Shantha Rao. For anything else, tap \"Talk to a person\".",
+  pageLateBody: "Our team will message you on WhatsApp about your time. You can close this page.",
+  pageCheckTitle: "We're checking your payment",
+  pageCheckBody: "Our team will message you on WhatsApp today. Please don't pay again.",
+  pageOpeningTitle: "Opening Razorpay's secure payment page…",
+  pageOpeningBody: "If it doesn't open in a moment, tap Continue.",
+  pageBtnContinue: "Continue",
   amma: ammaEn,
 };
 
@@ -545,8 +609,8 @@ const hi: Copy = {
   handoffAck: "धन्यवाद। हमारी टीम का कोई व्यक्ति आमतौर पर 24 घंटे के अंदर यहीं जवाब देगा।",
   humanWaitAck: "ठीक है। आपका मैसेज हमारी टीम तक पहुँच गया है, वे यहीं जवाब देंगे।",
   askPrompt: "कृपया अपना सवाल नीचे लिखें।",
-  ack: "धन्यवाद। हमारी टीम का कोई व्यक्ति 24 घंटे के अंदर यहीं जवाब देगा।",
-  bookSoon: "बुकिंग जल्द शुरू होगी।",
+  ack: "मैं बुकिंग असिस्टेंट हूँ और लिखे हुए सवालों का जवाब नहीं दे सकता। बुक करने के लिए नीचे दबाएँ, या \"किसी से बात करें\" चुनें।",
+  bookSoon: "नई बुकिंग कुछ समय के लिए रुकी हुई है। कृपया एक-दो दिन बाद फिर मैसेज करें, या हमारी टीम से बात करने के लिए नीचे दबाएँ।",
   ageCheck: "क्या आपकी उम्र 18 साल या उससे ज़्यादा है?",
   btnYes: "हाँ",
   btnNo: "नहीं",
@@ -571,7 +635,7 @@ const hi: Copy = {
   rowSession: `${config.slots.sessionMinutes} मिनट का सेशन`,
   anotherDay: "दूसरा दिन",
   listButtonTimes: "समय चुनें",
-  noSlots: "अभी कॉल का कोई खाली समय नहीं है। कृपया थोड़ी देर बाद फिर देखें।",
+  noSlots: "अगले कुछ दिनों में कॉल का कोई खाली समय नहीं है। \"किसी से बात करें\" दबाएँ, या कल फिर देखें।",
   slotTaken: "माफ़ कीजिए, यह समय अभी-अभी बुक हो गया। कृपया दूसरा समय चुनें।",
   alreadyHolding: "आपके लिए एक समय पहले से रोका गया है। ऊपर दिए भुगतान बटन का इस्तेमाल करें, या कुछ मिनट बाद फिर कोशिश करें।",
   callAlreadyBooked: (day, time) => `आपकी कॉल पहले से ${day} को ${time} बजे बुक है। शांता राव जी उसी समय आपको कॉल करेंगी।`,
@@ -586,18 +650,18 @@ const hi: Copy = {
     "कॉल किसी अनजान नंबर से आ सकती है, इसलिए कृपया फ़ोन पास रखें। यह WhatsApp नंबर सिर्फ़ मैसेज के लिए है, कॉल के लिए नहीं।",
   btnChooseTime: "समय चुनें",
   sessionOfferBody: `शांता राव जी से बात करने के लिए धन्यवाद। वे आपको पूरा सेशन देना चाहेंगी। नीचे एक विकल्प चुनें: एक सेशन, या ${p10.sessions} या ${p20.sessions} सेशन का पैकेज।`,
-  noSessionSlots: "अभी सेशन का कोई खाली समय नहीं है। नए समय खुलते ही हम आपको मैसेज करेंगे।",
+  noSessionSlots: "अगले कुछ दिनों में सेशन का कोई खाली समय नहीं है। \"किसी से बात करें\" दबाएँ, या कल फिर देखें।",
   sessionNotAvailable: "माफ़ कीजिए, इस मैसेज से सेशन बुक नहीं हो सकता। हमारी टीम इसे देखेगी।",
   sessionPayBody: (day, time, until, link) =>
     `${day}, ${time} का समय आपके सेशन के लिए ${until} बजे तक (भारतीय समय) रोका गया है।\n\n` +
     `नीचे "${sessionPrice} भुगतान करें" बटन दबाएँ, Razorpay का सुरक्षित भुगतान पेज खुलेगा। किसी भी UPI ऐप, कार्ड या नेट बैंकिंग से भुगतान करें। कृपया दो बार भुगतान न करें।\n\n` +
     `अगर बटन न खुले, तो यह लिंक खोलें: ${link}`,
   sessionPayLabel: `${sessionPrice} भुगतान करें`,
-  sessionConfirmed: (day, time) =>
+  sessionConfirmed: (day, time, remind = true) =>
     `शांता राव जी के साथ आपका सेशन ${day} को ${time} बजे (भारतीय समय) तय हो गया है। ` +
     "यह दूर से होने वाला सेशन है: आप जहाँ हैं वहीं रहें, वे तय समय पर आपको कॉल करेंगी। " +
-    "कृपया किसी शांत जगह पर फ़ोन साथ रखें। एक दिन पहले हम आपको याद दिलाएँगे।",
-  notFitRefund: `शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी सेशन आपके लिए सही नहीं है, इसलिए आपके ${intro} वापस कर दिए गए हैं।`,
+    `कृपया किसी शांत जगह पर फ़ोन साथ रखें। ${remind ? "एक दिन पहले हम आपको याद दिलाएँगे।" : "कृपया समय नोट कर लें; अगर कुछ बदलता है तो हम यहीं मैसेज करेंगे।"}`,
+  notFitRefund: `शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी सेशन आपके लिए सही नहीं है, इसलिए आपके ${intro} वापस किए जा रहे हैं। यह आमतौर पर 5–7 कामकाजी दिनों में आपके खाते में आ जाता है।`,
   missedOffer: "माफ़ कीजिए, हमारी बात नहीं हो पाई। अपनी कॉल के लिए नया समय चुनें। आपको कोई और भुगतान नहीं करना है।",
   rescheduled: (day, time) =>
     `आपकी कॉल अब ${day} को ${time} बजे (भारतीय समय) बुक है। शांता राव जी आपको उसी नंबर पर कॉल करेंगी जिससे आप मैसेज कर रहे हैं। ` +
@@ -705,7 +769,7 @@ const hi: Copy = {
   cancelledSingleRefund: `रद्द हो गया। क्योंकि यह ${rules.singleRefundBeforeHours} घंटे या उससे पहले था, पूरी राशि आपके भुगतान के तरीके में वापस कर दी जाएगी।`,
   cancelledSingleNoRefund: `${rules.changeBeforeHours} से ${rules.singleRefundBeforeHours} घंटे पहले, एक सेशन का पैसा वापस नहीं होता, लेकिन आप एक बार समय बदल सकते हैं। क्या समय बदलें?`,
   notFitRefundSession: (amount) =>
-    `शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी यह आपके लिए सही नहीं है, इसलिए आपके ${amount} वापस कर दिए गए हैं।`,
+    `शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी यह आपके लिए सही नहीं है, इसलिए आपके ${amount} वापस किए जा रहे हैं। यह आमतौर पर 5–7 कामकाजी दिनों में आपके खाते में आ जाता है।`,
   packRefunded: (amount) => `आपके बिना इस्तेमाल हुए सेशन के ${amount} वापस कर दिए गए हैं। यह राशि आपके भुगतान के तरीके में लौटेगी।`,
   payNudge: (until, link) =>
     `आपका समय अभी ${until} बजे तक (भारतीय समय) रोका गया है। यहाँ भुगतान करें: ${link}\n\nभुगतान में दिक्कत हो रही है? HELP या मदद लिखकर भेजें, हम आपकी मदद करेंगे।`,
@@ -721,6 +785,46 @@ const hi: Copy = {
   pageNotFoundBody: "यह भुगतान लिंक सही नहीं है। कृपया WhatsApp पर वापस जाएँ और सबसे नए भुगतान मैसेज का लिंक खोलें।",
   pageErrorTitle: "कृपया फिर से कोशिश करें",
   pageErrorBody: "अभी भुगतान पेज नहीं खुल पाया। कृपया एक मिनट बाद लिंक फिर से खोलें।",
+  // ticket 31
+  timePassed: "माफ़ कीजिए, यह समय बहुत पास है या निकल चुका है। कृपया दूसरा समय चुनें।",
+  stillHeld: (day, time, until, link) =>
+    `${day}, ${time} का समय आपके लिए ${until} बजे तक (भारतीय समय) रोका हुआ है। भुगतान के बाद ही बुकिंग पक्की होगी।\n\n` +
+    `नीचे "${intro} भुगतान करें" बटन दबाएँ, Razorpay का सुरक्षित भुगतान पेज खुलेगा। कृपया दो बार भुगतान न करें।\n\n` +
+    `अगर बटन न खुले, तो यह लिंक खोलें: ${link}`,
+  dupRefund: (amount) => `हमें गलती से ${amount} का दूसरा भुगतान मिला, इसलिए उसे वापस किया जा रहा है। यह आमतौर पर 5–7 कामकाजी दिनों में आपके खाते में आ जाता है।`,
+  dupKeeps: (day, time) => `आपकी बुकिंग ${day} को ${time} बजे (भारतीय समय) ही रहेगी।`,
+  latePaidTaken: (amount) =>
+    `हमें आपके ${amount} मिल गए हैं, लेकिन रोकने का समय खत्म होने के बाद आपका चुना हुआ समय किसी और ने बुक कर लिया। हमारी टीम आज ही यहीं आपको नया समय या पूरा रिफ़ंड देगी।`,
+  checkingPayment: "हमें एक भुगतान मिला है जिसे हमें जाँचना है। हमारी टीम आज ही इसे ठीक करके यहीं जवाब देगी। कृपया दोबारा भुगतान न करें।",
+  holdReleased: "आपके लिए रोका गया समय छोड़ दिया गया है। कोई पैसा नहीं कटा। फिर से समय चुनने के लिए नीचे दबाएँ।",
+  handbackNotice: "माफ़ कीजिए, हम समय पर जवाब नहीं दे पाए। आप नीचे से बुक कर सकते हैं, या फिर से किसी व्यक्ति से बात करने को कह सकते हैं।",
+  answerCall:
+    `पहली कॉल ${config.slots.callMinutes} मिनट की होती है, फ़ोन पर, आपके चुने हुए समय पर। शांता राव जी खुद आपको कॉल करती हैं, आपकी बात सुनती हैं, ` +
+    "और बताती हैं कि वे कैसे काम करती हैं और क्या पूरा सेशन आपके लिए ठीक रहेगा। कॉल उसी भाषा में होती है जिसमें आप चैट करते हैं, अंग्रेज़ी या हिंदी।",
+  answerTrust:
+    "यह सही सवाल है। शांता राव जी MCKS पद्धति में प्रशिक्षित सर्टिफ़ाइड प्राणिक हीलर हैं। भुगतान सिर्फ़ Razorpay के सुरक्षित पेज पर होता है, " +
+    `और हम कभी आपका PIN या OTP नहीं माँगते। अगर पहली कॉल के बाद उन्हें लगे कि सेशन आपके लिए सही नहीं है, तो आपके ${intro} वापस कर दिए जाते हैं। हम सेहत को लेकर कोई वादा नहीं करते।`,
+  answerAbroad:
+    `${hoursText("hi")} कृपया अपने यहाँ के समय का अंतर देख लें। कॉल फ़ोन पर होती है, इसलिए आप कहीं से भी जुड़ सकते हैं। ` +
+    "भुगतान Razorpay के सुरक्षित पेज पर होता है: UPI के लिए भारतीय बैंक खाता चाहिए, कार्ड से भुगतान हो सकता है। अगर भुगतान न हो पाए, तो \"किसी से बात करें\" दबाएँ।",
+  answerInPerson: "कॉल और सेशन सिर्फ़ फ़ोन पर होते हैं, इसलिए आप कहीं से भी जुड़ सकते हैं और कहीं जाना नहीं पड़ता। शांता राव जी बेंगलुरु में रहती हैं।",
+  answerMedical:
+    "प्राणिक हीलिंग डॉक्टर के इलाज के साथ आपकी सेहत को सहारा देने के लिए है, उसकी जगह नहीं, इसलिए हम किसी बीमारी के इलाज का वादा नहीं करते। " +
+    "कृपया अपने डॉक्टर की सलाह मानते रहें, और डॉक्टर से पूछे बिना कोई दवा बंद न करें या न बदलें।",
+  answerConcern:
+    "हम ऐसी किसी बात की जाँच, पुष्टि या उसे हटाने का काम नहीं करते। अगर आप तनाव या बेचैनी महसूस कर रहे हैं, तो शांता राव जी एक कॉल पर आपकी बात सुनकर " +
+    "बता सकती हैं कि क्या एक शांत करने वाला सेशन आपके लिए ठीक रहेगा। अगर आप कभी असुरक्षित महसूस करें, तो 112 पर कॉल करें।",
+  answerPayment:
+    "इसके लिए माफ़ कीजिए। कृपया दोबारा भुगतान न करें। अगर पैसे कट गए और पुष्टि का मैसेज नहीं आया, तो \"किसी से बात करें\" दबाएँ, हमारी टीम जाँच करेगी। " +
+    "भुगतान फेल होने पर बैंक आमतौर पर पैसे खुद लौटा देते हैं।",
+  prohibitedLine: "हम किसी दूसरे व्यक्ति को प्रभावित करने या उस पर काबू करने में मदद नहीं कर सकते। हमारे सेशन सिर्फ़ आपको शांत और स्थिर महसूस कराने के लिए हैं।",
+  jobsLine: "यह चैट सिर्फ़ शांता राव जी के साथ कॉल बुक करने के लिए है। किसी और बात के लिए \"किसी से बात करें\" दबाएँ।",
+  pageLateBody: "आपके समय के बारे में हमारी टीम WhatsApp पर मैसेज करेगी। आप यह पेज बंद कर सकते हैं।",
+  pageCheckTitle: "हम आपका भुगतान जाँच रहे हैं",
+  pageCheckBody: "हमारी टीम आज ही WhatsApp पर मैसेज करेगी। कृपया दोबारा भुगतान न करें।",
+  pageOpeningTitle: "Razorpay का सुरक्षित भुगतान पेज खुल रहा है…",
+  pageOpeningBody: "अगर यह थोड़ी देर में न खुले, तो \"आगे बढ़ें\" दबाएँ।",
+  pageBtnContinue: "आगे बढ़ें",
   amma: ammaEn, // Amma's page copy stays English
 };
 

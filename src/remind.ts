@@ -6,15 +6,23 @@ import { copyFor, langOf } from "./copy";
 import type { Env } from "./env";
 import { sendOrTemplate } from "./send";
 import { formatIstLang, iso, istDay } from "./slots";
-import { sendsOn } from "./switches";
+import { sendsOn, switchStates } from "./switches";
+import { raiseAwayItems } from "./watch";
 
 const DAY = 86_400_000;
+export const REMINDER_AT = "18:30"; // IST: when the day-before reminders go (src/index.ts runs them from the 2-minute cron)
 const dayStartUtc = (ymd: string) => iso(Date.parse(`${ymd}T00:00:00+05:30`));
 
 type Row = { id: number; slotId: number; conv: number; locale: string; start: string };
 
 export async function sendReminders(env: Env, nowMs = Date.now()): Promise<number> {
   if (!(await sendsOn(env))) return 0;
+  // Practitioner away: no reminder for a call or session that won't happen (ticket 31, I5). Each of tomorrow's bookings already has an
+  // AMMA_AWAY item for the owner (offer a new time or a refund); raised here too in case the switch went on just now.
+  if ((await switchStates(env)).find((s) => s.name === "AMMA_AWAY")!.on) {
+    await raiseAwayItems(env, nowMs);
+    return 0;
+  }
   const from = dayStartUtc(istDay(nowMs + DAY));
   const to = dayStartUtc(istDay(nowMs + 2 * DAY));
   const q = (table: "intros" | "sessions", states: string, kind: string) =>

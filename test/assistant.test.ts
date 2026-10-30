@@ -28,20 +28,20 @@ async function pay(from: string) {
 }
 
 describe("the flag, the switch and the key", () => {
-  it("with AI_REPLIES off, a question gets today's acknowledgement and an item, and the API is never called", async () => {
+  it("with AI_REPLIES off, a question gets the fixed answer (ticket 31), no item, and the API is never called", async () => {
     w.aiFlag = "false";
     const from = await w.greeted();
     await w.typed(from, "What is pranic healing?");
     expect(w.aiCalls()).toHaveLength(0);
-    expect(w.texts()).toEqual([en.ack]);
-    expect(await w.count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(1);
+    expect(w.texts()).toEqual([en.faqAnswers.what_is_this]);
+    expect(await w.count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(0);
   });
   it("the /admin switch can pause it; SENDS paused means no call either (nothing could be sent)", async () => {
     const from = await w.greeted();
     await w.db.prepare("INSERT INTO settings (key, value) VALUES ('AI_REPLIES', 'false')").run();
     await w.typed(from, "What is pranic healing?");
     expect(w.aiCalls()).toHaveLength(0);
-    expect(w.texts()).toEqual([en.ack]);
+    expect(w.texts()).toEqual([en.faqAnswers.what_is_this]);
     await w.db.prepare("DELETE FROM settings WHERE key = 'AI_REPLIES'").run();
     await w.db.prepare("INSERT INTO settings (key, value) VALUES ('SENDS', 'false')").run();
     await w.typed(from, "And how does it work on the phone?");
@@ -389,11 +389,11 @@ describe("in the middle of a booking: one message, the answer on top of the step
     const from = await atDayStep();
     w.fetchMock.mockClear();
     w.ai = () => new Response("{}", { status: 500 });
-    await w.typed(from, "Saturday please");
+    await w.typed(from, "Sunday please");
     expect(w.sent()).toHaveLength(1);
     expect(w.last().interactive.body.text).toBe(`${en.repromptQuestion}\n\n${en.chooseDay}`);
     w.ai = out("relevant_question", "That is 100% possible", "none");
-    await w.typed(from, "Saturday please, really");
+    await w.typed(from, "Sunday please, really");
     expect(w.last().interactive.body.text).toBe(`${en.repromptQuestion}\n\n${en.chooseDay}`);
     expect(w.last().interactive.body.text).not.toContain("100%");
     expect(w.last().interactive.body.text).not.toContain(en.reprompt(""));
@@ -452,13 +452,13 @@ describe("a question asked before the language was chosen", () => {
     expect(w.sent()).toHaveLength(2);
     expect(w.last().interactive.action.buttons[0].reply.title).toBe(allCopy.hi.btnSeeTimes);
   });
-  it("if the assistant is off, or the question's text has already been wiped, it gets today's acknowledgement and an item", async () => {
+  it("if the assistant is off, the fixed answer (ticket 31); if the question's text has already been wiped, the menu", async () => {
     w.aiFlag = "false";
     const a = w.newPhone();
     await w.typed(a, "Can pranic healing help with stress?");
     await w.tap(a, "lang_en");
     expect(w.aiCalls()).toHaveLength(0);
-    expect(w.texts().slice(1)).toEqual([en.ack, en.menuBody]);
+    expect(w.texts().slice(1)).toEqual([en.faqAnswers.what_is_this]);
     w.aiFlag = "true";
     const b = w.newPhone();
     await w.typed(b, "Can pranic healing help with stress?");
@@ -466,7 +466,7 @@ describe("a question asked before the language was chosen", () => {
     w.fetchMock.mockClear();
     await w.tap(b, "lang_en");
     expect(w.aiCalls()).toHaveLength(0);
-    expect(w.texts()).toEqual([en.ack, en.menuBody]);
+    expect(w.texts()).toEqual([en.menuBody]);
   });
   it("a first question that is abuse is handled by its label: no answer, no menu", async () => {
     const from = w.newPhone();
@@ -536,9 +536,9 @@ describe("handoff fixes (docs/AGENT.md section 3.2 step 6)", () => {
     w.fetchMock.mockClear();
     await w.typed(from, "Menu");
     expect(w.last().interactive.body.text).toBe(en.menuBody);
-    await w.typed(from, "Namaste");
+    await w.typed(from, "Namaste"); // right after an untapped menu: nothing more (ticket 31, I13)
     await w.typed(from, "are you there?");
-    expect(w.sent()).toHaveLength(3); // the menu twice, then the one acknowledgement for this handoff (ticket 18)
+    expect(w.sent()).toHaveLength(2); // the menu, then the one acknowledgement for this handoff (ticket 18)
     expect(w.last().text.body).toBe(en.humanWaitAck);
     expect((await w.conv(from)).mode).toBe("HUMAN");
   });
@@ -573,7 +573,7 @@ describe("handoff fixes (docs/AGENT.md section 3.2 step 6)", () => {
     expect(await w.count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'HUMAN_REQUEST'")).toBe(1);
     expect(w.emails).toHaveLength(1);
   });
-  it("24 hours after the handoff the cron returns the chat to the bot, the item stays open, and the customer is told nothing", async () => {
+  it("24 hours after the handoff the cron returns the chat to the bot, the item stays open; outside the window nothing is sent yet (ticket 31: told on their next message)", async () => {
     const from = await w.greeted();
     await w.tap(from, "menu_person");
     w.fetchMock.mockClear();

@@ -134,7 +134,7 @@ If a typed message arrives while a booking step is open (language, age, service,
    - Booking and menu button taps still work, and so do menu words ("hi", "menu"…): they get the menu, and the mode doesn't change.
    - Other free text gets no bot reply. It waits for Rohit in /admin.
    - Each new HUMAN_REQUEST emails Rohit at once: the /admin link only, never message text, at most one email per person per 6 hours.
-   - If Rohit hasn't replied 24 hours after the handoff, the chat returns to BOT. The attention item stays open, and the customer isn't told.
+   - If Rohit hasn't replied 24 hours after the handoff, the chat returns to BOT. The attention item stays open, Rohit gets one email, and the customer is told once, honestly ("Sorry we couldn't reply in time. You can book below, or ask again for a person." with the menu): at once inside the 24-hour window, otherwise with their next message (ticket 31). Not during the no-selling week after a crisis message.
    - Resolving the item, or Rohit replying from /admin and then resolving, returns the chat to BOT.
 7. **Paying customer:** someone with a PAID, CONFIRMED or RESCHEDULED booking, or a PAID payment, in the last 30 days.
    - Skips strikes and quiet.
@@ -150,11 +150,12 @@ If a typed message arrives while a booking step is open (language, age, service,
    - If the person has a hold, a pending payment or a booking, raise an attention item, because it may be a payment screenshot, and send the notice.
    - Otherwise the first one each day gets the notice ("Please type your question, or tap a button"). Later ones get no reply.
    - Media is never downloaded.
-10. **Short acknowledgements** ("ok", "thanks", "thank you", "👍", "🙏", "ji", "धन्यवाद", "शुक्रिया"): no reply, no strike, no AI.
-11. **Menu words** (hi, hello, menu, start, namaste, नमस्ते, …): show the menu. No AI.
+10. **Short acknowledgements** ("ok", "thanks", "thank you", "ok thank you", "thank you so much ji", "dhanyavad", "👍", "🙏", "ji", "धन्यवाद", "शुक्रिया"): no reply, no strike, no AI. When a booking step is open, "ok" or "ji" at a yes/no step is the Yes button (ticket 31).
+11. **Menu words** (hi, hello, menu, start, namaste, namaste ji, good morning, नमस्ते, …): show the menu. No AI. A greeting within 10 minutes of a menu nobody has tapped gets nothing more and counts as small talk (ticket 31).
    - 11b. **Asking to call us** (ticket 30): a short message (at most `config.words.callRequestMaxWords` words) with a phrase from `config.words.callRequest` ("call me", "can I call", "phone number", "number please", "video call", "मुझे कॉल करो", "नंबर दो", …) gets one message: `callRequest` ("We don't take calls on this WhatsApp number. The quickest way to talk to Shantha Rao is the ₹99 15-minute call: you choose a time, and she calls you.") with the menu buttons. No number, no AI. Not when the message is about a call she makes (`config.words.callRequestNot`: "she didn't call me", "can she call me now?"), not in the no-selling week after a crisis message, and not for a paying customer or someone with a call or session booked that hasn't ended (those go to the AI, which knows their booking). HUMAN, blocked and quiet chats never get here (steps 2, 6 and 8).
 12. **Budget:** if this person has reached their daily AI cap, or the global daily cap is used up, send the menu with "Talk to a person". No AI.
-13. **The AI** returns a label and a reply (section 6).
+13. **The AI** returns a label and a reply (section 6). Before it, a typed answer to an open booking step ("yes", "haan", "1", the button's words, "English"/"hindi", "tomorrow", "4 pm") is taken as that tap (ticket 31).
+    - **With the AI off** (or its budget used up), the code word lists label noise (threats, spam and promotions, flirting, abuse, influencing another person), then the fixed-answer router (`src/router.ts`, word lists in `config.router.topics`) answers the common topics from the Help copy and KNOWLEDGE.md with the menu buttons: illness (Help and Talk to a person only), payment trouble, my booking, refunds, abroad, in person, is it real, price, how it works, timings, what it is, and "book" (starts booking). Job seekers get one line pointing to a person, once a day. Anything else gets "I'm the booking assistant and can't answer typed questions…" with the menu, at most once every 30 minutes, and no queue item. A person's reply is promised only after "Talk to a person".
 14. **Apply the label** (section 4), then run the output check, then send.
 
 ### 3.3 Burst handling

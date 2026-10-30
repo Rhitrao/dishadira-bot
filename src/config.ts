@@ -60,14 +60,19 @@ export const config = {
     HEALING: { en: "Healing", hi: "हीलिंग" },
   },
   // A text that is only one of these (case-insensitive, ignoring spaces, punctuation and emoji) gets the menu.
-  menuWords: ["hi", "hii", "hello", "hey", "namaste", "namaskar", "menu", "start", "नमस्ते", "नमस्कार", "हाय", "मेनू"],
+  menuWords: ["hi", "hii", "hello", "hey", "namaste", "namaskar", "menu", "start", "नमस्ते", "नमस्कार", "हाय", "मेनू",
+    // ticket 31: polite greetings people really send
+    "namaste ji", "namaskar ji", "hello ji", "hi ji", "hello sir", "hi sir", "hello mam", "hello madam", "good morning", "good afternoon", "good evening", "ram ram", "नमस्ते जी"],
   // Short typed words the gatekeeper (src/gate.ts) understands. All are matched after normalising (src/safety.ts): lower case,
   // no nukta, ँ read as ं, no punctuation or emoji, one space between words. Emoji-only entries are matched as emoji.
   words: {
     // The whole message must be one of these.
     optOut: ["stop", "unsubscribe", "बंद करो", "band karo"],
-    ack: ["ok", "okay", "thanks", "thank you", "ty", "ji", "👍", "🙏", "धन्यवाद", "शुक्रिया", "ठीक है"],
-    booking: ["book", "booking", "book call", "book a call", "बुक", "बुकिंग"],
+    ack: ["ok", "okay", "thanks", "thank you", "ty", "ji", "👍", "🙏", "धन्यवाद", "शुक्रिया", "ठीक है",
+      // ticket 31: closings that used to get the 24-hour promise
+      "ok thank you", "ok thanks", "okay thanks", "okay thank you", "thank you so much", "thank you ji", "thank you so much ji", "thanks ji", "thanks a lot",
+      "thank u", "thanku", "thankyou", "ok ji", "okay ji", "theek hai", "thik hai", "dhanyavad", "dhanyawad", "shukriya", "धन्यवाद जी", "ठीक है जी"],
+    booking: ["book", "booking", "book call", "book a call", "बुक", "बुकिंग"], // a sentence with "book" in it is the router's (config.router.topics.book)
     // "Reply HELP" (the payment reminder, ticket 29): the whole message asks for a person, like "Talk to a person".
     help: ["help", "help me", "need help", "please help", "madad", "मदद", "मदद करें", "मदद चाहिए"],
     // A short message (at most handoffMaxWords words) containing one of these as a word asks for a person.
@@ -148,7 +153,7 @@ export const config = {
     smalltalkFreePerDay: 2,
     payingCustomerDays: 30, // a payment or confirmed booking this recent makes someone a paying customer
     // Used by the rule-based classifier until the AI is on (ticket 14). A message with a link and one of spamWords is spam.
-    spamWords: ["earn", "click", "offer", "कमाएं", "कमाएँ", "क्लिक", "ऑफर"],
+    spamWords: ["earn", "click", "offer", "कमाएं", "कमाएँ", "क्लिक", "ऑफर", "crypto", "bitcoin", "investment", "followers", "promotion", "seo"],
     // Flirting: a strike and one line. Insults: a strike and no reply.
     flirtWords: ["i love you", "love u", "date me", "marry me", "kiss me", "sexy", "send pic", "send photo", "send me your photo", "your photo", "your pic", "pic bhejo", "photo bhejo", "फोटो भेजो", "आई लव यू"],
     // Phrases aimed at the bot or a person, not single words: "I feel stupid" or "my kutta (dog)" must never be a strike.
@@ -164,6 +169,31 @@ export const config = {
       "fuck", "fucking", "bastard", "bitch", "asshole", "motherfucker", "madarchod", "behenchod", "bhosdike", "chutiya", "chutiye", "gandu", "harami", "haramkhor", "randi",
       "मादरचोद", "बहनचोद", "भोसड़ीके", "चूतिया", "गांडू", "हरामी", "रंडी",
     ],
+    // Ticket 31 (with the assistant off). Promotions and scams that need no link: spam (a strike, no reply, no item).
+    promoWords: [
+      "digital marketing", "seo services", "seo service", "web design", "website design", "website development", "app development", "grow your business",
+      "increase your sales", "get more leads", "lead generation", "social media marketing", "instagram followers", "cryptocurrency", "crypto", "bitcoin", "forex",
+      "trading tips", "investment plan", "double your money", "earn money", "earn from home", "work from home", "part time job", "you have won", "you won",
+      "lottery", "jackpot", "kbc", "claim your prize", "loan offer", "personal loan", "promote your", "marketing agency", "our agency", "advertise with",
+    ],
+    // Threats: a strike as abuse (no reply), and an urgent item for the owner.
+    threatWords: [
+      "kill you", "i will kill", "will kill you", "finish you", "i will find you", "find you", "where you live", "i know where", "burn your",
+      "maar dunga", "maar dalunga", "maar daalunga", "jaan se maar", "dekh lunga", "dekh lenge", "chhodunga nahi", "chodunga nahi",
+      "जान से मार", "मार दूंगा", "मार डालूंगा", "देख लूंगा", "छोड़ूंगा नहीं",
+    ],
+    // Influencing or harming another person (AGENT.md §4 prohibited_request): a strike and one firm, kind line.
+    prohibitedWords: [
+      "vashikaran", "vasikaran", "वशीकरण", "love back", "get my love back", "get him back", "get her back", "bring back my", "wapas lana", "wapas laana",
+      "pyar wapas", "control my husband", "control my wife", "control my boss", "control him", "control her", "make him marry", "make her marry",
+      "take revenge", "revenge", "badla lena", "बदला", "harm them", "punish them",
+    ],
+    // Job seekers, learners and partnerships: one line pointing to "Talk to a person", once a day; no strike, no item.
+    jobWords: [
+      "any vacancy", "job vacancy", "vacancy", "looking for a job", "looking for job", "need a job", "need job", "job opportunity", "job opening",
+      "are you hiring", "hiring", "my resume", "my cv", "internship", "naukri chahiye", "job chahiye", "नौकरी चाहिए", "work with you", "join your team",
+      "collaboration", "collab", "partnership", "franchise", "sponsorship", "do you teach", "teach me", "learn pranic", "courses",
+    ],
   },
   // Safety (docs/KNOWLEDGE.md section 9). Rohit extends these lists here. Matched as whole words or phrases after normalising.
   safety: {
@@ -177,9 +207,12 @@ export const config = {
       // Devanagari
       "मरना चाहता", "मरना चाहती", "मर जाना", "मर जाऊंगा", "मर जाऊंगी", "आत्महत्या", "खुदकुशी", "जीना नहीं चाहता", "जीना नहीं चाहती", "जिंदा नहीं रहना", "जान दे दूं", "अपनी जान", "खत्म कर लूंगा", "खत्म कर लूंगी",
     ],
+    // Present-tense, urgent phrases only (ticket 31): "had a stroke last year" or "my office is poison" are not emergencies.
     emergency: [
-      "can't breathe", "cannot breathe", "chest pain", "heart attack", "unconscious", "fainted", "bleeding a lot", "heavy bleeding", "poison", "overdose", "stroke",
-      "saans nahi", "सांस नहीं", "सीने में दर्द", "बेहोश", "जहर",
+      "can't breathe", "cannot breathe", "chest pain", "heart attack", "bleeding a lot", "heavy bleeding", "overdose",
+      "having a stroke", "is having a stroke", "had a stroke just now", "stroke right now", "took poison", "drank poison", "ate poison", "has taken poison", "swallowed poison",
+      "is unconscious", "is not waking up", "fainted just now", "just fainted", "has fainted",
+      "saans nahi", "सांस नहीं", "सीने में दर्द", "zeher kha liya", "zehar kha liya", "jahar kha liya", "जहर खा लिया", "ज़हर खा लिया", "behosh ho gaya", "behosh ho gayi", "बेहोश हो गया", "बेहोश हो गई", "बेहोश हो गए",
     ],
   },
   // Chat text is wiped CHAT_RETENTION_MINUTES (env) after a person's last message; this is used only if the variable is missing or not a number.
@@ -209,6 +242,86 @@ export const config = {
   },
   languages: ["en", "hi"],
   faqIds: ["what_is_this", "how_it_works", "price", "timings", "refund", "privacy"],
+  // The fixed-answer router (ticket 31, src/router.ts): with the assistant off, a typed message containing one of these words or phrases
+  // (after normalising, whole words only) gets that topic's fixed answer. Topics are tried in this order; the first match wins.
+  router: {
+    answerEveryMinutes: 10, // the same topic is answered again only after this long (a loop gets silence)
+    noMatchEveryMinutes: 30, // "I'm the booking assistant and can't answer typed questions" at most this often
+    lineEveryHours: 24, // the job-seeker line at most this often
+    menuRepeatMinutes: 10, // a greeting within this long of an untapped menu gets nothing more (it counts as small talk)
+    // Typed answers to an open step (ticket 31, I8), besides the button's own words and its number. Matched in a short message only.
+    stepWords: {
+      yes: ["yes", "yes i am", "yeah", "yep", "ok", "okay", "haan", "han", "haa", "ha", "ji", "ji haan", "हाँ", "हां", "जी", "जी हाँ"],
+      no: ["no", "nope", "nahi", "nahin", "na", "नहीं", "ना"],
+      en: ["english", "eng", "angrezi", "अंग्रेज़ी", "इंग्लिश"],
+      hi: ["hindi", "हिंदी", "हिन्दी", "hindi mein", "hindi me"],
+      self: ["me", "myself", "for me", "self", "mere liye", "mujhe", "मेरे लिए", "खुद"],
+      family: ["family", "mother", "mom", "mummy", "maa", "father", "dad", "papa", "husband", "wife", "son", "daughter", "brother", "sister", "parents", "परिवार", "माँ", "मम्मी", "पापा", "पति", "पत्नी", "बेटा", "बेटी"],
+      pet: ["pet", "dog", "cat", "puppy", "kutta", "billi", "पालतू", "कुत्ता", "बिल्ली"],
+      healing: ["healing", "heal", "हीलिंग"],
+      cleansing: ["cleansing", "energy cleansing", "cleanse", "protection", "क्लींजिंग"],
+      today: ["today", "aaj", "आज"],
+      tomorrow: ["tomorrow", "tmrw", "kal", "कल"],
+      weekdays: [
+        ["sunday", "sun", "ravivar", "itvaar", "रविवार", "रवि"], ["monday", "mon", "somvar", "सोमवार", "सोम"], ["tuesday", "tue", "tues", "mangalvar", "मंगलवार", "मंगल"],
+        ["wednesday", "wed", "budhvar", "बुधवार", "बुध"], ["thursday", "thu", "thurs", "guruvar", "गुरुवार", "गुरु"], ["friday", "fri", "shukravar", "शुक्रवार", "शुक्र"],
+        ["saturday", "sat", "shanivar", "शनिवार", "शनि"],
+      ],
+      maxWords: 5,
+    },
+    topics: {
+      medical: [
+        "cancer", "tumour", "tumor", "diabetes", "sugar", "thyroid", "depression", "anxiety", "bp", "blood pressure", "stroke", "paralysis", "heart", "kidney", "liver",
+        "asthma", "arthritis", "migraine", "pcod", "pcos", "infertility", "pregnant", "pregnancy", "surgery", "operation", "hospital", "doctor", "medicine", "medicines",
+        "medication", "tablets", "illness", "disease", "disorder", "sick", "pain", "cure", "treatment", "treat", "bimari", "bimaari", "beemari", "ilaj", "ilaaj", "dawai", "dawa",
+        "बीमारी", "बीमार", "इलाज", "दवा", "दवाई", "डॉक्टर", "कैंसर", "शुगर", "दर्द", "अस्पताल",
+      ],
+      black_magic: [
+        "black magic", "kala jadu", "kaala jaadu", "jadu tona", "jaadu", "jadu", "tona", "totka", "nazar", "evil eye", "buri nazar", "curse", "cursed", "possessed",
+        "bhoot", "ghost", "negative energy", "काला जादू", "जादू", "टोना", "टोटका", "नज़र", "बुरी नज़र", "भूत",
+      ],
+      payment_issue: [
+        "payment failed", "payment fail", "money deducted", "amount deducted", "deducted", "debited", "paid but", "i paid", "i have paid", "already paid", "payment done",
+        "no confirmation", "not confirmed", "pay kiya", "paise kat", "paisa kat", "paise kat gaye", "भुगतान कर दिया", "पैसे कट",
+      ],
+      refund: ["refund", "refunds", "money back", "paisa wapas", "paise wapas", "return my money", "cancel", "cancellation", "रिफंड", "पैसे वापस", "रद्द"],
+      my_booking: [
+        "my call", "my booking", "my bookings", "my appointment", "my session", "when is my", "booking status", "is my call", "meri call", "meri booking", "mera appointment",
+        "call kab hai", "मेरी कॉल", "मेरी बुकिंग",
+      ],
+      abroad: [
+        "dubai", "uae", "abroad", "outside india", "another country", "other country", "usa", "america", "uk", "london", "canada", "australia", "singapore", "time zone",
+        "timezone", "time difference", "international", "foreign", "overseas", "videsh", "विदेश", "paypal",
+      ],
+      in_person: [
+        "in person", "visit", "come to you", "come there", "meet her", "meet you", "meet in person", "clinic", "centre", "center", "address", "where are you", "bengaluru",
+        "bangalore", "milne", "mil sakte", "aa sakte", "मिल सकते", "आ सकते",
+      ],
+      trust: [
+        "scam", "scammer", "fraud", "frauds", "fake", "is this real", "is it real", "real or", "genuine", "trust", "legit", "legitimate", "certified", "qualified",
+        "qualification", "safe to pay", "is it safe", "dhokha", "dhoka", "farzi", "asli", "नकली", "धोखा", "असली", "भरोसा",
+      ],
+      price: [
+        "price", "prices", "pricing", "cost", "costs", "fee", "fees", "charge", "charges", "how much", "kitna", "kitne", "kitni", "paisa", "paise", "rate", "rates",
+        "rupees", "discount", "free trial", "free session", "फ़ीस", "कीमत", "कितना", "कितने", "कितनी", "शुल्क", "दाम",
+      ],
+      how_it_works: [
+        "how does it work", "how it works", "how does this work", "how does the call work", "how is the call", "what happens", "process", "over the phone",
+        "on the phone", "by phone", "phone pe", "phone par", "kaise hota", "kaise kaam", "kaise karte", "kaise hoga", "कैसे होता", "कैसे काम", "कैसे होगा",
+      ],
+      timings: [
+        "timing", "timings", "what time", "which time", "available", "availability", "saturday", "sunday", "weekend", "morning", "evening", "night", "kab", "samay",
+        "waqt", "समय", "टाइम", "कब", "शनिवार", "रविवार",
+      ],
+      what_is_this: [
+        "what is pranic", "what is this", "what is it", "what do you do", "pranic", "prana", "kya hai", "kya hota hai", "details", "detail", "info", "information",
+        "tell me more", "प्राणिक", "क्या है",
+      ],
+      book: [
+        "book", "booking", "book karna", "book karni", "book kar", "appointment", "schedule", "want to book", "i want to book", "call book", "बुक", "बुकिंग",
+      ],
+    },
+  },
 } as const;
 
 export type Config = typeof config;

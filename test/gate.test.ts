@@ -288,7 +288,7 @@ describe("the AI budgets: counted per India day, checked in the gate", () => {
     it(`${lang}: over a cap the person gets the menu with Talk to a person, no AI, and the day is counted for the digest`, async () => {
       const from = await greeted(lang);
       await setState(from, "ai_day = ?2, ai_count = 12", "2026-10-05");
-      await typed(from, lang === "en" ? "how does this work on the phone?" : "यह फ़ोन पर कैसे होता है?");
+      await typed(from, lang === "en" ? "can you sing me a song?" : "क्या आप गाना गा सकते हैं?"); // no fixed answer for it (ticket 31: the router answers the common topics first)
       const c = allCopy[lang];
       expect(sent()).toHaveLength(1);
       expect(last().interactive.body.text).toBe(c.aiFallback);
@@ -301,7 +301,7 @@ describe("the AI budgets: counted per India day, checked in the gate", () => {
   it("while nothing may be sold the fallback has no Book button and no offer of a call", async () => {
     const from = await greeted("en");
     await setState(from, "ai_day = ?2, ai_count = 12, no_sell_until = ?3", "2026-10-05", iso(NOW + DAY));
-    await typed(from, "how does this work on the phone?");
+    await typed(from, "can you sing me a song?");
     expect(last().interactive.body.text).toBe(allCopy.en.aiFallbackNoSell);
     expect(last().interactive.action.buttons.map((b: Wa) => b.reply.id)).toEqual(["menu_how", "menu_person"]);
     expect(allCopy.en.aiFallbackNoSell).not.toMatch(/book/i);
@@ -712,8 +712,7 @@ describe("first-message and media logic, now in the gate", () => {
     expect((await conv(from)).first_question_msg).not.toBeNull();
     expect((await conv(from)).greeted_at).toBe(iso(NOW));
     await tap(from, "lang_hi");
-    expect(sent()[1].text.body).toBe(allCopy.hi.ack);
-    expect((await conv(from)).last_ack_at).toBe(iso(NOW));
+    expect(sent()[1].interactive.body.text).toBe(allCopy.hi.faqAnswers.what_is_this); // the fixed answer, in Hindi (ticket 31)
   });
 
   it("media: the notice and menu once a day, kept on the person, not in the messages", async () => {
@@ -729,15 +728,14 @@ describe("first-message and media logic, now in the gate", () => {
     expect((await state(from)).media_notice_day).toBe("2026-10-06");
   });
 
-  it("the ack is once per 24 hours, kept on the conversation", async () => {
+  it("the 'can't answer typed questions' line is at most once per 30 minutes (ticket 31)", async () => {
     const from = await greeted();
-    await typed(from, "can you tell me more about how this works");
+    await typed(from, "can you sing me a song");
     expect(sent()).toHaveLength(1);
-    expect(last().text.body).toBe(allCopy.en.ack);
-    expect((await conv(from)).last_ack_at).toBe(iso(NOW));
+    expect(last().interactive.body.text).toBe(allCopy.en.ack);
     await typed(from, "hello? anyone there");
     expect(sent()).toHaveLength(1);
-    vi.setSystemTime(NOW + 25 * 3_600_000);
+    vi.setSystemTime(NOW + 31 * 60_000);
     await typed(from, "hello? anyone there?");
     expect(sent()).toHaveLength(2);
   });
@@ -747,15 +745,15 @@ describe("burst: a newer message from the same person means the older reply is n
   it("the older message's reply is recorded as SKIPPED / NEWER_MESSAGE and nothing goes out", async () => {
     const from = await greeted();
     const t = Math.floor(NOW / 1000);
-    await typed(from, "hello", { timestamp: String(t + 5) }); // the newer message is handled first
+    await typed(from, "price?", { timestamp: String(t + 5) }); // the newer message is handled first
     expect(sent()).toHaveLength(1);
     fetchMock.mockClear();
     await typed(from, "and how long is the call?", { timestamp: String(t) }); // the older one arrives afterwards
     expect(sent()).toHaveLength(0);
     const row = await db.prepare("SELECT status, skip_reason, body FROM messages WHERE skip_reason IS NOT NULL").first();
     expect(row).toEqual({ status: "SKIPPED", skip_reason: "NEWER_MESSAGE", body: null });
-    // The state changes of the older message still happen (the item for Rohit); only the reply is skipped.
-    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(1);
+    // Only the reply is skipped (a question with no fixed answer raises no item since ticket 31).
+    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'FREE_TEXT'")).toBe(0);
     expect((await conv(from)).last_ack_at).toBeNull(); // an acknowledgement that did not go out is not remembered
   });
 
@@ -774,9 +772,9 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
   const hours = (lang: Lang) => allCopy[lang].hintDays;
 
   for (const lang of ["en", "hi"] as const) {
-    it(`${lang}: language, age, service, who for, day, time and pay each come back with the re-prompt, and 'Saturday please' gets the hours`, async () => {
+    it(`${lang}: language, age, service, who for, day, time and pay each come back with the re-prompt, and 'Sunday please' gets the hours`, async () => {
       const c = allCopy[lang];
-      const ask = lang === "en" ? "Saturday please" : "शनिवार चाहिए";
+      const ask = lang === "en" ? "Sunday please" : "रविवार चाहिए"; // (Saturday is a working day since ticket 30, so "Saturday please" is now that day's row: a typed answer, ticket 31)
       const from = newPhone();
       await typed(from, "hello");
       await typed(from, ask); // the language step is open
@@ -893,7 +891,7 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
     expect((await conv(from)).pending_step).toBeNull();
     fetchMock.mockClear();
     await typed(from, "when is my call exactly?");
-    expect(last().text.body).toBe(allCopy.en.ack);
+    expect(last().text?.body ?? last().interactive?.body?.text).toContain("Your bookings: call on Tue, 6 Oct at 2:30 pm"); // My bookings (ticket 31)
 
     const other = await greeted();
     await ageOk(other);
@@ -901,7 +899,7 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
     vi.setSystemTime(NOW + 25 * 3_600_000); // the step is a day old: not open any more
     fetchMock.mockClear();
     await typed(other, "are you there?");
-    expect(last().text.body).toBe(allCopy.en.ack);
+    expect(last().interactive.body.text).toBe(allCopy.en.ack);
   });
 
   it("the session picker's day and time steps are re-sent too", async () => {
@@ -911,7 +909,7 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
     const s = await db.prepare("INSERT INTO sessions (conversation_id, intro_id, service, state) VALUES (?1, ?2, 'HEALING', 'OFFERED')").bind(c, i.meta.last_row_id).run();
     await tap(from, `sess_offer_${s.meta.last_row_id}`);
     expect(last().interactive.body.text).toBe(allCopy.en.chooseDay);
-    await typed(from, "Saturday please");
+    await typed(from, "Sunday please");
     expect(last().interactive.body.text).toBe(reprompt("en", allCopy.en.hintDays, allCopy.en.chooseDay));
     expect(last().interactive.action.sections[0].rows[0].id).toMatch(/^sday_/); // the day step is a list (ticket 30)
   });
@@ -1014,7 +1012,7 @@ describe("the chat wipe (test settings: 10 minutes)", () => {
     expect(last().interactive.body.text).toBe(allCopy.hi.menuBody); // the menu in Hindi, not the greeting
     expect(await count("SELECT COUNT(*) AS n FROM messages WHERE dedupe_key LIKE 'greet:%'")).toBe(1);
     await typed(from, "what is the price");
-    expect(last().text.body).toBe(allCopy.hi.ack); // the 24h ack check does not need the old rows either
+    expect(last().interactive.body.text).toBe(allCopy.hi.faqAnswers.price); // the repeat check does not need the old rows either
   });
 
   it("only conversations whose last message is old are wiped; a missing setting means 7 days", async () => {

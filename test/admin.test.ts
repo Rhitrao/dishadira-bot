@@ -335,7 +335,7 @@ describe("switches", () => {
     // booking is closed
     const who = await person();
     await bookingChoice(env(), "menu_book", who, "wamid.AWAY");
-    expect(JSON.parse(waSent().at(-1)![1].body).text.body).toMatch(/opens soon/i);
+    expect(JSON.parse(waSent().at(-1)![1].body).interactive.body.text).toMatch(/bookings are paused/i); // with Talk to a person and Help (ticket 31)
     // cron again: no duplicates, and a resolved item does not come back
     await raiseAwayItems(env());
     expect(await count("SELECT COUNT(*) AS n FROM attention")).toBe(3);

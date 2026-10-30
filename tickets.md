@@ -495,3 +495,30 @@ The owner's requests for the launch (29 Oct 2026). On live `CONSOLE_V2` is "fals
 5. **"Call me".** A short typed message asking to call or for a number (`config.words.callRequest`) gets one friendly line in the menu message: we don't take calls on this number; the quickest way to talk to Shantha Rao is the ₹99 call, where she calls you. Not for HUMAN, blocked or quiet chats, the crisis no-sell week, a message about a call she makes ("she didn't call me"), or a paying customer or someone with a booking coming up. No number is ever given.
 - Rules: no secrets or real numbers; no merge or deploy; no Cloudflare, Meta or Razorpay changes.
 - Tests: Saturday offered and Sunday never; the day list (6 rows, only free days, holidays skipped, both languages, every flow, old ids); holidays on /amma, /admin and /app (roles, audit, the warning, past dates refused, the day hidden everywhere); the copy and the template without the number; the call-request reply and where it doesn't apply; every existing test stays green.
+
+### Ticket 31: fixes from the launch simulations (cap $20)
+A QA run (29 Oct 2026) simulated 84 launch-day scenarios against main (Ticket 29 merged) with the live flags (AI_REPLIES "false", SENDS "true", NEW_BOOKINGS "true", no template approved). Fix the findings below, with tests, in this order. The id after each item is the finding in the QA report. Ticket 30 (day list, Mon–Sat hours, holidays, the call wording without a number, "call me" replies) runs at the same time: none of that is in this ticket, and edits in those spots stay minimal.
+1. **B1** A past time, or one inside `config.booking.leadMinutes`, is refused in the hold itself for every kind (call, session, package-credit booking), with the times list again.
+2. **B2** An unpaid hold is never described as a booked call: the same time again re-sends the pay step (same link while held); a different time releases the old hold (payment FAILED, intro EXPIRED, the slot freed) and holds the new one.
+3. **B3** A second paid ₹99 call for the same person while one is already PAID/upcoming is a duplicate: refunded automatically through the existing refund path, the customer told (EN/HI), an attention item raised.
+4. **B4** A late payment for a time someone else has taken: the customer is told (the existing late-payment rule: the team offers a new time or a refund), and the /p/ page no longer says "confirmed".
+5. **I1** With the assistant off: a small fixed-answer router (EN, HI, Roman Hindi) for price, what Pranic Healing is, how the call works, is it real, refunds, abroad (time zone, paying), in person, "when is my call", medical conditions (no claims; the crisis and emergency checks stay first) and "book", built only from docs/KNOWLEDGE.md and the Help copy, each with the menu buttons. Anything else: one honest line ("I'm the booking assistant and can't answer typed questions…") with the menu, at most once per N minutes. A human reply is promised only after "Talk to a person". Non-genuine messages (spam, links, promotions, agencies, job seekers, threats, vashikaran, scams) use the noise and strike rules: no promise, no item for obvious spam, a firm one-liner at most (I16).
+6. **I3** Emergency phrases in the present tense only ("having a stroke", "took poison", "fainted just now"); a first message that was answered with the emergency text still gets the greeting.
+7. **I4** A payment confirmation or refund notice skipped while SENDS was paused is sent once when sends resume.
+8. **I5** AMMA_AWAY: no day-before reminders while away; the owner has an item per booking.
+9. **I6** After a package is paid, "hi" shows the menu, not Amma's session offer.
+10. **I7** "We're refunding your ₹99" only once Razorpay has accepted the refund, with the timing ("usually 5–7 working days"); a refusal goes to the owner, not the customer.
+11. **I8** Typed answers to an open step ("yes", "haan", "ok", "1", the button's words, "English"/"hindi", a day, a time) count as the tap.
+12. **I10** No free times: a clear message with "Talk to a person", and an item.
+13. **I11** A hold that ends unpaid: one message, "Your held time has been released. Tap below to choose a time again." with a button (inside the window, SENDS on, BOT mode only).
+14. **I12** The Razorpay contact is the full international number, from one helper used by all three links.
+15. **I13** Repeated identical greetings within a short time get nothing after the first menu, and count toward the noise rules.
+16. **I14** A handoff that returns to the bot unanswered tells the customer once, honestly; the owner is emailed.
+17. **I17** Username-only senders (no phone number) raise an item instead of vanishing.
+18. **I19** A mismatched payment: the customer is told it is being checked today.
+19. **I20** "Booking opens soon." gets "Talk to a person" and Help buttons.
+20. **Pay page:** /p/ serves a tiny "Opening Razorpay's secure payment page…" page (meta refresh, a Continue button, no scripts, no-store) instead of a bare redirect.
+21. **I2 (wording)** Until the reminder template is approved, a confirmation never promises "We will remind you the day before" when the reminder could not reach the customer.
+- Skipped (next): I9 (move or cancel the ₹99 call), I15 (missed-call times over 3 days), I18 (call language and number for a family member).
+- Rules: no merge or deploy; no Cloudflare, Meta or Razorpay changes; no names, secrets or real numbers.
+- Tests for every item; every existing test stays green (tests of the old behaviour are updated, not deleted).

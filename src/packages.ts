@@ -15,13 +15,14 @@ import { ageButtons, serviceButtons, SERVICES, whoButtons, WHO, bookingChoice, l
 import { copyFor, langOf, packPrice, rupees, type Copy, type ForWhom } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
-import { razorpay } from "./pay/razorpay";
+import { contactFor, razorpay } from "./pay/razorpay";
 import { customerPayLink, untilLabel } from "./paylink";
 import type { PaymentProvider } from "./pay/provider";
 import { requestRefund } from "./pay/refund";
 import { startSession } from "./session";
 import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
+import { pausedOut } from "./menu";
 import { bind, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
 
 const nowIso = () => iso(Date.now());
@@ -125,7 +126,8 @@ export async function packChoice(env: Env, choice: string | null, convId: number
   await clearStep(env.DB, conv.id); // whatever step was open is over; the step sent below (if any) becomes the open one
 
   if (choice === "menu_pack") {
-    await sendAs("packages", packagesList(cp), "packages");
+    if (!(await bookingsOpen(env))) await send(pausedOut(cp), "book"); // nothing to buy while bookings are paused (ticket 31, I20)
+    else await sendAs("packages", packagesList(cp), "packages");
     return true;
   }
   if (tag === "pk") {
@@ -142,7 +144,7 @@ export async function packChoice(env: Env, choice: string | null, convId: number
   // Buying or booking is closed while NEW_BOOKINGS is off, and never works for a blocked person.
   const buying = tag === "ssv" || tag === "swh" || tag === "sdy" || tag === "smo" || tag === "stm" || tag === "bk" || tag === "bsv" || tag === "bwh" || tag === "bdy" || tag === "bmo" || tag === "btm" || (tag === "age" && a === "yes");
   if (buying && !(await bookingsOpen(env))) {
-    await send({ type: "text", text: cp.bookSoon }, "book");
+    await send(pausedOut(cp), "book");
     return true;
   }
   if (buying && (await blocked(env, conv))) return true;
@@ -231,7 +233,7 @@ export async function packChoice(env: Env, choice: string | null, convId: number
   async function enter(f: Flow): Promise<boolean> {
     await clearStep(env.DB, conv!.id);
     if (!(await bookingsOpen(env))) {
-      await send({ type: "text", text: cp.bookSoon }, "book");
+      await send(pausedOut(cp), "book");
       return true;
     }
     if (await blocked(env, conv!)) return true;
@@ -246,7 +248,7 @@ export async function packChoice(env: Env, choice: string | null, convId: number
   async function enterCredit(): Promise<boolean> {
     await clearStep(env.DB, conv!.id);
     if (!(await bookingsOpen(env))) {
-      await send({ type: "text", text: cp.bookSoon }, "book");
+      await send(pausedOut(cp), "book");
       return true;
     }
     if (await blocked(env, conv!)) return true;
@@ -303,7 +305,7 @@ async function startPackage(env: Env, provider: PaymentProvider, conv: Conv, f: 
       amountPaise: pack.paise,
       purpose: "Disha Dira session package",
       customerName: conv.display_name ?? "Customer",
-      customerPhone: conv.wa_id.replace(/\D/g, "").slice(-10),
+      customerPhone: contactFor(conv.wa_id),
       expiresAtUtc: expires,
     });
     await db.batch([
@@ -343,11 +345,12 @@ export async function creditPackage(env: Env, paymentId: number, packageId: numb
 }
 
 // ---- booking a session with a credit: one guarded batch ----
-type CreditResult = { ok: true; sessionId: number } | { ok: false; reason: "NO_CREDIT" | "MAX_UPCOMING" | "SLOT_TAKEN" };
+type CreditResult = { ok: true; sessionId: number } | { ok: false; reason: "NO_CREDIT" | "MAX_UPCOMING" | "SLOT_TAKEN" | "TOO_SOON" };
 
 export async function bookCredit(db: D1Database, convId: number, service: string, forWhom: ForWhom, lang: string, startUtc: string, nowMs = Date.now()): Promise<CreditResult> {
   const slot = generateSlots(istDay(Date.parse(startUtc)), "SESSION").find((s) => s.startUtc === startUtc);
-  if (!slot || startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000)) return { ok: false, reason: "SLOT_TAKEN" };
+  if (!slot) return { ok: false, reason: "SLOT_TAKEN" };
+  if (startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000)) return { ok: false, reason: "TOO_SOON" }; // passed, or too soon (ticket 31, B1)
   if (await isHoliday(db, istDay(Date.parse(startUtc)))) return { ok: false, reason: "SLOT_TAKEN" }; // a day off takes no new booking
   const now = iso(nowMs);
   const params = { conv: convId, start: slot.startUtc, end: slot.endUtc, now, service, who: forWhom, lang, max: config.sessionRules.maxUpcoming };
@@ -402,7 +405,7 @@ async function bookWithCredit(env: Env, conv: Conv, service: string, forWhom: Fo
     if (res.reason === "NO_CREDIT") await send({ type: "text", text: cp.noCredits }, "nocredit");
     else if (res.reason === "MAX_UPCOMING") await send({ type: "text", text: cp.maxUpcoming }, "max");
     else {
-      await send({ type: "text", text: cp.slotTaken }, "taken");
+      await send({ type: "text", text: res.reason === "TOO_SOON" ? cp.timePassed : cp.slotTaken }, "taken");
       const ok = await sendTimes(env, conv, "SESSION", istDay(Date.parse(startUtc)), (u) => `btm_${service}_${forWhom}_${u}`, `bmo_${service}_${forWhom}`, `${msgId}:again`);
       if (!ok) await sendDays(env, conv, "SESSION", (ymd) => `bdy_${service}_${forWhom}_${ymd}`, `${msgId}:again`);
     }
