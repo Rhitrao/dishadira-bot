@@ -172,7 +172,7 @@ describe("POST /meta/webhook", () => {
     expect(m.messaging_type).toBe("RESPONSE");
     expect(m.message.metadata).toBe(METADATA);
     expect(buttonsOf(m)).toEqual([
-      { type: "web_url", url: "https://www.facebook.com/PAGE1", title: "Open our Page" },
+      { type: "web_url", url: config.social.facebookPageUrl, title: "Open our Page" },
       { type: "postback", title: "I've followed", payload: FOLLOWING },
     ]);
   });

@@ -67,8 +67,9 @@ you are done without App Review. If it doesn't, do App Review on that same app (
 
 ### Steps (new app)
 
-1. **Check who owns @disha_dira.** Meta Business Suite of the practitioner's portfolio → Settings → Accounts → Instagram accounts. It
-   should be there and be linked to the Page. If @disha_dira is in another portfolio, move it to this one first.
+1. **@disha_dira and the Page.** Both are in the practitioner's portfolio "Disha Dira Pranic Healing" (…195723). In Business Settings →
+   Accounts → Instagram accounts, @disha_dira shows **"Login needed": click Log In there first** and sign in to Instagram, otherwise
+   the app can't reach its messages. Check that it is linked to the Page.
 2. **Create the app.** developers.facebook.com → My Apps → Create app → use case **"Engage with customers on Messenger from Meta"**,
    type Business, and choose the **practitioner's portfolio** (…195723) as the business. Name it e.g. "Disha Dira Social".
 3. **Basic settings** (App settings → Basic): app icon (512×512 or larger), Privacy Policy URL `https://disha-dira.com/privacy.html`,
@@ -85,14 +86,18 @@ you are done without App Review. If it doesn't, do App Review on that same app (
      in the Explorer (or a browser): you get a long-lived user token.
    - In the Explorer, with that long-lived token: `GET me/accounts` → the `access_token` next to the Page is a Page token that does not
      expire (Meta: "A long-lived user token yields one with no expiration"). Note the Page `id`.
-   - `GET <page id>?fields=instagram_business_account` → the `id` inside is the Instagram account id.
+   - `GET <page id>?fields=instagram_business_account` → the `id` inside is the Instagram account id. It should be
+     `17841474938698456` (what Business Settings shows for @disha_dira). The Page's public address is
+     `https://www.facebook.com/profile.php?id=61588921902210` (already in `config.social.facebookPageUrl` for the [Open our Page]
+     button); its number is usually the Page id too, but use the `id` that `me/accounts` gives.
 6. **Instagram setting**: in the Instagram app on @disha_dira: Settings → Messages and story replies → Message controls → Connected
    tools → turn on **Allow access to messages**.
 7. **Cloudflare secrets** on `dishadira-bot-live` (Workers → Settings → Variables and Secrets → Add → Secret). Never in GitHub or chat:
    - `META_APP_SECRET` = the new app's secret (step 3)
    - `META_PAGE_TOKEN` = the Page token (step 5)
-   - `META_PAGE_ID` = the Page id, `META_IG_ID` = the Instagram account id (step 5). These two are not secret, but kept as secrets so a
-     deploy never wipes them.
+   - `META_PAGE_ID` = the Page id, `META_IG_ID` = the Instagram account id (step 5; `17841474938698456`). These two are not secret,
+     but are kept as Worker secrets so a deploy never wipes them and test and live can differ. The two profile links (Instagram and the
+     Page) are in `config.social` (src/config.ts).
    - `META_VERIFY_TOKEN` = a long random phrase you invent (not the WhatsApp one).
 8. **Webhooks** (in the new app; this is not the WhatsApp app, so WhatsApp is not affected):
    - Messenger API Setup → Configure webhooks: Callback URL `https://bot.disha-dira.com/meta/webhook`, Verify token = `META_VERIFY_TOKEN`

@@ -327,7 +327,7 @@ export const config = {
   // Automatic replies to Instagram DMs and Facebook Messenger (ticket 32, src/social.ts), behind SOCIAL_REPLIES. Public addresses only.
   social: {
     instagramUrl: "https://www.instagram.com/disha_dira/", // the "Visit profile" button on Instagram
-    facebookPageUrl: "", // the "Visit our Page" button on Messenger; empty: https://www.facebook.com/<META_PAGE_ID>
+    facebookPageUrl: "https://www.facebook.com/profile.php?id=61588921902210", // the [Open our Page] button on Messenger (the Page's public address); empty: https://www.facebook.com/<META_PAGE_ID>
     contactEmail: "dishadirahealing@gmail.com", // the contact address on the website's privacy page, for the data deletion page
     maxAutosPerDay: 3, // automated messages to one person in 24 hours, at most (the WhatsApp link itself always goes, once)
     nudgeEveryHours: 24, // after the link: "message us on WhatsApp" at most this often, otherwise nothing
