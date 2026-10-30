@@ -17,12 +17,20 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 
 ## Owner setup
 - [x] Domain disha-dira.com registered (Hostinger), moving DNS to Cloudflare
-- [ ] Website v1.1 uploaded to Cloudflare Pages; custom domain attached
-- [ ] Razorpay onboarding approved (Live Mode keys)
-- [ ] Meta business portfolio + developer app + test number
-- [ ] Airtel SIM bought; registered on Cloud API (not the WhatsApp app)
-- [ ] 5 utility templates submitted / approved
-- [ ] Amma's sign-off on the decisions list
+- [x] Website uploaded to Cloudflare Pages with the business number as WhatsApp links only (no call links), Mon–Sat hours (29–30 Oct 2026)
+- [x] Razorpay activated, Live Mode keys and live webhook (28–29 Oct 2026); international payments requested, not yet confirmed
+- [x] Meta business portfolio verified, developer app, test number (28 Oct 2026)
+- [x] Airtel SIM registered on the Cloud API; its webhook points only at the live bot (`override_callback_uri`); payment method on the WhatsApp account (29 Oct 2026)
+- [x] All 16 templates (8 English, 8 Hindi) approved and on (30 Oct 2026; four Hindi ones are named `*_hind`, see docs/TEMPLATES.md)
+- [ ] Amma's sign-off on the decisions list; a native speaker reads the new Hindi lines (PRs #45, #46)
+
+## Launch (30 Oct 2026)
+- Live on +91 63661 99009 with SENDS and NEW_BOOKINGS on; AI_REPLIES and OWNER_APPROVED off; CONSOLE_V2 off (owner uses /admin, practitioner /amma).
+- Checked on live by Rohit: a real ₹99 paid through the /p/ link (Google Pay), the confirmation without any phone number, the six-day list, "call me" reply.
+- Still to check: the "Not right fit" refund on Rohit's own call (Mon 2 Nov, 4 pm); a card payment from a +971 number before Dubai ads; crisis words, a block and "talk to a person" once on live.
+- Owner settings outside the code: call barring for incoming calls on the Airtel SIM, Instagram video chats off, Messenger calling off, instant replies pointing to WhatsApp.
+- Ads only after the gates in the "Launch: ads & marketing checklist" doc are ticked.
+- Next tickets: I9 (customer moves or cancels the ₹99 call), I15 (wider missed-call reschedule), I18 (booking for a family member: call language and number); a console "cancel and refund" for a call before its time.
 
 ## Tickets
 - [x] 01 Foundation (PR https://github.com/Rhitrao/dishadira-bot/pull/1, CI green)
