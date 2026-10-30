@@ -22,6 +22,13 @@
 //  - Instagram user profile: GET /{IGSID}?fields=is_user_follow_business with the Page token (instagram_basic, instagram_manage_messages,
 //    pages_manage_metadata, pages_read_engagement, pages_show_list; only after the person has messaged us):
 //    https://developers.facebook.com/docs/messenger-platform/instagram/features/user-profile
+//  - Private replies to comments (one message per comment, within 7 days; recipient {comment_id}; Instagram: instagram_manage_comments +
+//    pages_messaging, Advanced Access, the Human Agent feature; Facebook: pages_messaging; the reply opens the chat only once they answer):
+//    https://developers.facebook.com/documentation/business-messaging/instagram-messaging/features/private-replies.md
+//    https://developers.facebook.com/documentation/business-messaging/messenger-platform/discovery/private-replies.md
+//  - Comment webhooks: Instagram field `comments` (entry.changes[].value: id or comment_id, from.id, parent_id, text, media.id),
+//    https://developers.facebook.com/documentation/instagram-platform/webhooks/examples.md ; Page field `feed` (value.item "comment",
+//    verb "add", comment_id, post_id, parent_id, from.id, message), https://developers.facebook.com/docs/graph-api/webhooks/reference/page/
 // Whether someone follows the Facebook Page cannot be read, so on Messenger "I've followed" sends the link.
 // Stored: the platform id, language, step and times (migrations/0012_social.sql). Never message text, names or usernames; logs carry
 // reason codes and Meta error codes only (test/logging.test.ts).
@@ -60,6 +67,8 @@ type Words = {
   btnFollowing: Record<Platform, string>;
   btnBook: string;
   prefill: string;
+  typeFollowing: string;
+  publicReply: string;
 };
 
 export function socialWords(lang: Lang): Words {
@@ -83,6 +92,8 @@ export function socialWords(lang: Lang): Words {
       btnFollowing: { instagram: "मैंने फ़ॉलो किया", messenger: "मैंने फ़ॉलो किया" },
       btnBook: "WhatsApp पर बुक करें",
       prefill: `नमस्ते, मुझे ${intro} की कॉल बुक करनी है`,
+      typeFollowing: 'फ़ॉलो करने के बाद यहाँ "following" लिखकर भेजें।',
+      publicReply: "आपको DM भेजा है 🙏",
     };
   return {
     ask: `Namaste, and thank you for writing to Disha Dira! We share a short Pranic Healing tip every week here. Follow us, then tap below and I'll send you the link to book a ${intro} call with Shantha Rao.`,
@@ -100,6 +111,8 @@ export function socialWords(lang: Lang): Words {
     btnFollowing: { instagram: "I'm following", messenger: "I've followed" },
     btnBook: "Book on WhatsApp",
     prefill: `Hi, I'd like to book a ${intro} call`,
+    typeFollowing: 'Once you follow, reply "following" here.',
+    publicReply: "Sent you a DM 🙏",
   };
 }
 
@@ -126,6 +139,7 @@ const DELETE_WORDS = ["delete my data", "delete my instagram data", "delete my m
   "mera data delete karo", "mera data delete kar do", "मेरा डेटा डिलीट करें", "मेरा डेटा डिलीट करो", "मेरा डेटा हटाएं", "मेरा डेटा हटा दें"];
 
 type Event =
+  | { kind: "comment"; platform: Platform; mid: string; author: string; post: string; text: string | null }
   | { kind: "dm"; platform: Platform; user: string; mid: string; text: string | null }
   | { kind: "tap"; platform: Platform; user: string; mid: string; payload: string }
   | { kind: "echo"; platform: Platform; user: string; mid: string; metadata: string | null };
@@ -169,6 +183,31 @@ export function readEvent(platform: Platform, ownId: string, raw: unknown): Even
   return { ignore: "OTHER" };
 }
 
+// One item of entry.changes: a new comment on our Instagram media (field "comments") or our Page's posts (field "feed").
+export function readChange(platform: Platform, ownId: string, raw: unknown): Event | { ignore: string } {
+  const ch = obj(raw);
+  const v = obj(ch?.value);
+  if (!ch || !v) return { ignore: "SCHEMA_INVALID" };
+  let id: string | null, post: string | null, text: unknown;
+  if (platform === "instagram") {
+    if (ch.field !== "comments") return { ignore: "OTHER_FIELD" }; // live_comments, mentions, ...
+    id = str(v.id) ?? str(v.comment_id);
+    post = str(obj(v.media)?.id);
+    text = v.text;
+  } else {
+    if (ch.field !== "feed") return { ignore: "OTHER_FIELD" };
+    if (v.item !== "comment" || v.verb !== "add") return { ignore: "NOT_NEW_COMMENT" }; // posts, likes, edits, deletions, ...
+    id = str(v.comment_id);
+    post = str(v.post_id);
+    text = v.message;
+  }
+  const author = str(obj(v.from)?.id);
+  if (!author) return { ignore: "NO_SENDER" };
+  if (author === ownId) return { ignore: "OWN_COMMENT" }; // our own comments and our replies under theirs
+  if (!id || !post) return { ignore: "NO_ID" };
+  return { kind: "comment", platform, mid: id, author, post, text: typeof text === "string" ? text : null };
+}
+
 // ---- the webhook ----
 export function verifyMetaWebhook(c: C) {
   const ok = c.req.query("hub.mode") === "subscribe" && !!c.env.META_VERIFY_TOKEN && c.req.query("hub.verify_token") === c.env.META_VERIFY_TOKEN;
@@ -204,8 +243,11 @@ export async function receiveMetaWebhook(c: C) {
       ignored(ownId ? "OTHER_ACCOUNT" : "NOT_SET_UP");
       continue;
     }
-    for (const item of Array.isArray(entry!.messaging) ? entry!.messaging : []) {
-      const ev = readEvent(platform, ownId, item);
+    const items = [
+      ...(Array.isArray(entry!.messaging) ? entry!.messaging : []).map((m) => readEvent(platform, ownId, m)),
+      ...(Array.isArray(entry!.changes) ? entry!.changes : []).map((ch) => readChange(platform, ownId, ch)),
+    ];
+    for (const ev of items) {
       if ("ignore" in ev) {
         ignored(ev.ignore);
         continue;
@@ -245,22 +287,23 @@ type Contact = {
   autos_today: number;
   nudge_at: string | null;
   paused_until: string | null;
+  commenter_id: string | null;
 };
 
 async function loadContact(env: Env, platform: Platform, user: string): Promise<Contact> {
   const row = await env.DB.prepare("SELECT * FROM social_contacts WHERE platform = ?1 AND user_id = ?2").bind(platform, user).first<Contact>();
-  return row ?? { platform, user_id: user, lang: "en", step: "NEW", asks: 0, link_sent_at: null, last_in_at: null, last_auto_at: null, autos_since: null, autos_today: 0, nudge_at: null, paused_until: null };
+  return row ?? { platform, user_id: user, lang: "en", step: "NEW", asks: 0, link_sent_at: null, last_in_at: null, last_auto_at: null, autos_since: null, autos_today: 0, nudge_at: null, paused_until: null, commenter_id: null };
 }
 
 async function saveContact(env: Env, r: Contact, nowMs: number): Promise<void> {
   await env.DB
     .prepare(
-      `INSERT INTO social_contacts (platform, user_id, lang, step, asks, link_sent_at, last_in_at, last_auto_at, autos_since, autos_today, nudge_at, paused_until, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+      `INSERT INTO social_contacts (platform, user_id, lang, step, asks, link_sent_at, last_in_at, last_auto_at, autos_since, autos_today, nudge_at, paused_until, commenter_id, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
        ON CONFLICT (platform, user_id) DO UPDATE SET lang = ?3, step = ?4, asks = ?5, link_sent_at = ?6, last_in_at = ?7, last_auto_at = ?8,
-         autos_since = ?9, autos_today = ?10, nudge_at = ?11, paused_until = ?12, updated_at = ?13`,
+         autos_since = ?9, autos_today = ?10, nudge_at = ?11, paused_until = ?12, commenter_id = ?13, updated_at = ?14`,
     )
-    .bind(r.platform, r.user_id, r.lang, r.step, r.asks, r.link_sent_at, r.last_in_at, r.last_auto_at, r.autos_since, r.autos_today, r.nudge_at, r.paused_until, iso(nowMs))
+    .bind(r.platform, r.user_id, r.lang, r.step, r.asks, r.link_sent_at, r.last_in_at, r.last_auto_at, r.autos_since, r.autos_today, r.nudge_at, r.paused_until, r.commenter_id, iso(nowMs))
     .run();
 }
 
@@ -268,6 +311,7 @@ const ago = (at: string | null, nowMs: number) => (at ? nowMs - Date.parse(at) :
 
 // ---- the flow ----
 async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
+  if (ev.kind === "comment") return handleComment(env, ev, nowMs);
   const now = iso(nowMs);
   const r = await loadContact(env, ev.platform, ev.user);
 
@@ -290,7 +334,7 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
 
   if (text && hasPhrase(text, DELETE_WORDS)) {
     await env.DB.prepare("DELETE FROM social_contacts WHERE platform = ?1 AND user_id = ?2").bind(r.platform, r.user_id).run();
-    if (await sendsOn(env)) await graphSend(env, r.platform, r.user_id, { text: w.deleted });
+    if (await sendsOn(env)) await graphSend(env, r.platform, { id: r.user_id }, { text: w.deleted });
     return;
   }
 
@@ -308,7 +352,9 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
   if (r.paused_until && Date.parse(r.paused_until) > nowMs) return void (await saveContact(env, r, nowMs));
   if (ago(r.autos_since, nowMs) >= DAY) Object.assign(r, { autos_since: now, autos_today: 0 });
 
-  const tapped = ev.kind === "tap" && ev.payload === FOLLOWING;
+  // A typed "following" at the follow ask counts as the tap (a private reply may have gone out as plain text).
+  const typedFollow = !!text && (r.step === "ASKED" || r.step === "RECHECK") && normalize(text).split(" ").length <= 5 && hasPhrase(text, config.social.followedWords);
+  const tapped = (ev.kind === "tap" && ev.payload === FOLLOWING) || typedFollow;
   if (r.step === "LINKED") {
     // After the link: one short pointer to WhatsApp a day, otherwise nothing.
     if (ago(r.nudge_at, nowMs) >= config.social.nudgeEveryHours * HOUR && (await send(env, r, { text: w.after(bookLink(w)) }, nowMs))) r.nudge_at = now;
@@ -322,6 +368,47 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
     if (!repeat && (await send(env, r, askMessage(env, r.platform, w, kw ? w.lines[kw] : null), nowMs)) && r.step === "NEW") r.step = "ASKED";
   }
   await saveContact(env, r, nowMs);
+}
+
+// A comment on our post or reel gets one private reply: the follow ask, which starts the same flow. One per commenter per post; nobody who
+// had the link in the last 30 days; not while the team has the chat; within the same daily limit. The comment text is only read for its
+// language, never stored.
+async function handleComment(env: Env, ev: Extract<Event, { kind: "comment" }>, nowMs: number): Promise<void> {
+  const now = iso(nowMs);
+  const postKey = `c:${ev.platform}:${ev.author}:${ev.post}`;
+  if (!(await env.DB.prepare("INSERT OR IGNORE INTO social_seen (key, at) VALUES (?1, ?2)").bind(postKey, now).run()).meta.changes) return;
+  const known = await env.DB
+    .prepare("SELECT * FROM social_contacts WHERE platform = ?1 AND (user_id = ?2 OR commenter_id = ?2) ORDER BY last_in_at DESC LIMIT 1")
+    .bind(ev.platform, ev.author)
+    .first<Contact>();
+  let r = known ?? (await loadContact(env, ev.platform, ev.author));
+  if (ago(r.link_sent_at, nowMs) < config.social.restartAfterDays * DAY) return;
+  if (r.paused_until && Date.parse(r.paused_until) > nowMs) return;
+  if (ago(r.autos_since, nowMs) >= DAY) Object.assign(r, { autos_since: now, autos_today: 0 });
+  if (r.autos_today >= config.social.maxAutosPerDay || !(await sendsOn(env))) return;
+  if (ev.text) r.lang = detectLang(ev.text, r.lang);
+  const w = socialWords(r.lang);
+  const to = { comment_id: ev.mid };
+  let out = await graphSend(env, ev.platform, to, askMessage(env, ev.platform, w, null));
+  // Instagram's private-reply page shows only text: if the buttons are refused, the same ask as text, with the profile link and
+  // "reply following" (a typed "following" counts as the tap). Messenger takes every message type in a private reply.
+  if (!out && ev.platform === "instagram") out = await graphSend(env, ev.platform, to, { text: `${w.ask}\n\n${profileUrl(env, ev.platform)}\n${w.typeFollowing}` });
+  if (!out) {
+    await env.DB.prepare("DELETE FROM social_seen WHERE key = ?1").bind(postKey).run(); // a later comment may try again
+    return;
+  }
+  if (out.mid) await env.DB.prepare("INSERT OR IGNORE INTO social_seen (key, at) VALUES (?1, ?2)").bind(`out:${out.mid}`, now).run();
+  // Meta answers with their messaging id: the row is kept under it, so their next message or tap finds it.
+  if (!known && out.recipient && out.recipient !== ev.author) {
+    const lang = r.lang;
+    r = await loadContact(env, ev.platform, out.recipient); // they may have written to us before, under that id
+    r.lang = lang;
+    if (ago(r.autos_since, nowMs) >= DAY) Object.assign(r, { autos_since: now, autos_today: 0 });
+  }
+  if (r.user_id !== ev.author) r.commenter_id = ev.author;
+  Object.assign(r, { last_in_at: now, last_auto_at: now, autos_since: r.autos_since ?? now, autos_today: r.autos_today + 1, step: r.step === "NEW" ? "ASKED" : r.step });
+  await saveContact(env, r, nowMs);
+  if (config.social.publicReply) await publicReply(env, ev.platform, ev.mid, w.publicReply);
 }
 
 async function followTap(env: Env, r: Contact, w: Words, nowMs: number): Promise<void> {
@@ -358,17 +445,23 @@ async function send(env: Env, r: Contact, message: Message, nowMs: number, o: { 
   r.autos_since ??= r.last_auto_at;
   r.autos_today += 1;
   await saveContact(env, r, nowMs);
-  const mid = await graphSend(env, r.platform, r.user_id, message);
-  if (mid) await env.DB.prepare("INSERT OR IGNORE INTO social_seen (key, at) VALUES (?1, ?2)").bind(`out:${mid}`, iso(nowMs)).run();
-  return mid !== null;
+  const out = await graphSend(env, r.platform, { id: r.user_id }, message);
+  if (out?.mid) await env.DB.prepare("INSERT OR IGNORE INTO social_seen (key, at) VALUES (?1, ?2)").bind(`out:${out.mid}`, iso(nowMs)).run();
+  return out !== null;
 }
 
 const graph = (path: string) => `https://graph.facebook.com/${config.graphVersion}/${path}`;
 const errorCode = async (res: Response) => String(((await res.json().catch(() => null)) as { error?: { code?: unknown } } | null)?.error?.code ?? res.status);
 
-// The Send API (both platforms, the Page token). Returns Meta's message id, or null. Failures are logged by code only.
-export async function graphSend(env: Env, platform: Platform, user: string, message: Message): Promise<string | null> {
-  const body = platform === "messenger" ? { recipient: { id: user }, messaging_type: "RESPONSE", message: { ...message, metadata: METADATA } } : { recipient: { id: user }, message };
+// The Send API (both platforms, the Page token), to a person ({id}) or as the private reply to a comment ({comment_id}). Returns Meta's
+// message id and the person's messaging id, or null. Failures are logged by code only.
+type Recipient = { id: string } | { comment_id: string };
+type Sent = { mid: string | null; recipient: string | null };
+export async function graphSend(env: Env, platform: Platform, recipient: Recipient, message: Message): Promise<Sent | null> {
+  const body =
+    platform === "instagram" ? { recipient, message }
+    : "id" in recipient ? { recipient, messaging_type: "RESPONSE", message: { ...message, metadata: METADATA } }
+    : { recipient, message: { ...message, metadata: METADATA } };
   let reason: string;
   try {
     const res = await fetch(graph(`${env.META_PAGE_ID}/messages`), {
@@ -377,7 +470,10 @@ export async function graphSend(env: Env, platform: Platform, user: string, mess
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(config.social.graphTimeoutMs),
     });
-    if (res.ok) return str(((await res.json().catch(() => null)) as { message_id?: unknown } | null)?.message_id) ?? "sent";
+    if (res.ok) {
+      const data = (await res.json().catch(() => null)) as { message_id?: unknown; recipient_id?: unknown } | null;
+      return { mid: str(data?.message_id), recipient: str(data?.recipient_id) };
+    }
     reason = await errorCode(res);
   } catch {
     reason = "timeout";
@@ -406,14 +502,34 @@ export async function followsUs(env: Env, igsid: string): Promise<boolean | null
   return null;
 }
 
+// The optional public answer under the comment (config.social.publicReply, off by default). Instagram: POST /{comment-id}/replies
+// (instagram_manage_comments); Facebook: POST /{comment-id}/comments (pages_manage_engagement).
+async function publicReply(env: Env, platform: Platform, commentId: string, message: string): Promise<void> {
+  let reason: string;
+  try {
+    const res = await fetch(graph(`${encodeURIComponent(commentId)}/${platform === "instagram" ? "replies" : "comments"}`), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.META_PAGE_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+      signal: AbortSignal.timeout(config.social.graphTimeoutMs),
+    });
+    if (res.ok) return;
+    reason = await errorCode(res);
+  } catch {
+    reason = "timeout";
+  }
+  console.log("social public reply failed", reason);
+}
+
 async function shortHash(text: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].slice(0, 6).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// ---- clean-up, on the 2-minute cron: dedupe ids after a week, a person's row 90 days after their last message ----
+// ---- clean-up, on the 2-minute cron: dedupe ids after a week, comment keys and a person's row 90 days after their last activity ----
 export async function cleanSocial(env: Env, nowMs = Date.now()): Promise<void> {
-  await env.DB.prepare("DELETE FROM social_seen WHERE at < ?1").bind(iso(nowMs - config.social.keepSeenDays * DAY)).run();
+  await env.DB.prepare("DELETE FROM social_seen WHERE at < ?1 AND key NOT LIKE 'c:%'").bind(iso(nowMs - config.social.keepSeenDays * DAY)).run();
+  await env.DB.prepare("DELETE FROM social_seen WHERE at < ?1").bind(iso(nowMs - config.social.forgetAfterDays * DAY)).run();
   await env.DB.prepare("DELETE FROM social_contacts WHERE COALESCE(last_in_at, created_at) < ?1").bind(iso(nowMs - config.social.forgetAfterDays * DAY)).run();
 }
 

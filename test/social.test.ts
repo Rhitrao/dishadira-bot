@@ -18,6 +18,8 @@ let close: () => Promise<void>;
 let fetchMock: ReturnType<typeof vi.fn>;
 let flags: { SOCIAL_REPLIES: string; SENDS: string };
 let follows: boolean | "error" | "timeout";
+let commentRecipient: string | null; // the messaging id Meta answers a private reply with
+let refuseTemplateReply: boolean;
 let n = 0;
 
 const env = () =>
@@ -43,7 +45,9 @@ const tap = (p: P, user: string) => wrap(p, [from(user, p, { postback: { mid: `m
 const echo = (p: P, user: string, message: object) => wrap(p, [{ sender: { id: ids[p] }, recipient: { id: user }, timestamp: Date.now(), message: { mid: `m_echo${++mid}`, is_echo: true, ...message } }]);
 
 const calls = () => fetchMock.mock.calls.map((c) => ({ url: String(c[0]), init: c[1] as { method?: string; body?: string; headers: Record<string, string> } }));
-const sent = (): Json[] => calls().filter((c) => c.init.method === "POST").map((c) => JSON.parse(c.init.body!));
+const sent = (): Json[] => calls().filter((c) => c.init.method === "POST" && !/\/(replies|comments)$/.test(c.url)).map((c) => JSON.parse(c.init.body!));
+const publicReplies = () => calls().filter((c) => c.init.method === "POST" && /\/(replies|comments)$/.test(c.url)).map((c) => ({ url: c.url, body: JSON.parse(c.init.body!) }));
+const social = config.social as { publicReply: boolean };
 const profileCalls = () => calls().filter((c) => c.url.includes("fields=is_user_follow_business"));
 const bodyOf = (m: Json): string => m.message.text ?? m.message.attachment.payload.text;
 const buttonsOf = (m: Json): Json[] => m.message.attachment?.payload?.buttons ?? [];
@@ -55,6 +59,9 @@ beforeEach(async () => {
   ({ db, close } = await newDb());
   flags = { SOCIAL_REPLIES: "true", SENDS: "true" };
   follows = true;
+  commentRecipient = "IGSID1";
+  refuseTemplateReply = false;
+  social.publicReply = false;
   vi.useFakeTimers({ toFake: ["Date"] });
   at(NOW);
   fetchMock = vi.fn(async (url: string, init?: { method?: string }) => {
@@ -63,7 +70,12 @@ beforeEach(async () => {
       if (follows === "error") return new Response(JSON.stringify({ error: { code: 230 } }), { status: 400 });
       return new Response(JSON.stringify({ is_user_follow_business: follows, id: "x" }), { status: 200 });
     }
-    if (init?.method === "POST" && String(url).includes("graph.facebook.com")) return new Response(JSON.stringify({ recipient_id: "r", message_id: `m_out${++n}` }), { status: 200 });
+    if (init?.method === "POST" && String(url).endsWith("/messages")) {
+      const b = JSON.parse((init as { body: string }).body);
+      if (b.recipient?.comment_id && b.message?.attachment && refuseTemplateReply) return new Response(JSON.stringify({ error: { code: 100 } }), { status: 400 });
+      return new Response(JSON.stringify({ recipient_id: b.recipient?.comment_id ? commentRecipient : b.recipient?.id, message_id: `m_out${++n}` }), { status: 200 });
+    }
+    if (init?.method === "POST" && String(url).includes("graph.facebook.com")) return new Response(JSON.stringify({ id: `reply${++n}`, messages: [{ id: `wamid.OUT${n}` }] }), { status: 200 });
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -435,5 +447,111 @@ describe("GET /data-deletion", () => {
     expect(page).not.toMatch(/<script/i);
     expect(page).not.toContain(config.businessNumber);
     expect(res.headers.get("Content-Security-Policy")).toContain("default-src 'none'");
+  });
+});
+
+describe("comments: a private reply starts the same flow", () => {
+  let cid = 0;
+  const igComment = (author: string, media: string, text = "Beautiful 🙏", extra: object = {}) =>
+    ({ object: "instagram", entry: [{ id: "IG1", time: Date.now(), changes: [{ field: "comments", value: { from: { id: author, username: "some_user" }, id: `c${++cid}`, text, media: { id: media, media_product_type: "REELS" }, ...extra } }] }] });
+  const fbComment = (author: string, post: string, message = "Nice post", extra: object = {}) =>
+    ({ object: "page", entry: [{ id: "PAGE1", time: Date.now(), changes: [{ field: "feed", value: { from: { id: author, name: "Some Name" }, item: "comment", verb: "add", comment_id: `fc${++cid}`, post_id: post, parent_id: post, message, created_time: 1, ...extra } }] }] });
+
+  it("Instagram: a comment gets one private reply (recipient comment_id) with the follow ask; the row is kept under their messaging id", async () => {
+    expect((await post(igComment("AUTH1", "MEDIA1", "Lovely! What is this?"))).status).toBe(200);
+    const [m] = sent();
+    expect(m.recipient).toEqual({ comment_id: `c${cid}` });
+    expect(m.messaging_type).toBeUndefined();
+    expect(bodyOf(m)).toBe(en().ask);
+    expect(buttonsOf(m).map((b: Json) => b.payload ?? b.url)).toEqual([config.social.instagramUrl, FOLLOWING]);
+    const row = await contact("instagram", "IGSID1");
+    expect(row).toMatchObject({ step: "ASKED", commenter_id: "AUTH1", autos_today: 1 });
+    // ... and the flow goes on from their tap.
+    await post(tap("instagram", "IGSID1"));
+    expect(bodyOf(sent().at(-1))).toBe(en().link);
+    // No comment text, username or name is kept.
+    const dump = JSON.stringify([...(await db.prepare("SELECT * FROM social_contacts").all()).results, ...(await db.prepare("SELECT * FROM social_seen").all()).results]);
+    for (const t of ["Lovely", "some_user", "Some Name"]) expect(dump).not.toContain(t);
+  });
+
+  it("one private reply per commenter per post; a retry of the same comment is answered once", async () => {
+    const first = igComment("AUTH1", "MEDIA1");
+    await post(first);
+    await post(first);
+    await post(igComment("AUTH1", "MEDIA1", "again"));
+    expect(sent()).toHaveLength(1);
+    at(NOW + 30 * 60_000);
+    commentRecipient = "IGSID1";
+    await post(igComment("AUTH1", "MEDIA2"));
+    expect(sent()).toHaveLength(2);
+    await post(igComment("AUTH2", "MEDIA1"));
+    expect(sent()).toHaveLength(3);
+  });
+
+  it("skips our own comments and replies, live comments, and Page feed items that are not new comments", async () => {
+    await post(igComment("IG1", "MEDIA1", "Thank you!", { parent_id: "c1" }));
+    await post({ object: "instagram", entry: [{ id: "IG1", changes: [{ field: "live_comments", value: { from: { id: "AUTH9" }, id: "lc1", media: { id: "LIVE" } } }] }] });
+    await post(fbComment("PAGE1", "POST1", "Thanks for asking"));
+    await post(fbComment("AUTH3", "POST1", "edited", { verb: "edited" }));
+    await post(fbComment("AUTH3", "POST1", "", { item: "reaction" }));
+    await post(fbComment("AUTH3", "POST1", "x", { item: "post" }));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("nobody who had the link in the last 30 days gets a private reply; after that they may", async () => {
+    await post(igComment("AUTH1", "MEDIA1"));
+    await post(tap("instagram", "IGSID1"));
+    expect((await contact("instagram", "IGSID1")).step).toBe("LINKED");
+    const before = sent().length;
+    at(NOW + 2 * 24 * HOUR);
+    await post(igComment("AUTH1", "MEDIA2"));
+    expect(sent()).toHaveLength(before);
+    at(NOW + 31 * 24 * HOUR);
+    await post(igComment("AUTH1", "MEDIA3"));
+    expect(sent()).toHaveLength(before + 1);
+  });
+
+  it("the daily limit, a paused chat and SOCIAL_REPLIES off all stop the private reply", async () => {
+    await db.prepare("INSERT INTO social_contacts (platform, user_id, commenter_id, autos_since, autos_today) VALUES ('instagram', 'IGSID1', 'AUTH1', ?1, 3)").bind(iso(NOW)).run();
+    await post(igComment("AUTH1", "MEDIA1"));
+    await db.prepare("INSERT INTO social_contacts (platform, user_id, paused_until) VALUES ('messenger', 'AUTH2', ?1)").bind(iso(NOW + HOUR)).run();
+    await post(fbComment("AUTH2", "POST1"));
+    flags.SOCIAL_REPLIES = "false";
+    await post(igComment("AUTH3", "MEDIA1"));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Facebook: a Page comment gets the private reply (with our metadata); their tap on Messenger gets the link", async () => {
+    commentRecipient = "PSID1";
+    await post(fbComment("AUTH1", "POST1", "Kitna charge hai?"));
+    const [m] = sent();
+    expect(m.recipient).toEqual({ comment_id: `fc${cid}` });
+    expect(m.message.metadata).toBe(METADATA);
+    expect(bodyOf(m)).toBe(hi().ask);
+    expect((await contact("messenger", "PSID1"))).toMatchObject({ commenter_id: "AUTH1", lang: "hi", step: "ASKED" });
+    await post(tap("messenger", "PSID1"));
+    expect(bodyOf(sent().at(-1))).toBe(hi().link);
+  });
+
+  it("Instagram: if the buttons are refused in a private reply, the ask goes as text, and a typed 'following' counts as the tap", async () => {
+    refuseTemplateReply = true;
+    await post(igComment("AUTH1", "MEDIA1"));
+    const m = sent().at(-1);
+    expect(m.message.text).toBe(`${en().ask}\n\n${config.social.instagramUrl}\n${en().typeFollowing}`);
+    await post(dm("instagram", "IGSID1", "Following!"));
+    expect(profileCalls()).toHaveLength(1);
+    expect(bodyOf(sent().at(-1))).toBe(en().link);
+  });
+
+  it("the public answer under the comment is off by default; when on, it goes after the private reply, in their language", async () => {
+    await post(igComment("AUTH1", "MEDIA1"));
+    expect(publicReplies()).toHaveLength(0);
+    social.publicReply = true;
+    await post(igComment("AUTH2", "MEDIA1", "बहुत अच्छा"));
+    await post(fbComment("AUTH3", "POST1", "Nice"));
+    expect(publicReplies()).toEqual([
+      { url: `https://graph.facebook.com/${config.graphVersion}/c${cid - 1}/replies`, body: { message: "आपको DM भेजा है 🙏" } },
+      { url: `https://graph.facebook.com/${config.graphVersion}/fc${cid}/comments`, body: { message: "Sent you a DM 🙏" } },
+    ]);
   });
 });

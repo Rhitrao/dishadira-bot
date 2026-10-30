@@ -336,13 +336,17 @@ export const config = {
     repeatAskMinutes: 10, // the same follow ask is not sent again within this long (unless a question got an answer line)
     ownEchoSeconds: 60, // an Instagram echo this soon after our own send is ours (its id may not be stored yet)
     graphTimeoutMs: 2500, // per Graph call; Meta answers in well under a second, and wants the webhook's 200 within 5 seconds
-    keepSeenDays: 7, // message ids kept for dedupe
+    keepSeenDays: 7, // message ids kept for dedupe (a "one private reply per commenter per post" key: forgetAfterDays)
+    publicReply: false, // also answer a comment in public ("Sent you a DM 🙏") after its private reply; the owner may turn it on
     forgetAfterDays: 90, // a person's row is deleted this long after their last message
     // Roman Hindi words that make a message Hindi (Devanagari always does). Whole words, after normalising.
     hinglish: [
       "kya", "hai", "hain", "kitna", "kitne", "kitni", "kaise", "kahan", "kaha", "kab", "aap", "aapka", "aapki", "mujhe", "mera", "meri", "mere", "karna", "karni",
       "chahiye", "batao", "bataiye", "bataye", "haan", "nahi", "nahin", "hoga", "hota", "mein", "liye", "kripya", "dhanyavad", "shukriya", "ji", "bhai", "didi",
     ],
+    // Typed instead of tapping "I'm following" (a short message, at the follow ask): counts as the tap.
+    followedWords: ["following", "followed", "i'm following", "im following", "i am following", "i followed", "i have followed", "follow kiya", "follow kar liya",
+      "follow kar diya", "फ़ॉलो किया", "फॉलो किया", "फ़ॉलो कर लिया", "फॉलो कर लिया", "फ़ॉलो कर दिया", "फॉलो कर दिया"],
     // A message with one of these gets one short line of facts before the follow ask. Tried in this order; the first match wins.
     keywords: {
       price: ["price", "prices", "pricing", "cost", "costs", "fee", "fees", "charge", "charges", "how much", "rate", "rates", "kitna", "kitne", "kitni", "paise", "kitne ka",

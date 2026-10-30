@@ -6,6 +6,7 @@
 --   last_auto_at / autos_since / autos_today: our last automated message, and the count in the current 24 hours (at most 3)
 --   nudge_at: the last "message us on WhatsApp" line after the link (at most one a day)
 --   paused_until: a person from the team wrote to them by hand, so the automation keeps out of that chat until then
+--   commenter_id: the id a comment webhook gave for them, when it is not the messaging id (a private reply to a comment, ticket 32)
 CREATE TABLE social_contacts (
   platform TEXT NOT NULL CHECK (platform IN ('instagram', 'messenger')),
   user_id TEXT NOT NULL,
@@ -19,13 +20,16 @@ CREATE TABLE social_contacts (
   autos_today INTEGER NOT NULL DEFAULT 0,
   nudge_at TEXT,
   paused_until TEXT,
+  commenter_id TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at TEXT,
   PRIMARY KEY (platform, user_id)
 );
+CREATE INDEX social_contacts_commenter ON social_contacts (platform, commenter_id);
 
--- Message ids already handled (in:<mid>, so a webhook retry does nothing) and message ids we sent (out:<mid>, so the echo of our own
--- message is not mistaken for a person from the team writing). Deleted after 7 days by the 2-minute cron.
+-- Message and comment ids already handled (in:<id>, so a webhook retry does nothing), message ids we sent (out:<mid>, so the echo of our
+-- own message is not mistaken for a person from the team writing): deleted after 7 days by the 2-minute cron. One private reply per
+-- commenter per post (c:<platform>:<commenter id>:<post id>): deleted after 90 days. Ids only, never text.
 CREATE TABLE social_seen (
   key TEXT PRIMARY KEY,
   at TEXT NOT NULL
