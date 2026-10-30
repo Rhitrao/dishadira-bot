@@ -234,11 +234,11 @@ export const config = {
   templates: {
     call_booked: { approved: true, language: "en", hi: { name: "call_booked_hi", approved: true, language: "hi" } },
     session_offer: { approved: true, language: "en", hi: { name: "session_offer_hi", approved: true, language: "hi" } },
-    session_confirmed: { approved: true, language: "en", hi: { name: "session_confirmed_hind", approved: false, language: "hi" } },
-    reminder: { approved: true, language: "en", hi: { name: "reminder_hind", approved: false, language: "hi" } },
+    session_confirmed: { approved: true, language: "en", hi: { name: "session_confirmed_hind", approved: true, language: "hi" } },
+    reminder: { approved: true, language: "en", hi: { name: "reminder_hind", approved: true, language: "hi" } },
     payment_update: { approved: true, language: "en", hi: { name: "payment_update_hi", approved: true, language: "hi" } },
     package_confirmed: { approved: true, language: "en", hi: { name: "package_confirmed_hind", approved: true, language: "hi" } },
-    session_booked: { approved: true, language: "en", hi: { name: "session_booked_hi", approved: false, language: "hi" } },
+    session_booked: { approved: true, language: "en", hi: { name: "session_booked_hi", approved: true, language: "hi" } },
     // The Inbox's follow-up once the 24-hour window has closed (ticket 22; not yet in the CONTRACT's template list, see STATUS "Blocked").
     follow_up: { approved: true, language: "en", hi: { name: "follow_up_hind", approved: true, language: "hi" } },
   },
