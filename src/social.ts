@@ -605,7 +605,13 @@ async function handleComment(env: Env, ev: Extract<Event, { kind: "comment" }>, 
   if (safety) {
     message = safetyMessage(r.lang, safety);
   } else {
-    if (!(await seenOnce(env, `c:${ev.platform}:${ev.author}:${ev.post}`, nowMs))) return;
+    // One private reply per commenter per post. A key left with no row for them (they sent "delete my data", which can't know their
+    // comment id when it differs from their messaging id, or an earlier version kept the key without a row) doesn't count.
+    const postKey = `c:${ev.platform}:${ev.author}:${ev.post}`;
+    if (!(await seenOnce(env, postKey, nowMs))) {
+      if (known) return;
+      await env.DB.prepare("UPDATE social_seen SET at = ?2 WHERE key = ?1").bind(postKey, now).run();
+    }
     if (r.paused_until && Date.parse(r.paused_until) > nowMs) return;
     if ((r.stopped_at && ago(r.last_in_at, nowMs) <= config.social.restartAfterDays * DAY) || (ev.text && isRude(ev.text))) return;
     if (linked) {
