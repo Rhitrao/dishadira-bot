@@ -286,18 +286,25 @@ describe("POST /meta/webhook", () => {
     expect(sent().at(-1).message.quick_replies).toBeUndefined();
   });
 
-  it("after the follow: one 'message us on WhatsApp' line a day for messages, otherwise nothing", async () => {
+  it("after the follow: a typed question gets its line and the button; other messages get the WhatsApp pointer at most every 6 hours", async () => {
     await post(tap("messenger", "P1"));
     const before = sent().length;
     await post(dm("messenger", "P1", "thanks!"));
     expect(bodyOf(sent().at(-1))).toBe(en().after(WA_BOOK));
     expect(bodyOf(sent().at(-1))).toMatch(/^For bookings and questions, message us on WhatsApp:\nhttps:\/\/wa\.me\/\d+\?text=.*\nWe reply there\.$/);
+    expect(buttonsOf(sent().at(-1))).toEqual([{ type: "web_url", url: WA_BOOK, title: "Book on WhatsApp" }]);
+    await post(dm("messenger", "P1", "ok"));
+    expect(sent()).toHaveLength(before + 1); // inside 6 hours: nothing
+    await post(dm("messenger", "P1", "Hello, can i book"));
+    expect(bodyOf(sent().at(-1))).toBe(en().lines.book); // a known topic is answered, past the daily cap
+    await post(dm("messenger", "P1", "how much is it"));
+    expect(bodyOf(sent().at(-1))).toBe(en().lines.price);
     await post(dm("messenger", "P1", "how much is it"));
     await post(tap("messenger", "P1"));
-    expect(sent()).toHaveLength(before + 1);
-    at(NOW + 25 * HOUR);
+    expect(sent()).toHaveLength(before + 3); // the same topic once a day; a stray tap: nothing
+    at(NOW + 7 * HOUR);
     await post(dm("messenger", "P1", "hello again"));
-    expect(sent()).toHaveLength(before + 2);
+    expect(sent()).toHaveLength(before + 4);
   });
 
   it("at most 3 automated messages per person in 24 hours; the messages after the follow still go", async () => {
@@ -314,10 +321,12 @@ describe("POST /meta/webhook", () => {
     expect(sent()).toHaveLength(5);
     expect(bodyOf(sent().at(-2))).toBe(`${en().lines.price}\n\n${en().guide}`);
     await post(dm("instagram", "U1", "thanks"));
-    expect(sent()).toHaveLength(5); // the after-follow line counts toward the limit
+    expect(sent()).toHaveLength(6); // the WhatsApp pointer after the follow goes past the limit, at most every 6 hours
+    await post(dm("instagram", "U1", "thanks again"));
+    expect(sent()).toHaveLength(6);
     at(NOW + 25 * HOUR);
     await post(dm("instagram", "U1", "thanks"));
-    expect(sent()).toHaveLength(6);
+    expect(sent()).toHaveLength(7);
   });
 
   it("the same follow ask is not repeated within 10 minutes", async () => {

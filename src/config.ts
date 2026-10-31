@@ -330,7 +330,7 @@ export const config = {
     facebookPageUrl: "https://www.facebook.com/profile.php?id=61588921902210", // the [Open our Page] button on Messenger (the Page's public address); empty: https://www.facebook.com/<META_PAGE_ID>
     contactEmail: "dishadirahealing@gmail.com", // the contact address on the website's privacy page, for the data deletion page
     maxAutosPerDay: 3, // automated messages to one person in 24 hours, at most (the WhatsApp link itself always goes, once)
-    nudgeEveryHours: 24, // after the link: "message us on WhatsApp" at most this often, otherwise nothing
+    nudgeEveryHours: 6, // after the link: "message us on WhatsApp" (with the button) at most this often, otherwise nothing
     restartAfterDays: 30, // no message from them for this long: the flow starts again
     pauseHours: 24, // a person from the team wrote by hand (or a safety message went): no automation in that chat for this long
     repeatAskMinutes: 10, // the same follow ask is not sent again within this long (unless a question got an answer line)

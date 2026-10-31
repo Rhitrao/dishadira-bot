@@ -379,9 +379,13 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
   const typedFollow = !!text && (r.step === "ASKED" || r.step === "RECHECK") && normalize(text).split(" ").length <= 5 && hasPhrase(text, config.social.followedWords);
   const tapped = (ev.kind === "tap" && ev.payload === FOLLOWING) || typedFollow;
   if (r.step === "LINKED") {
-    if (question) await answerQuestion(env, r, w, question, nowMs);
-    // Otherwise one short pointer to WhatsApp a day, and nothing more.
-    else if (ago(r.nudge_at, nowMs) >= config.social.nudgeEveryHours * HOUR && (await send(env, r, { text: w.after(bookLink(w)) }, nowMs))) r.nudge_at = now;
+    // A tapped question, or a typed one on a known topic ("can I book?", "how much?"), gets its line and [Book on WhatsApp] (each topic
+    // once a day). Otherwise one pointer to WhatsApp, with the button, at most config.social.nudgeEveryHours apart; never more than that.
+    const asked = question ?? (text && !isJunk(text) ? topicOf(text) : null);
+    const answered = asked ? await answerQuestion(env, r, w, asked, nowMs) : false;
+    if (!answered && text && !isJunk(text) && ago(r.nudge_at, nowMs) >= config.social.nudgeEveryHours * HOUR) {
+      if (await send(env, r, buttons(w.after(bookLink(w)), [bookButton(w)]), nowMs, { always: true })) r.nudge_at = now;
+    }
   } else if (tapped) {
     await followTap(env, r, w, nowMs);
   } else if (text && isJunk(text)) {
@@ -481,10 +485,10 @@ async function followTap(env: Env, r: Contact, w: Words, nowMs: number): Promise
 }
 
 // A tapped question after the follow: one line and [Book on WhatsApp]; each question at most once a day per person.
-async function answerQuestion(env: Env, r: Contact, w: Words, topic: Topic, nowMs: number): Promise<void> {
-  if (!(await seenOnce(env, `qa:${r.platform}:${r.user_id}:${topic}:${iso(nowMs).slice(0, 10)}`, nowMs))) return;
+async function answerQuestion(env: Env, r: Contact, w: Words, topic: Topic, nowMs: number): Promise<boolean> {
+  if (!(await seenOnce(env, `qa:${r.platform}:${r.user_id}:${topic}:${iso(nowMs).slice(0, 10)}`, nowMs))) return false;
   const answer = buttons(w.lines[topic], [bookButton(w)]);
-  await send(env, r, r.platform === "messenger" ? withQuestions(answer, w) : answer, nowMs, { always: true });
+  return send(env, r, r.platform === "messenger" ? withQuestions(answer, w) : answer, nowMs, { always: true });
 }
 
 // ---- messages ----
