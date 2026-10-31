@@ -18,7 +18,7 @@ import { REMINDER_AT, sendReminders } from "./remind";
 import { runDigest } from "./report";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat, returnStaleHumans } from "./watch";
 import { istDay, iso } from "./slots";
-import { cleanSocial, dataDeletionPage, receiveMetaWebhook, verifyMetaWebhook } from "./social";
+import { bookRedirect, cleanSocial, dataDeletionPage, pageRedirect, profileRedirect, receiveMetaWebhook, verifyMetaWebhook } from "./social";
 import { sendsOn } from "./switches";
 import { switchOver } from "./switchover";
 import { wipeChats } from "./wipe";
@@ -34,9 +34,10 @@ app.onError((_e, c) => {
   return c.text("error", 500);
 });
 
-// Every request quotes the owner's prices from Settings (src/business.ts); /health, the font files and the payment link don't need them.
+// Every request quotes the owner's prices from Settings (src/business.ts); /health, the font files, the payment link, /fb and /ig don't need
+// them (/b/ does: its WhatsApp text says the ₹99).
 app.use("*", async (c, next) => {
-  if (c.req.path !== "/health" && !c.req.path.startsWith("/app/fonts/") && !c.req.path.startsWith("/p/")) await loadPrices(c.env);
+  if (!["/health", "/fb", "/ig"].includes(c.req.path) && !c.req.path.startsWith("/app/fonts/") && !c.req.path.startsWith("/p/")) await loadPrices(c.env);
   await next();
 });
 
@@ -51,6 +52,11 @@ app.get("/meta/webhook", verifyMetaWebhook);
 app.post("/meta/webhook", receiveMetaWebhook);
 // The data deletion instructions URL for Meta App Review (public).
 app.get("/data-deletion", dataDeletionPage);
+// Short links for Messenger texts (ticket 33): /b/<ref>[/hi] to WhatsApp, /fb to the Page, /ig to the Instagram profile. Public, 302s.
+app.get("/b", bookRedirect);
+app.get("/b/*", bookRedirect);
+app.get("/fb", pageRedirect);
+app.get("/ig", profileRedirect);
 app.post("/pay/razorpay/webhook", (c) => razorpayWebhook(c));
 // Our own payment link (ticket 29): public, outside /amma, /admin and /app, so Cloudflare Access never stands in front of it.
 app.get("/p/:token", payLinkPage);

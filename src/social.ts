@@ -42,9 +42,10 @@ import type { Context } from "hono";
 import { html } from "hono/html";
 import { prices } from "./business";
 import { config } from "./config";
-import { copyFor, rupees, type Lang } from "./copy";
+import { copyFor, rupees, type Copy, type Lang } from "./copy";
 import type { Env } from "./env";
-import { classifyWithoutAI, isJobText, isOptOut, LINK } from "./gate";
+import { classifyWithoutAI, isAckWord, isJobText, isMenuWord, isOptOut, LINK } from "./gate";
+import { matchTopic, topicText, type Topic as RouterTopic } from "./router";
 import { detectSafety, hasPhrase, normalize, type Safety } from "./safety";
 import { recipients } from "./business";
 import { sendEmailToEach } from "./mail";
@@ -64,7 +65,19 @@ export const SAFETY_ITEM = "SOCIAL_SAFETY";
 
 // ---- the words (EN and HI). Hindi speaks as "we", so no gender shows (docs/KNOWLEDGE.md §1). It is the automated assistant, never a person.
 // Facts only from docs/KNOWLEDGE.md and the prices in force (src/business.ts). ----
-export type Topic = keyof typeof config.social.keywords;
+// Social's own topics (config.social.keywords), then the WhatsApp router's (config.router.topics) that social has no line of its own for.
+type Own = keyof typeof config.social.keywords;
+const OWN = Object.keys(config.social.keywords) as Own[];
+// Router topics that mean the same as one of ours get our line.
+const SAME = { price: "price", refund: "refund", book: "book", what_is_this: "what" } as const satisfies Partial<Record<RouterTopic, Own>>;
+type FromWhatsApp = Exclude<RouterTopic, keyof typeof SAME>;
+const FROM_WHATSAPP = (Object.keys(config.router.topics) as RouterTopic[]).filter((t): t is FromWhatsApp => !(t in SAME));
+// Tried before our own: an illness, "black magic", a payment problem, "when is my call" (as on WhatsApp, where they come first too).
+const FIRST = ["medical", "black_magic", "payment_issue", "my_booking"] as const satisfies readonly FromWhatsApp[];
+// Answered with [Message on WhatsApp] and the WhatsApp text "Hi" instead of the booking button: no booking push after an illness is named
+// (docs/KNOWLEDGE.md §5, 59-62), and a booking or payment is looked at on WhatsApp.
+const NO_BOOK = ["medical", "my_booking", "payment_issue"] as const satisfies readonly FromWhatsApp[];
+export type Topic = Own | FromWhatsApp;
 // The questions offered as quick replies after the follow (Instagram: at most 13, titles up to 20 characters; Messenger the same).
 export const QUESTIONS = ["book", "price", "what", "how"] as const satisfies readonly Topic[];
 const QR = (t: Topic) => `SOCIAL_Q_${t.toUpperCase()}`;
@@ -82,7 +95,7 @@ type Words = {
   paidProblem: string; // "I paid but got no confirmation"
   stopped: string; // "not interested", "stop"
   questions: string; // Instagram: the quick replies' own message (Instagram puts quick replies on text only)
-  after: (url: string) => string;
+  after: (url?: string) => string; // Messenger writes the link out; Instagram has the button only
   commentBook: string; // a comment from someone who already had the link
   pageLabel: string; // Messenger: "Our Page: <url>"
   deleted: string;
@@ -91,6 +104,7 @@ type Words = {
   btnVisit: string; // Instagram only
   btnFollowing: Record<Platform, string>;
   btnBook: string;
+  btnChat: string; // [Message on WhatsApp]: the answers in NO_BOOK
   prefill: string;
   prefillBack: string; // the WhatsApp text for someone who has booked
   typeFollowing: string;
@@ -116,7 +130,7 @@ export function socialWords(lang: Lang): Words {
       paidProblem: 'अगर आपने पेमेंट कर दिया है पर कन्फ़र्मेशन नहीं आया, तो कृपया दोबारा पेमेंट न करें। हमें WhatsApp पर मैसेज करें और "किसी से बात करें" टैप करें, हमारी टीम देख लेगी:',
       stopped: "ठीक है, हम यहाँ आपको अब कोई ऑटोमैटिक मैसेज नहीं भेजेंगे। बाद में बुक करना हो, तो कभी भी WhatsApp पर मैसेज करें।",
       questions: "कोई सवाल है? नीचे टैप करें।",
-      after: (url) => `बुकिंग और सवालों के लिए हमें WhatsApp पर मैसेज करें:\n${url}\nहम वहीं जवाब देते हैं।`,
+      after: (url) => (url ? `बुकिंग और सवालों के लिए हमें WhatsApp पर मैसेज करें:\n${url}\nहम वहीं जवाब देते हैं।` : "बुकिंग और सवालों के लिए नीचे टैप करके हमें WhatsApp पर मैसेज करें। हम वहीं जवाब देते हैं।"),
       commentBook: `कमेंट के लिए धन्यवाद! शांता राव जी के साथ ${intro} की ${mins} मिनट की कॉल बुक करने के लिए नीचे टैप करके हमें WhatsApp पर मैसेज करें।`,
       pageLabel: "हमारा पेज",
       deleted: "हो गया। इन जवाबों के लिए हमने आपके बारे में जो रखा था (आपका Instagram या Messenger id, भाषा, जवाब के चरण और बुकिंग रेफ़रेंस), वह मिटा दिया है। आपके मैसेज हम कभी नहीं रखते।",
@@ -128,11 +142,13 @@ export function socialWords(lang: Lang): Words {
         where: "सभी कॉल और सेशन फ़ोन पर होते हैं, इसलिए आप कहीं से भी जुड़ सकते हैं, भारत में या विदेश में (जैसे दुबई)। समय भारत के समय से होता है।",
         what: "प्राणिक हीलिंग बिना छुए की जाने वाली एक सौम्य एनर्जी हीलिंग पद्धति है। यह डॉक्टर के इलाज के साथ चलती है, उसकी जगह नहीं लेती।",
         call: `हम यहाँ कॉल नहीं लेते और नंबर नहीं देते। शांता राव जी से बात करने का सबसे आसान तरीका ${intro} की ${mins} मिनट की कॉल है: आप WhatsApp पर समय चुनें, और वे आपको कॉल करेंगी।`,
+        ...whatsAppLines("hi"),
       },
       qrTitles: { book: `${intro} कॉल बुक करें`, price: "फ़ीस", what: "प्राणिक हीलिंग", how: "कॉल कैसे होती है" },
       btnVisit: "प्रोफ़ाइल देखें",
       btnFollowing: { instagram: "मैंने फ़ॉलो किया", messenger: "मैंने फ़ॉलो किया" },
       btnBook: "WhatsApp पर बुक करें",
+      btnChat: "WhatsApp पर लिखें",
       prefill: `नमस्ते, मुझे ${intro} की कॉल बुक करनी है`,
       prefillBack: "नमस्ते",
       typeFollowing: 'फ़ॉलो करने के बाद यहाँ "following" लिखकर भेजें।',
@@ -150,7 +166,7 @@ export function socialWords(lang: Lang): Words {
     paidProblem: 'If you paid but no confirmation came, please don\'t pay again. Message us on WhatsApp and tap "Talk to a person", and our team will check it:',
     stopped: "Okay, we won't send you any more automatic messages here. If you'd like to book later, message us on WhatsApp anytime.",
     questions: "Have a question? Tap one below.",
-    after: (url) => `For bookings and questions, message us on WhatsApp:\n${url}\nWe reply there.`,
+    after: (url) => (url ? `For bookings and questions, message us on WhatsApp:\n${url}\nWe reply there.` : "For bookings and questions, tap below to message us on WhatsApp. We reply there."),
     commentBook: `Thank you for your comment! To book a ${intro} ${mins}-minute call with Shantha Rao, tap below and message us on WhatsApp.`,
     pageLabel: "Our Page",
     deleted: "Done. We have deleted what we kept about you for these replies (your Instagram or Messenger id, language, reply steps and booking reference). We never keep your messages.",
@@ -162,16 +178,34 @@ export function socialWords(lang: Lang): Words {
       where: "All calls and sessions are by phone, so you can join from anywhere, in India or abroad (such as Dubai). Times are in India time.",
       what: "Pranic Healing is a gentle, no-touch energy healing practice. It complements medical care and is not a substitute for it.",
       call: `We don't take calls here or share a number. The quickest way to talk to Shantha Rao is the ${intro} ${mins}-minute call: you choose a time on WhatsApp, and she calls you.`,
+      ...whatsAppLines("en"),
     },
     qrTitles: { book: `Book a ${intro} call`, price: "Prices", what: "About Pranic Healing", how: "How the call works" },
     btnVisit: "Visit profile",
     btnFollowing: { instagram: "I'm following", messenger: "I've followed" },
     btnBook: "Book on WhatsApp",
+    btnChat: "Message on WhatsApp",
     prefill: `Hi, I'd like to book a ${intro} call`,
     prefillBack: "Hi",
     typeFollowing: 'Once you follow, reply "following" here.',
     publicReply: "Sent you a DM 🙏",
   };
+}
+
+// The WhatsApp bot's fixed answers (src/router.ts topicText, built from docs/KNOWLEDGE.md and the Help copy) for the router topics we have
+// no line of our own for: the same words, at the prices in force, so the two never disagree. Adapted for here: no *bold*, and its buttons
+// ("Talk to a person", "Help", "My bookings") are on WhatsApp. "How it works" is the four steps only (our own "how" line is the call).
+function whatsAppLines(lang: Lang): Record<FromWhatsApp, string> {
+  const cp = copyFor(lang);
+  const q = (s: string) => `"${s}"`;
+  const onWhatsApp = (t: string) =>
+    t.replaceAll("*", "").replace(lang === "hi" ? `${q(cp.btnPerson)} दबाएँ` : `tap ${q(cp.btnPerson)}`,
+      lang === "hi" ? `हमें WhatsApp पर मैसेज करें और वहाँ ${q(cp.btnPerson)} दबाएँ` : `message us on WhatsApp and tap ${q(cp.btnPerson)} there`);
+  const myBooking = lang === "hi"
+    ? `अपनी बुकिंग देखने के लिए हमें WhatsApp पर मैसेज करें और वहाँ ${q(cp.btnHelp)}, फिर ${q(cp.rowMyBookings)} दबाएँ।`
+    : `To see your booking, message us on WhatsApp and tap ${q(cp.btnHelp)}, then ${q(cp.rowMyBookings)} there.`;
+  const text = (t: FromWhatsApp): string => (t === "my_booking" ? myBooking : t === "how_it_works" ? cp.faqAnswers.how_it_works : topicText(cp, t) ?? "");
+  return Object.fromEntries(FROM_WHATSAPP.map((t) => [t, onWhatsApp(text(t))])) as Record<FromWhatsApp, string>;
 }
 
 const waDigits = () => config.businessNumber.replace(/\D/g, "");
@@ -182,6 +216,7 @@ export const bookLink = (w: Words, ref: string, back = false) =>
 const REF_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I/L
 const newRef = (p: Platform) =>
   (p === "instagram" ? "IG" : "FB") + [...crypto.getRandomValues(new Uint8Array(5))].map((b) => REF_CHARS[b % REF_CHARS.length]).join("");
+const REF_FORMAT = new RegExp(`^(?:IG|FB)[${REF_CHARS}]{5}$`); // exactly what newRef makes
 const profileUrl = (env: Env, platform: Platform) =>
   platform === "instagram" ? config.social.instagramUrl : config.social.facebookPageUrl || `https://www.facebook.com/${env.META_PAGE_ID}`;
 
@@ -191,11 +226,15 @@ export function detectLang(text: string, current: Lang): Lang {
   return normalize(text).split(" ").filter((w) => /\p{L}/u.test(w)).length >= 2 ? "en" : current;
 }
 
-// What the message asks about, answered in one line once they follow. Never a medical answer: a message naming an illness has no topic.
+// What the message asks about (a code), answered in one line. An illness, "black magic", a payment problem or "when is my call" first, as
+// on WhatsApp (an illness gets WhatsApp's careful medical answer, never a cure claim); then our own topics; then the rest of the WhatsApp
+// router's ("is this real?", timings, in person, "why should I do pranic healing?"...). A greeting or "ok" alone has none, as on WhatsApp.
 export function topicOf(text: string): Topic | null {
-  if (hasPhrase(text, config.router.topics.medical)) return null;
-  for (const k of Object.keys(config.social.keywords) as Topic[]) if (hasPhrase(text, config.social.keywords[k])) return k;
-  return null;
+  if (isMenuWord(text) || isAckWord(text)) return null;
+  for (const t of FIRST) if (hasPhrase(text, config.router.topics[t])) return t;
+  for (const k of OWN) if (hasPhrase(text, config.social.keywords[k])) return k;
+  const t = matchTopic(text);
+  return t === null ? null : t in SAME ? SAME[t as keyof typeof SAME] : (t as FromWhatsApp);
 }
 
 // Links, promotions, scams, abuse, job seekers: nothing beyond the first follow ask (and the link only if they tap or type "following").
@@ -475,7 +514,7 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
   }
   // "I booked", "paid" (or our WhatsApp number sent back): thanks, and no more selling. Paid with no confirmation: "Talk to a person".
   if (text && (saysBooked(text) || paidTrouble(text))) {
-    const msg = paidTrouble(text) ? linkMessage(r, w, w.paidProblem, true) : { text: w.thanksBooked };
+    const msg = paidTrouble(text) ? linkMessage(env, r, w, w.paidProblem, true) : { text: w.thanksBooked };
     if (await send(env, r, msg, nowMs, { always: true })) r.said_booked_at = now;
     return void (await saveContact(env, r, nowMs));
   }
@@ -498,7 +537,7 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
     const answered = asked ? await answerQuestion(env, r, w, asked, nowMs) : false;
     if (!answered && ev.kind === "dm" && !junk && sixHours(r.nudge_at)) {
       if (!(await firstThisMinute())) return;
-      if (await send(env, r, linkMessage(r, w, w.welcomeBooked, true), nowMs, { always: true })) r.nudge_at = now;
+      if (await send(env, r, linkMessage(env, r, w, w.welcomeBooked, true), nowMs, { always: true })) r.nudge_at = now;
     }
   } else if (r.step === "LINKED") {
     // A tapped question, or a typed one on a known topic ("can I book?", "how much?"), gets its line and [Book on WhatsApp] (each topic
@@ -508,7 +547,7 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
     if (!answered && ev.kind === "dm" && !junk && sixHours(r.nudge_at)) {
       if (!(await firstThisMinute())) return;
       const back = away >= config.social.welcomeBackHours * HOUR;
-      if (back ? await sendBooking(env, r, w, w.welcomeBack, nowMs) : await send(env, r, pointerMessage(r, w), nowMs, { always: true })) r.nudge_at = now;
+      if (back ? await sendBooking(env, r, w, w.welcomeBack, nowMs) : await send(env, r, pointerMessage(env, r, w), nowMs, { always: true })) r.nudge_at = now;
     }
   } else if (tapped) {
     await followTap(env, r, w, nowMs);
@@ -626,7 +665,7 @@ async function handleComment(env: Env, ev: Extract<Event, { kind: "comment" }>, 
     }
     if (ago(r.autos_since, nowMs) >= DAY) Object.assign(r, { autos_since: now, autos_today: 0 });
     if (r.autos_today >= config.social.maxAutosPerDay) return;
-    message = !linked ? askMessage(env, r, w) : linkMessage(r, w, booked ? w.welcomeBooked : w.commentBook, booked);
+    message = !linked ? askMessage(env, r, w) : linkMessage(env, r, w, booked ? w.welcomeBooked : w.commentBook, booked);
   }
   if (!(safety ? sendsEnvOn(env) : await sendsOn(env))) return safety ? alertTeam(env, ev.platform, r.user_id, safety) : undefined;
   // If a private reply refuses the message (buttons or quick replies), the same words as plain text with the links written out.
@@ -684,16 +723,16 @@ async function followTap(env: Env, r: Contact, w: Words, nowMs: number): Promise
 async function sendBooking(env: Env, r: Contact, w: Words, opening: string, nowMs: number): Promise<boolean> {
   const text = r.topic ? `${w.lines[r.topic]}\n\n${opening}` : opening;
   let ok: boolean;
-  if (r.platform === "messenger") ok = await send(env, r, bookMessage(r, w, text), nowMs, { always: true });
-  else if ((ok = await send(env, r, bookMessage(r, w, text), nowMs, { always: true }))) await send(env, r, withQuestions({ text: w.questions }, w), nowMs, { always: true });
+  if (r.platform === "messenger") ok = await send(env, r, bookMessage(env, r, w, text), nowMs, { always: true });
+  else if ((ok = await send(env, r, bookMessage(env, r, w, text), nowMs, { always: true }))) await send(env, r, withQuestions({ text: w.questions }, w), nowMs, { always: true });
   if (ok) Object.assign(r, { step: "LINKED", link_sent_at: iso(nowMs), nudge_at: null, topic: null });
   return ok;
 }
 
-// A tapped question after the follow: one line and [Book on WhatsApp]; each question at most once a day per person.
+// A question after the follow (tapped, or typed on a known topic): its line and the way to WhatsApp; each topic at most once a day per person.
 async function answerQuestion(env: Env, r: Contact, w: Words, topic: Topic, nowMs: number): Promise<boolean> {
   if (!(await seenOnce(env, `qa:${r.platform}:${r.user_id}:${topic}:${iso(nowMs).slice(0, 10)}`, nowMs))) return false;
-  return send(env, r, bookMessage(r, w, w.lines[topic]), nowMs, { always: true });
+  return send(env, r, answerMessage(env, r, w, topic), nowMs, { always: true });
 }
 
 // ---- messages ----
@@ -707,8 +746,15 @@ const buttons = (text: string, list: Button[]): Message => ({ attachment: { type
 const visitButton = (w: Words): Button => ({ type: "web_url", url: config.social.instagramUrl, title: w.btnVisit });
 const followingButton = (p: Platform, w: Words): Button => ({ type: "postback", title: w.btnFollowing[p], payload: FOLLOWING });
 const refOf = (r: Contact) => (r.ref_code ??= newRef(r.platform));
-const bookButton = (r: Contact, w: Words, back = false): Button => ({ type: "web_url", url: bookLink(w, refOf(r), back), title: w.btnBook });
-const bookLine = (r: Contact, w: Words, back = false) => `${w.btnBook}: ${bookLink(w, refOf(r), back)}`;
+// Instagram's button keeps the wa.me link itself: the button hides the address anyway, and nothing stands between the tap and WhatsApp.
+const bookButton = (r: Contact, w: Words, back = false, title = w.btnBook): Button => ({ type: "web_url", url: bookLink(w, refOf(r), back), title });
+// Messenger writes links out, so it gets the short ones (shortBase, below): "Book on WhatsApp: https://bot.disha-dira.com/b/FBGJCGT".
+const bookLine = (env: Env, r: Contact, w: Words, back = false, title = w.btnBook) => `${title}: ${writtenBookLink(env, r, w, back)}`;
+function writtenBookLink(env: Env, r: Contact, w: Words, back = false): string {
+  const base = shortBase(env);
+  return base ? `${base}/b/${refOf(r)}${r.lang === "hi" ? "/hi" : ""}${back ? "/back" : ""}` : bookLink(w, refOf(r), back);
+}
+const writtenPageLink = (env: Env) => (shortBase(env) ? `${shortBase(env)}/fb` : profileUrl(env, "messenger"));
 const withQuestions = (m: Message, w: Words): Message => ({ ...m, quick_replies: QUESTIONS.map((t) => ({ content_type: "text", title: w.qrTitles[t], payload: QR(t) })) });
 
 // The follow ask; `again` (they wrote again without following): one line on their question if it had a topic, the shorter ask, and the
@@ -716,19 +762,22 @@ const withQuestions = (m: Message, w: Words): Message => ({ ...m, quick_replies:
 function askMessage(env: Env, r: Contact, w: Words, again = false, line = ""): Message {
   const text = again ? `${line ? `${line}\n\n` : ""}${w.askAgain}` : w.ask;
   if (r.platform === "instagram") return buttons(text, [visitButton(w), followingButton(r.platform, w), ...(again ? [bookButton(r, w)] : [])]);
-  const links = `${w.pageLabel}: ${profileUrl(env, r.platform)}${again ? `\n${bookLine(r, w)}` : ""}`;
+  const links = `${w.pageLabel}: ${writtenPageLink(env)}${again ? `\n${bookLine(env, r, w)}` : ""}`;
   return { text: `${text}\n\n${links}`, quick_replies: [{ content_type: "text", title: w.btnFollowing.messenger, payload: FOLLOWING }] };
 }
 // A text with [Book on WhatsApp]: Instagram the button; Messenger the link on its own line and the questions as quick replies.
-const bookMessage = (r: Contact, w: Words, text: string): Message =>
-  r.platform === "instagram" ? buttons(text, [bookButton(r, w)]) : withQuestions({ text: `${text}\n\n${bookLine(r, w)}` }, w);
+const bookMessage = (env: Env, r: Contact, w: Words, text: string): Message =>
+  r.platform === "instagram" ? buttons(text, [bookButton(r, w)]) : withQuestions({ text: `${text}\n\n${bookLine(env, r, w)}` }, w);
 // A text with the WhatsApp link only (no questions: "Welcome back" after a booking, "paid but no confirmation", a comment's reply).
 // `back`: the WhatsApp text is "Hi" instead of "I'd like to book a ₹99 call".
-const linkMessage = (r: Contact, w: Words, text: string, back = false): Message =>
-  r.platform === "instagram" ? buttons(text, [bookButton(r, w, back)]) : { text: `${text}\n\n${bookLine(r, w, back)}` };
-// After the link: "message us on WhatsApp" (the link is in the text).
-const pointerMessage = (r: Contact, w: Words): Message =>
-  r.platform === "instagram" ? buttons(w.after(bookLink(w, refOf(r))), [bookButton(r, w)]) : withQuestions({ text: w.after(bookLink(w, refOf(r))) }, w);
+const linkMessage = (env: Env, r: Contact, w: Words, text: string, back = false, title = w.btnBook): Message =>
+  r.platform === "instagram" ? buttons(text, [bookButton(r, w, back, title)]) : { text: `${text}\n\n${bookLine(env, r, w, back, title)}` };
+// After the link: "message us on WhatsApp". Messenger writes the (short) link in the text; Instagram has only the button.
+const pointerMessage = (env: Env, r: Contact, w: Words): Message =>
+  r.platform === "instagram" ? buttons(w.after(), [bookButton(r, w)]) : withQuestions({ text: w.after(writtenBookLink(env, r, w)) }, w);
+// A question's answer: the line and [Book on WhatsApp] (Messenger: and the questions); NO_BOOK topics: [Message on WhatsApp] with "Hi".
+const answerMessage = (env: Env, r: Contact, w: Words, topic: Topic): Message =>
+  (NO_BOOK as readonly Topic[]).includes(topic) ? linkMessage(env, r, w, w.lines[topic], true, w.btnChat) : bookMessage(env, r, w, w.lines[topic]);
 // The same message as plain text, if a private reply refuses it (a typed "following" counts as the tap).
 function plainText(w: Words, m: Message): Message {
   const list = "attachment" in m ? m.attachment.payload.buttons : [];
@@ -848,6 +897,31 @@ export async function cleanSocial(env: Env, nowMs = Date.now()): Promise<void> {
   await env.DB.prepare("DELETE FROM social_seen WHERE at < ?1").bind(iso(nowMs - config.social.forgetAfterDays * DAY)).run();
   await env.DB.prepare("DELETE FROM social_contacts WHERE COALESCE(last_in_at, created_at) < ?1").bind(iso(nowMs - config.social.forgetAfterDays * DAY)).run();
 }
+
+// ---- short links (ticket 33), public like /p/ (outside /admin, /amma and /app, so Cloudflare Access never stands in front of them) ----
+// Messenger writes links out, and the wa.me link with its prefilled text is several lines of %20. So it writes <PUBLIC_URL>/b/<ref> and
+// <PUBLIC_URL>/fb instead, and these send the person on with a 302. Nothing is stored or logged; the code is only checked against the
+// format newRef makes. /b/<ref>[/hi][/back]: the same wa.me link and prefilled text as before ("/hi": the Hindi text; "/back": "Hi",
+// for someone who has booked), with the ref, so the WhatsApp bot still links the chats. Anything else: plain wa.me (never a 404, never
+// the input echoed back).
+export function shortBase(env: Pick<Env, "PUBLIC_URL">): string | null {
+  const base = (env.PUBLIC_URL ?? "").replace(/\/+$/, "");
+  return /^https:\/\/[^/]+$/.test(base) ? base : null;
+}
+
+const redirect = (c: C, url: string) => {
+  c.header("Cache-Control", "no-store");
+  c.header("Referrer-Policy", "no-referrer");
+  return c.redirect(url, 302);
+};
+
+export function bookRedirect(c: C) {
+  const m = /^\/b\/([^/]*)(\/hi)?(\/back)?\/?$/.exec(c.req.path);
+  if (!m || !REF_FORMAT.test(m[1])) return redirect(c, `https://wa.me/${waDigits()}`);
+  return redirect(c, bookLink(socialWords(m[2] ? "hi" : "en"), m[1], !!m[3]));
+}
+export const pageRedirect = (c: C) => redirect(c, profileUrl(c.env, "messenger"));
+export const profileRedirect = (c: C) => redirect(c, config.social.instagramUrl);
 
 // ---- GET /data-deletion: Meta App Review's "data deletion instructions" URL. Public, English, no scripts. ----
 const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'";

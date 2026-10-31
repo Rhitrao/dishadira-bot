@@ -17,8 +17,8 @@ Quick replies and links work in both apps.
    > Namaste, and thank you for your interest in Disha Dira! We share a short Pranic Healing tip every week. Please follow us, then tap
    > below and our booking assistant will help you with a session.
 
-   Instagram: [Visit profile] [I'm following]. Messenger: the same text, then `Our Page: https://www.facebook.com/profile.php?id=…`,
-   and the quick reply [I've followed].
+   Instagram: [Visit profile] [I'm following]. Messenger: the same text, then `Our Page: https://bot.disha-dira.com/fb` (a short link,
+   see "Short links" below), and the quick reply [I've followed].
 
    **Someone who already follows us** skips this: on Instagram the bot asks Instagram on their first message (if Instagram doesn't
    answer, they get the ask); on Messenger only someone who tapped "I've followed" before. They get the way to book straight away
@@ -41,12 +41,12 @@ Quick replies and links work in both apps.
    abroad…); anything else 10 minutes after the bot's last message.
 4. **After the follow**: if their first message asked about price, booking, where (by phone, abroad, Dubai), what Pranic Healing is,
    how the call works or refunds, one short line on that first; then the way to book: "This is Disha Dira's automated booking
-   assistant. Tap below to book a ₹99 15-minute call…" with **[Book on WhatsApp]** (Messenger: `Book on WhatsApp: <link>`; it opens
-   WhatsApp with "Hi, I'd like to book a ₹99 call" typed) and quick replies **[Book a ₹99 call] [Prices] [About Pranic Healing] [How
-   the call works]**. Each answers in one line with the WhatsApp link. A message naming an illness never gets a medical answer, only
-   the way to book (the WhatsApp bot's safety rules apply there).
-5. **After that**: a typed question on those topics gets its line; any other message (or photo, voice note) gets "For bookings and
-   questions, message us on WhatsApp: <link>. We reply there." at most every 6 hours; after a day away, "Welcome back! You can book
+   assistant. Tap below to book a ₹99 15-minute call…" with **[Book on WhatsApp]** (Messenger: `Book on WhatsApp:
+   https://bot.disha-dira.com/b/FBGJCGT`; it opens WhatsApp with "Hi, I'd like to book a ₹99 call" typed) and quick replies **[Book a
+   ₹99 call] [Prices] [About Pranic Healing] [How the call works]**. Each answers in one line with the WhatsApp link.
+5. **After that**: a typed question gets its answer (each topic once a day; the list is below); any other message (or photo, voice
+   note) gets "For bookings and questions, message us on WhatsApp: <link> We reply there." (Instagram: "…tap below to message us on
+   WhatsApp. We reply there." with the button, no link written out) at most every 6 hours; after a day away, "Welcome back! You can book
    your ₹99 15-minute call with Shantha Rao here:" with the link and the questions. A **comment on another post** gets a private
    reply with only the WhatsApp link ("Thank you for your comment! To book a ₹99 15-minute call with Shantha Rao, tap below and message
    us on WhatsApp."), at most once a week. After 30 days with no message, it all starts again.
@@ -79,6 +79,50 @@ Quick replies and links work in both apps.
 
 Hindi: Devanagari, or Roman Hindi words like "kya", "kitna", "hai", "kar diya", get the Hindi messages; a later English message
 switches back.
+
+### The answers (ticket 33): the same as WhatsApp
+
+A typed question gets the answer the WhatsApp bot gives with the assistant off (its fixed-answer router, `src/router.ts`, with the
+words in `config.router.topics`), in English or Hindi, taken from the same copy (`src/copy.ts`, from `docs/KNOWLEDGE.md`), so the two
+never disagree. Social's own short lines come first for its own topics (price, refund, how the call works, her number, booking,
+where/abroad, what Pranic Healing is), and its quick replies are unchanged. What changes for here: no *bold*, and WhatsApp's buttons
+are named "on WhatsApp" ("message us on WhatsApp and tap "Talk to a person" there").
+
+| They ask | They get (the WhatsApp answer) | Then |
+|---|---|---|
+| an illness ("I have thyroid", "can it cure…") | "Pranic healing is meant to support your wellbeing alongside your doctor's care, not replace it…" | [Message on WhatsApp] ("Hi") |
+| "black magic", "nazar" | "We don't look into, confirm or remove anything like that…" | [Book on WhatsApp] |
+| "money deducted", "payment failed" | "Sorry about this. Please don't pay again… message us on WhatsApp and tap "Talk to a person" there…" | [Message on WhatsApp] ("Hi") |
+| "when is my call?", "my booking" | "To see your booking, message us on WhatsApp and tap "Help", then "My bookings" there." | [Message on WhatsApp] ("Hi") |
+| "is this a scam / real?" | "That's a fair question. Shantha Rao is a certified Pranic Healer…" | [Book on WhatsApp] |
+| timings, "available?" | "Calls are Monday to Saturday, 2 pm to 7 pm (India time)." | [Book on WhatsApp] |
+| clinic, "meet in person" | "Calls and sessions are only by phone… Shantha Rao is based in Bengaluru." | [Book on WhatsApp] |
+| PayPal, time zone, London | "Calls are Monday to Saturday… UPI needs an Indian bank account, and cards may work…" | [Book on WhatsApp] |
+| "what is the process?" | "1. Pick a call time. 2. Pay ₹99. 3. Shantha Rao calls you for 15 minutes. 4. …" | [Book on WhatsApp] |
+| "why should I do pranic healing?", "details" | social's "Pranic Healing is a gentle, no-touch energy healing practice…" | [Book on WhatsApp] |
+
+Messenger: the answer, then `Book on WhatsApp: <short link>` and the quick replies (or `Message on WhatsApp: <short link>`). Before
+the follow, the answer is the line above the ask again. Illness, a booking or a payment get [Message on WhatsApp] with "Hi" typed,
+not the booking button: no booking push after an illness is named (docs/KNOWLEDGE.md §5), and bookings and payments are looked at on
+WhatsApp. A greeting or "ok" alone has no topic, as on WhatsApp. Safety (crisis, emergency) still runs first.
+
+### Short links (ticket 33)
+
+Messenger writes its links out, and the full ones were long (the wa.me link with its typed text showed as lines of `%20`). So it
+writes short links on the bot's own address (`PUBLIC_URL`), which send the person on (a 302 redirect). They are public (not behind
+Cloudflare Access, which covers only /admin, /amma and /app), store nothing and log nothing:
+
+- `https://bot.disha-dira.com/b/FBGJCGT` → WhatsApp with "Hi, I'd like to book a ₹99 call (ref: FBGJCGT)" typed, exactly as before,
+  so the ref still links the chats. `/b/FBGJCGT/hi`: the Hindi text. `/b/FBGJCGT/back`: "Hi (ref: …)" for someone who has booked.
+  Anything that is not a code the bot makes (`IG` or `FB` and 5 letters or digits) goes to plain `https://wa.me/<our number>`.
+- `https://bot.disha-dira.com/fb` → the Facebook Page (`config.social.facebookPageUrl`); `/ig` → the Instagram profile.
+
+Before: `Book on WhatsApp: https://wa.me/<our number>?text=Hi%2C%20I'd%20like%20to%20book%20a%20%E2%82%B999%20call%20(ref%3A%20FBGJCGT)`
+and `Our Page: https://www.facebook.com/profile.php?id=61588921902210`. After: `Book on WhatsApp: https://bot.disha-dira.com/b/FBGJCGT`
+and `Our Page: https://bot.disha-dira.com/fb`. Without `PUBLIC_URL` the bot writes the long links, as before. Instagram's
+[Book on WhatsApp] button keeps the wa.me link itself: a button never shows its address, so a short link would only add a hop.
+If you later give the Page a username (Facebook: Page settings → Username), put the new address in `config.social.facebookPageUrl`;
+`/fb` keeps working either way.
 
 ## The fastest path: a new Meta app in the practitioner's portfolio
 
@@ -214,7 +258,8 @@ clear in the docs, which is why A comes first.
   after your last message. See https://bot.disha-dira.com/data-deletion."
 - The data deletion page lists the contact email from `config.social.contactEmail` (the address on the privacy page).
 - The facts in the replies come from `docs/KNOWLEDGE.md` and the prices in Settings. Change the words in `src/social.ts`
-  (`socialWords`), the keywords in `config.social` (src/config.ts).
+  (`socialWords`), the keywords in `config.social` (src/config.ts). The answers shared with WhatsApp are changed in `src/copy.ts` and
+  `config.router.topics`, and change on both.
 
 ## Limits Meta sets (read 30 Oct 2026)
 
