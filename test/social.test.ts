@@ -423,7 +423,7 @@ describe("POST /meta/webhook", () => {
       await post(dm("messenger", `N${i}`, t));
       expect((await contact("messenger", `N${i}`)).step, t).toBe("ASKED");
     }
-  });
+  }, 30_000); // many messages: slow on 2 CPUs
 
   it("photos, voice notes, stickers, shared posts and story replies are messages; story mentions, reactions and unsends are not", async () => {
     for (const [i, type] of ["image", "audio", "ig_reel", "share"].entries()) {
@@ -504,6 +504,28 @@ describe("POST /meta/webhook", () => {
     const ours = wrap("instagram", [{ sender: { id: "IG1" }, recipient: { id: "U1" }, timestamp: 1, message: { mid: "m_out" + n, is_echo: true } }]);
     await post(ours);
     expect((await contact("instagram", "U1")).paused_until).toBeNull();
+  });
+
+  it("the \"delete my data\" reply's echo and the Business Suite instant reply never pause the bot (Rohit's live test, 31 Oct)", async () => {
+    await post(dm("instagram", "U5", "hi"));
+    at(NOW + 5 * 60_000);
+    await post(dm("instagram", "U5", "delete my data"));
+    // Both echo back with no row left: the instant reply (Business Suite answers the "first" message) and our "Done".
+    await post(echo("instagram", "U5", { text: `${config.social.inboxAutoReplies[0]} We share a short Pranic Healing tip every week here…` }));
+    await post(echo("instagram", "U5", { text: en().deleted }));
+    expect(await contact("instagram", "U5")).toBeNull();
+    at(NOW + 9 * 60_000);
+    const before = sent().length;
+    await post(dm("instagram", "U5", "Hello can i book"));
+    expect(sent().length).toBeGreaterThan(before); // they follow (the fake says yes): the booking guide
+    expect(sent().at(-1).recipient).toEqual({ id: "U5" });
+    // Days later, the instant reply fires again: still not the team.
+    at(NOW + 3 * 24 * HOUR);
+    await post(echo("instagram", "U5", { text: `${config.social.inboxAutoReplies[0]} …` }));
+    expect((await contact("instagram", "U5")).paused_until).toBeNull();
+    // A message the team types by hand still pauses.
+    await post(echo("instagram", "U5", { text: "Hi, this is Shantha's team" }));
+    expect((await contact("instagram", "U5")).paused_until).not.toBeNull();
   });
 
   it("SOCIAL_REPLIES not \"true\": 200, and nothing stored or sent", async () => {
@@ -798,6 +820,28 @@ describe("returning people, bookings and the other realistic cases", () => {
     at(NOW + 3 * 24 * HOUR);
     await post(dm("instagram", "IGSID9", "how much is it?"));
     expect(bodyOf(sent().at(-1))).toBe(`${en().lines.price}\n\n${en().askAgain}`);
+  });
+
+  it("after \"delete my data\", a new comment on a post they commented on before gets the follow ask again (comment id ≠ messaging id)", async () => {
+    // Rohit's test, 31 Oct: the earlier comment's key outlived the row, so the new comment got nothing.
+    commentRecipient = "IGSID7";
+    const comment = (id: string) => ({ object: "instagram", entry: [{ id: "IG1", changes: [{ field: "comments", value: { from: { id: "AUTH7" }, id, text: "Info", media: { id: "M7" } } }] }] });
+    await post(comment("cdel1"));
+    expect(sent()).toHaveLength(1);
+    await post(comment("cdel2")); // same post, row kept: still one reply per post
+    expect(sent()).toHaveLength(1);
+    at(NOW + HOUR);
+    await post(dm("instagram", "IGSID7", "delete my data"));
+    expect(await contact("instagram", "IGSID7")).toBeNull();
+    at(NOW + 2 * HOUR);
+    await post(comment("cdel3"));
+    expect(sent().at(-1).recipient).toEqual({ comment_id: "cdel3" });
+    expect(buttonsOf(sent().at(-1)).map((b) => b.payload ?? b.url)).toContain(FOLLOWING);
+    // A key from an earlier version with no row at all behaves the same.
+    await db.prepare("INSERT INTO social_seen (key, at) VALUES ('c:instagram:AUTH8:M7', ?1)").bind(iso(NOW)).run();
+    commentRecipient = "IGSID8";
+    await post({ object: "instagram", entry: [{ id: "IG1", changes: [{ field: "comments", value: { from: { id: "AUTH8" }, id: "cdel4", text: "Info", media: { id: "M7" } } }] }] });
+    expect(sent().at(-1).recipient).toEqual({ comment_id: "cdel4" });
   });
 });
 

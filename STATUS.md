@@ -1,5 +1,11 @@
 # STATUS
-Updated: 2026-10-31 (Ticket 32 follow-up, PR #52: Instagram and Messenger fixes from live tests)
+Updated: 2026-10-31 evening (PR #52 merged and deployed to live; follow-up fix: comments after "delete my data")
+
+## Live test after PR #52 (31 Oct, 19:25)
+- **Fixed (this PR):** after "delete my data", a new comment on a post the person had commented on before got no private reply. The comment key (`c:<platform>:<comment author id>:<post>`) outlived the row, because the comment author id can differ from the messaging id that "delete my data" knows, and the earlier version kept that key even when it sent nothing. A key with no row for that person no longer blocks the reply. Test added. The slow "typed instead of tapped" test now has a 30 s timeout.
+- **Fixed (this PR):** the DM "Hello can i book" after "delete my data" got no reply. The live logs show the webhooks arrived; the cause was the echoes. With the row deleted, the echo of our "Done" reply (Instagram echoes carry no metadata) and of the Business Suite instant reply both looked like the team writing by hand, so a new row was saved paused for 24 hours. Now an echo for someone who has never written to us is ignored, the instant reply is recognised by its opening words (`config.social.inboxAutoReplies`, keep it in step with Business Suite), and the "Done" reply's id is stored. Without this, the instant reply firing again days later would also have paused the bot for that person. Test added.
+- Checks: `npm run typecheck` clean; `test/social.test.ts` 55/55.
+- Next: Rohit merges this PR and deploys live, then repeats the test (send "delete my data" first; Rohit's Instagram row is paused until 1 Nov ~19:25 otherwise).
 
 ## Payment provider
 Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
