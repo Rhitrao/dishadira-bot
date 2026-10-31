@@ -9,31 +9,57 @@ the WhatsApp webhook (`/wa/webhook`), the WhatsApp number or its templates.
 
 ## What people get
 
-1. **Any first DM or comment** (a question, "hi", anything): only the follow ask, with two buttons.
+Instagram shows buttons. **Messenger gets plain text with the links written out and quick replies** (tap-able bubbles above the
+keyboard), because the Facebook app (not the Messenger app) shows a button message as "This post is unavailable… Open in Messenger".
+Quick replies and links work in both apps.
+
+1. **Any first DM or comment** (a question, "hi", a photo, a voice note, a sticker, a shared post, a story reply): only the follow ask.
    > Namaste, and thank you for your interest in Disha Dira! We share a short Pranic Healing tip every week. Please follow us, then tap
    > below and our booking assistant will help you with a session.
-   > [Visit profile] [I'm following]  (Messenger: [Open our Page] [I've followed])
 
-   A comment gets this as a **private reply** (a DM that Instagram or Facebook links to the comment). One per person per post.
-2. **"I'm following"**: on Instagram the bot checks with Instagram that they follow. If not yet: "It looks like the follow hasn't come
-   through yet…" and the same buttons; a second tap goes through anyway (so a real follower is never stuck). If Instagram doesn't
-   answer, it goes through. Messenger can't check a Page follow, so the tap goes through.
-3. **After the follow**: if their first message asked about price, booking, where (by phone, abroad, Dubai), what Pranic Healing is,
+   Instagram: [Visit profile] [I'm following]. Messenger: the same text, then `Our Page: https://www.facebook.com/profile.php?id=…`,
+   and the quick reply [I've followed].
+
+   A comment gets this as a **private reply** (a DM that Instagram or Facebook links to the comment). One per person per post. If the
+   buttons or quick reply are refused there, the same words go as text with the link and "Once you follow, reply "following" here."
+2. **"I'm following"** (tapped, or typed: "following", "followed", "done", "ok", "yes", "haan", "follow kiya", "follow kar diya",
+   "I followed you", "हो गया"…; not "not yet", "no", "how do I follow?"): on Instagram the bot checks with Instagram that they follow.
+   If not yet: "It looks like the follow hasn't come through yet…" and the same buttons; a second tap goes through anyway (so a real
+   follower is never stuck). If Instagram doesn't answer, it goes through. Messenger can't check a Page follow, so the tap goes through.
+3. **They write again without following**: the ask once more, shorter, **with the way to book straight away**, so the follow is asked
+   for but never blocks booking:
+   > We share a short Pranic Healing tip every week, so please follow us and tap below. You can also book a ₹99 call with Shantha Rao
+   > on WhatsApp straight away.
+
+   Instagram: [Visit profile] [I'm following] [Book on WhatsApp]. Messenger: the text, `Our Page: <link>`, `Book on WhatsApp: <link>`,
+   [I've followed]. A question gets it at once; anything else 10 minutes after the bot's last message.
+4. **After the follow**: if their first message asked about price, booking, where (by phone, abroad, Dubai), what Pranic Healing is,
    how the call works or refunds, one short line on that first; then the way to book: "This is Disha Dira's automated booking
-   assistant. Tap below to book a ₹99 15-minute call…" with **[Book on WhatsApp]** (opens WhatsApp with "Hi, I'd like to book a ₹99
-   call" typed) and quick replies **[Book a ₹99 call] [Prices] [About Pranic Healing] [How the call works]**. Each answers in one line
-   with [Book on WhatsApp]. A message naming an illness never gets a medical answer, only the way to book (the WhatsApp bot's safety
-   rules apply there).
-4. **After that**: a message gets "For bookings and questions, message us on WhatsApp: <link>. We reply there." at most once a day.
-   After 30 days with no message, it starts again.
-5. **Safety**: a crisis message gets the same Tele-MANAS message as WhatsApp (no follow ask, nothing sold for a week), you get an
-   urgent item in /admin and an email. An emergency gets the 112 / 108 message.
-6. **You can take over**: if you (or anyone on the Page) write to someone by hand in the Instagram or Page inbox, the bot stays out of
+   assistant. Tap below to book a ₹99 15-minute call…" with **[Book on WhatsApp]** (Messenger: `Book on WhatsApp: <link>`; it opens
+   WhatsApp with "Hi, I'd like to book a ₹99 call" typed) and quick replies **[Book a ₹99 call] [Prices] [About Pranic Healing] [How
+   the call works]**. Each answers in one line with the WhatsApp link. A message naming an illness never gets a medical answer, only
+   the way to book (the WhatsApp bot's safety rules apply there).
+5. **After that**: a typed question on those topics gets its line; any other message (or photo, voice note) gets "For bookings and
+   questions, message us on WhatsApp: <link>. We reply there." at most every 6 hours. A **comment on another post** gets a private
+   reply with only the WhatsApp link ("Thank you for your comment! To book a ₹99 15-minute call with Shantha Rao, tap below and message
+   us on WhatsApp."), at most once a week. After 30 days with no message, it all starts again.
+6. **Safety**: a crisis message, in a DM or a comment, gets the same Tele-MANAS message as WhatsApp (a comment gets it as the private
+   reply; no follow ask, nothing sold for a week), you get an urgent item in /admin and an email. An emergency gets the 112 / 108
+   message and the item.
+7. **You can take over**: if you (or anyone on the Page) write to someone by hand in the Instagram or Page inbox, the bot stays out of
    that chat for 24 hours.
-7. At most 3 automated messages per person a day (the messages after the follow still go). Spam and links get the follow ask once at
-   most. No number is ever shown except inside the wa.me link. No message or comment text is stored.
+8. At most 3 automated messages per person a day. Past that, the answers to a tap ("not yet", the way to book, the quick-reply
+   answers) still go, and the WhatsApp link still goes to someone who writes if they haven't had it in 6 hours. Spam, links, paid
+   promotions, crypto and job seekers get the first follow ask at most (and the link only if they tap "I'm following"). A phone number
+   alone is not spam (people send theirs to be called; the reply points them to WhatsApp). No number is shown except inside the wa.me
+   link. No message or comment text is stored.
+9. **Ignored**: story mentions, reactions, unsent messages, read and delivery receipts, opt-ins, and anything that reaches the bot more
+   than 24 hours late (Meta allows replies only within 24 hours of the person's last message; nothing is ever sent later or on a
+   schedule). On Messenger an m.me link or ad opened in an existing chat (`messaging_referrals`, optional webhook field) counts as a
+   first message.
 
-Hindi: Devanagari, or Roman Hindi words like "kya", "kitna", "hai", get the Hindi messages.
+Hindi: Devanagari, or Roman Hindi words like "kya", "kitna", "hai", "kar diya", get the Hindi messages; a later English message
+switches back.
 
 ## The fastest path: a new Meta app in the practitioner's portfolio
 
@@ -88,8 +114,8 @@ you are done without App Review. If it doesn't, do App Review on that same app (
      expire (Meta: "A long-lived user token yields one with no expiration"). Note the Page `id`.
    - `GET <page id>?fields=instagram_business_account` → the `id` inside is the Instagram account id. It should be
      `17841474938698456` (what Business Settings shows for @disha_dira). The Page's public address is
-     `https://www.facebook.com/profile.php?id=61588921902210` (already in `config.social.facebookPageUrl` for the [Open our Page]
-     button); its number is usually the Page id too, but use the `id` that `me/accounts` gives.
+     `https://www.facebook.com/profile.php?id=61588921902210` (already in `config.social.facebookPageUrl` for the "Our Page" link in
+     Messenger); its number is usually the Page id too, but use the `id` that `me/accounts` gives.
 6. **Instagram setting**: in the Instagram app on @disha_dira: Settings → Messages and story replies → Message controls → Connected
    tools → turn on **Allow access to messages**.
 7. **Cloudflare secrets** on `dishadira-bot-live` (Workers → Settings → Variables and Secrets → Add → Secret). Never in GitHub or chat:
@@ -102,7 +128,8 @@ you are done without App Review. If it doesn't, do App Review on that same app (
 8. **Webhooks** (in the new app; this is not the WhatsApp app, so WhatsApp is not affected):
    - Messenger API Setup → Configure webhooks: Callback URL `https://bot.disha-dira.com/meta/webhook`, Verify token = `META_VERIFY_TOKEN`
      → Verify and save. (Deploy → live must have run first, so the address exists.)
-   - Page fields: `messages`, `messaging_postbacks`, `message_echoes`, `feed`.
+   - Page fields: `messages`, `messaging_postbacks`, `message_echoes`, `feed` (optional: `messaging_referrals`, so an m.me link or ad
+     opened in an existing chat gets the follow ask).
    - Instagram (Messenger → Instagram settings → Webhooks): the same callback and token; fields `messages`, `messaging_postbacks`,
      `comments`.
    - Subscribe the Page to the app: Graph API Explorer with the Page token,
@@ -158,7 +185,9 @@ clear in the docs, which is why A comes first.
 ## Limits Meta sets (read 30 Oct 2026)
 
 - A private reply: one message per comment, within 7 days of the comment; the chat opens only once they answer.
-- Button template: 1–3 buttons, text up to 640 characters, not shown on Instagram on the web. Quick replies: up to 13, titles up to 20
-  characters; on Instagram only on text messages and not on desktop. Instagram text under 1,000 bytes.
+- Button template: 1–3 buttons, text up to 640 characters, not shown on Instagram on the web, and not in the Facebook app (so the bot
+  uses it on Instagram only). Quick replies: up to 13, titles up to 20 characters, gone after the next message; on Instagram only on
+  text messages and not on desktop. Messenger text up to 2,000 characters; Instagram text under 1,000 bytes.
+- Private replies on Messenger take "all messaging types available for using the Send API" (Meta's private replies page).
 - Meta wants the webhook's 200 within 5 seconds; the bot's Meta calls time out after 2.5 seconds each.
 - Docs used: see the header of `src/social.ts`.

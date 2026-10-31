@@ -330,7 +330,8 @@ export const config = {
     facebookPageUrl: "https://www.facebook.com/profile.php?id=61588921902210", // the [Open our Page] button on Messenger (the Page's public address); empty: https://www.facebook.com/<META_PAGE_ID>
     contactEmail: "dishadirahealing@gmail.com", // the contact address on the website's privacy page, for the data deletion page
     maxAutosPerDay: 3, // automated messages to one person in 24 hours, at most (the WhatsApp link itself always goes, once)
-    nudgeEveryHours: 6, // after the link: "message us on WhatsApp" (with the button) at most this often, otherwise nothing
+    nudgeEveryHours: 6, // the WhatsApp link again (after the follow, or with the second ask before it) past the daily limit at most this often
+    commentLinkEveryDays: 7, // someone who had the link comments on another post: a private reply with only [Book on WhatsApp], at most this often
     restartAfterDays: 30, // no message from them for this long: the flow starts again
     pauseHours: 24, // a person from the team wrote by hand (or a safety message went): no automation in that chat for this long
     repeatAskMinutes: 10, // the same follow ask is not sent again within this long (unless a question got an answer line)
@@ -343,10 +344,21 @@ export const config = {
     hinglish: [
       "kya", "hai", "hain", "kitna", "kitne", "kitni", "kaise", "kahan", "kaha", "kab", "aap", "aapka", "aapki", "mujhe", "mera", "meri", "mere", "karna", "karni",
       "chahiye", "batao", "bataiye", "bataye", "haan", "nahi", "nahin", "hoga", "hota", "mein", "liye", "kripya", "dhanyavad", "shukriya", "ji", "bhai", "didi",
+      "kiya", "diya", "liya", "gaya", "kar", "karo", "kijiye", "hoon", "hun", "acha", "accha", "achha", "theek", "thik", "namaskar", "sakte", "sakti", "sakta",
+      "chahta", "chahti", "milega",
     ],
-    // Typed instead of tapping "I'm following" (a short message, at the follow ask): counts as the tap.
-    followedWords: ["following", "followed", "i'm following", "im following", "i am following", "i followed", "i have followed", "follow kiya", "follow kar liya",
-      "follow kar diya", "फ़ॉलो किया", "फॉलो किया", "फ़ॉलो कर लिया", "फॉलो कर लिया", "फ़ॉलो कर दिया", "फॉलो कर दिया"],
+    // Typed instead of tapping "I'm following" (a message of up to 6 words, at the follow ask, with none of notFollowedWords): counts as
+    // the tap. On Instagram the follow is still checked; on Messenger it is trusted, as the tap is.
+    followedWords: ["following", "followed", "follow done", "i'm following", "im following", "i am following", "i followed", "i have followed", "already following",
+      "already followed", "i follow you", "done", "ok", "okay", "yes", "yeah", "yep", "sure",
+      "haan", "han", "haa", "ha", "ji haan", "follow kiya", "follow kar liya", "follow kar diya", "follow ho gaya", "kar diya", "kar liya", "ho gaya",
+      "फ़ॉलो किया", "फॉलो किया", "फ़ॉलो कर लिया", "फॉलो कर लिया", "फ़ॉलो कर दिया", "फॉलो कर दिया", "हाँ", "जी हाँ", "कर दिया", "कर लिया", "हो गया"],
+    notFollowedWords: ["no", "not", "not yet", "nope", "haven't", "havent", "didn't", "didnt", "don't", "dont", "can't", "cant", "unable", "how do i follow",
+      "how to follow", "how can i follow", "where to follow", "nahi", "nahin", "nhi", "nai", "kaise follow", "follow kaise", "नहीं", "नही", "कैसे फ़ॉलो",
+      "फ़ॉलो कैसे", "कैसे फॉलो", "फॉलो कैसे"],
+    // Besides links, config.noise promotions and scams, and job seekers: these make a social message junk (one follow ask at most, no link).
+    junkWords: ["promotion", "promotions", "paid promotion", "promote", "shoutout", "shout out", "influencer", "brand deal", "collab", "collaboration",
+      "usdt", "binance", "nft", "airdrop", "trading", "investment", "forex", "buy followers", "more followers", "real followers", "increase followers", "buy likes", "dm for promo"],
     // The topic of their first message (a code, never the text), answered in one line once they follow. Tried in this order; the first
     // match wins. A message that names an illness (config.router.topics.medical) gets no topic: no medical answer, only the way to book.
     keywords: {
