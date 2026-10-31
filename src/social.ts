@@ -222,7 +222,7 @@ type Event =
   | { kind: "comment"; platform: Platform; mid: string; author: string; post: string; text: string | null }
   | { kind: "dm"; platform: Platform; user: string; mid: string; text: string | null }
   | { kind: "tap"; platform: Platform; user: string; mid: string; payload: string }
-  | { kind: "echo"; platform: Platform; user: string; mid: string; metadata: string | null };
+  | { kind: "echo"; platform: Platform; user: string; mid: string; metadata: string | null; text: string | null };
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null);
@@ -246,7 +246,7 @@ export function readEvent(platform: Platform, ownId: string, raw: unknown, nowMs
     const mid = str(m.mid);
     if (m.is_echo === true) {
       if (!recipient || !mid) return { ignore: "NO_SENDER" };
-      return { kind: "echo", platform, user: recipient, mid, metadata: str(m.metadata) };
+      return { kind: "echo", platform, user: recipient, mid, metadata: str(m.metadata), text: typeof m.text === "string" ? m.text : null };
     }
     if (!sender) return { ignore: "NO_SENDER" };
     if (sender === ownId) return { ignore: "OWN_MESSAGE" };
@@ -438,6 +438,10 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
   // Someone from the team wrote by hand in the Instagram or Page inbox (not our own message): keep out of that chat for a day.
   if (ev.kind === "echo") {
     if (ev.metadata === METADATA) return;
+    // Not the team: someone who has never written to us that we know of (right after "delete my data", whose own reply echoes back with
+    // no row left, or before their first message is saved), or the Business Suite instant reply (config.social.inboxAutoReplies).
+    if (!r.last_in_at) return;
+    if (ev.text && config.social.inboxAutoReplies.some((t) => normalize(ev.text!).startsWith(normalize(t)))) return;
     if (await env.DB.prepare("SELECT 1 FROM social_seen WHERE key = ?1").bind(`out:${ev.mid}`).first()) return;
     if (ago(r.last_auto_at, nowMs) < config.social.ownEchoSeconds * 1000) return; // our send, whose id is not stored yet
     r.paused_until = iso(nowMs + config.social.pauseHours * HOUR);
@@ -560,7 +564,9 @@ async function forget(env: Env, r: Contact, w: Words): Promise<void> {
     env.DB.prepare("DELETE FROM social_contacts WHERE platform = ?1 AND (user_id = ?2 OR commenter_id = ?2)").bind(r.platform, r.user_id),
     ...ids.map((id) => env.DB.prepare("DELETE FROM social_seen WHERE key LIKE ?1 OR key LIKE ?2").bind(`qa:${r.platform}:${id}:%`, `c:${r.platform}:${id}:%`)),
   ]);
-  if (await sendsOn(env)) await graphSend(env, r.platform, { id: r.user_id }, { text: w.deleted });
+  if (!(await sendsOn(env))) return;
+  const out = await graphSend(env, r.platform, { id: r.user_id }, { text: w.deleted });
+  if (out?.mid) await seenOnce(env, `out:${out.mid}`, Date.now());
 }
 
 // The crisis message (Tele-MANAS, 112) or the emergency message, as the WhatsApp bot sends them; no selling for a week after a crisis

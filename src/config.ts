@@ -337,6 +337,9 @@ export const config = {
     restartAfterDays: 30, // no message from them for this long: the flow starts again
     pauseHours: 24, // a person from the team wrote by hand (or a safety message went): no automation in that chat for this long
     repeatAskMinutes: 10, // the same follow ask is not sent again within this long (unless a question got an answer line)
+    // The start of the Business Suite instant reply (Inbox → Automations → Instant reply): its echo is not the team writing by hand, so it
+    // doesn't pause the bot. Keep this in step with the text set there.
+    inboxAutoReplies: ["Namaste, and thank you for writing to Disha Dira!"],
     ownEchoSeconds: 60, // an Instagram echo this soon after our own send is ours (its id may not be stored yet)
     graphTimeoutMs: 2500, // per Graph call; Meta answers in well under a second, and wants the webhook's 200 within 5 seconds
     keepSeenDays: 7, // message ids kept for dedupe (a "one private reply per commenter per post" key: forgetAfterDays)

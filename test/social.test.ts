@@ -506,6 +506,28 @@ describe("POST /meta/webhook", () => {
     expect((await contact("instagram", "U1")).paused_until).toBeNull();
   });
 
+  it("the \"delete my data\" reply's echo and the Business Suite instant reply never pause the bot (Rohit's live test, 31 Oct)", async () => {
+    await post(dm("instagram", "U5", "hi"));
+    at(NOW + 5 * 60_000);
+    await post(dm("instagram", "U5", "delete my data"));
+    // Both echo back with no row left: the instant reply (Business Suite answers the "first" message) and our "Done".
+    await post(echo("instagram", "U5", { text: `${config.social.inboxAutoReplies[0]} We share a short Pranic Healing tip every week here…` }));
+    await post(echo("instagram", "U5", { text: en().deleted }));
+    expect(await contact("instagram", "U5")).toBeNull();
+    at(NOW + 9 * 60_000);
+    const before = sent().length;
+    await post(dm("instagram", "U5", "Hello can i book"));
+    expect(sent().length).toBeGreaterThan(before); // they follow (the fake says yes): the booking guide
+    expect(sent().at(-1).recipient).toEqual({ id: "U5" });
+    // Days later, the instant reply fires again: still not the team.
+    at(NOW + 3 * 24 * HOUR);
+    await post(echo("instagram", "U5", { text: `${config.social.inboxAutoReplies[0]} …` }));
+    expect((await contact("instagram", "U5")).paused_until).toBeNull();
+    // A message the team types by hand still pauses.
+    await post(echo("instagram", "U5", { text: "Hi, this is Shantha's team" }));
+    expect((await contact("instagram", "U5")).paused_until).not.toBeNull();
+  });
+
   it("SOCIAL_REPLIES not \"true\": 200, and nothing stored or sent", async () => {
     for (const v of ["false", "", "TRUE"]) {
       flags.SOCIAL_REPLIES = v;
