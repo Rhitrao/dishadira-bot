@@ -19,6 +19,8 @@ let close: () => Promise<void>;
 let fetchMock: ReturnType<typeof vi.fn>;
 let flags: { SOCIAL_REPLIES: string; SENDS: string };
 let follows: boolean | "error" | "timeout";
+let followsFirst: boolean; // the answer to the first follow check for each person (they usually follow after our ask)
+let checked: Set<string>;
 let commentRecipient: string | null; // the messaging id Meta answers a private reply with
 let refuseTemplateReply: boolean;
 let n = 0;
@@ -47,8 +49,12 @@ const tap = (p: P, user: string) => wrap(p, [from(user, p, { postback: { mid: `m
 const media = (p: P, user: string, type: string) => wrap(p, [from(user, p, { message: { mid: `m_a${++mid}`, attachments: [{ type, payload: { url: "https://cdn.example.invalid/x" } }] } })]);
 const qrFollow = (user: string) => wrap("messenger", [from(user, "messenger", { message: { mid: `m_qf${++mid}`, text: "I've followed", quick_reply: { payload: FOLLOWING } } })]);
 const qr = (p: P, user: string, topic: string, id: string) => wrap(p, [from(user, p, { message: { mid: `m_${id}`, text: "tapped title", quick_reply: { payload: `SOCIAL_Q_${topic.toUpperCase()}` } } })]);
-const WA_BOOK = `https://wa.me/${config.businessNumber.replace(/\D/g, "")}?text=${encodeURIComponent("Hi, I'd like to book a ₹99 call")}`;
-const WA_BOOK_HI = `https://wa.me/${config.businessNumber.replace(/\D/g, "")}?text=${encodeURIComponent("नमस्ते, मुझे ₹99 की कॉल बुक करनी है")}`;
+// The reference code in the WhatsApp text: random in the Worker, pinned here (crypto.getRandomValues gives zeros: "AAAAA").
+const waLink = (p: P, text = "Hi, I'd like to book a ₹99 call") =>
+  `https://wa.me/${config.businessNumber.replace(/\D/g, "")}?text=${encodeURIComponent(`${text} (ref: ${p === "instagram" ? "IG" : "FB"}AAAAA)`)}`;
+const WA_BOOK = waLink("messenger");
+const WA_BOOK_IG = waLink("instagram");
+const WA_BOOK_HI = waLink("messenger", "नमस्ते, मुझे ₹99 की कॉल बुक करनी है");
 const PAGE = config.social.facebookPageUrl;
 // Messenger: plain text with the links written out (the Facebook app can't show button templates), quick replies for the taps.
 const msgrAsk = (w = socialWords("en")) => `${w.ask}\n\n${w.pageLabel}: ${PAGE}`;
@@ -78,6 +84,8 @@ beforeEach(async () => {
   ({ db, close } = await newDb());
   flags = { SOCIAL_REPLIES: "true", SENDS: "true" };
   follows = true;
+  followsFirst = false;
+  checked = new Set();
   commentRecipient = "IGSID1";
   emails = [];
   refuseTemplateReply = false;
@@ -88,7 +96,10 @@ beforeEach(async () => {
     if (String(url).includes("is_user_follow_business")) {
       if (follows === "timeout") throw new Error("timeout");
       if (follows === "error") return new Response(JSON.stringify({ error: { code: 230 } }), { status: 400 });
-      return new Response(JSON.stringify({ is_user_follow_business: follows, id: "x" }), { status: 200 });
+      const user = String(url).split("?")[0].split("/").at(-1)!;
+      const first = !checked.has(user);
+      checked.add(user);
+      return new Response(JSON.stringify({ is_user_follow_business: first ? followsFirst : follows, id: "x" }), { status: 200 });
     }
     if (init?.method === "POST" && String(url).endsWith("/messages")) {
       const b = JSON.parse((init as { body: string }).body);
@@ -99,10 +110,12 @@ beforeEach(async () => {
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fetchMock);
+  vi.spyOn(crypto, "getRandomValues").mockImplementation(((a: Uint8Array) => a) as never);
 });
 afterEach(async () => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   await close();
 });
 
@@ -162,8 +175,10 @@ describe("POST /meta/webhook", () => {
   it("Instagram: any first DM gets the follow ask with [Visit profile] and [I'm following], sent with the Page token", async () => {
     expect((await post(dm("instagram", "U1", "hi"))).status).toBe(200);
     const [m] = sent();
-    expect(calls()[0].url).toBe(`https://graph.facebook.com/${config.graphVersion}/PAGE1/messages`);
-    expect(calls()[0].init.headers.Authorization).toBe("Bearer ptok");
+    // First: does U1 already follow us? (No, so the ask.) Then the ask itself.
+    expect(calls()[0].url).toBe(`https://graph.facebook.com/${config.graphVersion}/U1?fields=is_user_follow_business`);
+    expect(calls()[1].url).toBe(`https://graph.facebook.com/${config.graphVersion}/PAGE1/messages`);
+    expect(calls()[1].init.headers.Authorization).toBe("Bearer ptok");
     expect(m.recipient).toEqual({ id: "U1" });
     expect(m.messaging_type).toBeUndefined();
     expect(bodyOf(m)).toBe(en().ask);
@@ -207,7 +222,7 @@ describe("POST /meta/webhook", () => {
     await post(tap("instagram", "K0"));
     const [guide, questions] = sent().slice(-2);
     expect(bodyOf(guide)).toBe(`A first 15-minute call with Shantha Rao is ₹99. A session is ₹799, or 10 sessions for ₹5,000 and 20 for ₹9,000.\n\n${en().guide}`);
-    expect(buttonsOf(guide)).toEqual([{ type: "web_url", url: WA_BOOK, title: "Book on WhatsApp" }]);
+    expect(buttonsOf(guide)).toEqual([{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }]);
     expect(guide.message.quick_replies).toBeUndefined(); // Instagram: quick replies only on text
     expect(questions.message).toEqual({ text: en().questions, quick_replies: QR_EN });
     expect((await contact("instagram", "K0")).topic).toBeNull();
@@ -236,11 +251,11 @@ describe("POST /meta/webhook", () => {
   it("Instagram, following: the profile check says yes, so the way to book goes (guide, then the questions)", async () => {
     await post(dm("instagram", "U1", "hi"));
     await post(tap("instagram", "U1"));
-    expect(profileCalls()).toHaveLength(1);
-    expect(profileCalls()[0].url).toContain("/U1?fields=is_user_follow_business");
+    expect(profileCalls()).toHaveLength(2); // on the first DM (not yet), and on the tap (yes)
+    expect(profileCalls()[1].url).toContain("/U1?fields=is_user_follow_business");
     const [guide, questions] = sent().slice(-2);
     expect(bodyOf(guide)).toBe(en().guide);
-    expect(buttonsOf(guide)).toEqual([{ type: "web_url", url: WA_BOOK, title: "Book on WhatsApp" }]);
+    expect(buttonsOf(guide)).toEqual([{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }]);
     expect(questions.message.quick_replies).toEqual(QR_EN);
     const row = await contact("instagram", "U1");
     expect(row.step).toBe("LINKED");
@@ -255,9 +270,10 @@ describe("POST /meta/webhook", () => {
     expect(buttonsOf(sent().at(-1)).map((b: Json) => b.type)).toEqual(["web_url", "postback"]);
     expect((await contact("instagram", "U1")).step).toBe("RECHECK");
     await post(tap("instagram", "U1"));
-    expect(profileCalls()).toHaveLength(1);
+    expect(profileCalls()).toHaveLength(2); // the first DM and the first tap; none on the second tap
     expect(bodyOf(sent().at(-2))).toBe(en().guide);
     expect((await contact("instagram", "U1")).step).toBe("LINKED");
+    expect((await contact("instagram", "U1")).followed_at).toBeNull(); // not confirmed, so they may be asked again after 30 days
   });
 
   it("Instagram: a failed or timed-out profile check sends the way to book (fail open)", async () => {
@@ -288,6 +304,7 @@ describe("POST /meta/webhook", () => {
     for (const a of answers) expect(a.message.quick_replies).toEqual(QR_EN);
     expect(en().lines.how).toContain("calls the number you book from on WhatsApp, at the time you pick");
     // Instagram: the answer is the line and the button (quick replies only go on text there).
+    followsFirst = true;
     await post(tap("instagram", "U1"));
     await post(qr("instagram", "U1", "how", "qa9"));
     expect(bodyOf(sent().at(-1))).toBe(en().lines.how);
@@ -313,10 +330,11 @@ describe("POST /meta/webhook", () => {
     await post(dm("messenger", "P1", "hello again"));
     expect(sent()).toHaveLength(before + 4);
     // Instagram: the pointer with the button; a voice note or photo after the link gets it too.
+    followsFirst = true;
     await post(tap("instagram", "U1"));
     await post(media("instagram", "U1", "audio"));
-    expect(bodyOf(sent().at(-1))).toBe(en().after(WA_BOOK));
-    expect(buttonsOf(sent().at(-1))).toEqual([{ type: "web_url", url: WA_BOOK, title: "Book on WhatsApp" }]);
+    expect(bodyOf(sent().at(-1))).toBe(en().after(WA_BOOK_IG));
+    expect(buttonsOf(sent().at(-1))).toEqual([{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }]);
   });
 
   it("at most 3 automated messages per person in 24 hours; the messages after the follow still go", async () => {
@@ -326,19 +344,25 @@ describe("POST /meta/webhook", () => {
       await post(dm("instagram", "U1", t));
     }
     expect(sent()).toHaveLength(3); // the ask, then the ask with [Book on WhatsApp] twice; the fourth: they have the link, nothing
+    expect(bodyOf(sent()[1])).toBe(`${en().lines.book}\n\n${en().askAgain}`); // with one line on that message's question
     expect((await contact("instagram", "U1")).autos_today).toBe(3);
     await post(tap("instagram", "U1")); // "not yet" answers a tap: past the limit
     expect(bodyOf(sent().at(-1))).toBe(en().notYet);
     await post(tap("instagram", "U1")); // the second tap goes through, past the limit
     expect(sent()).toHaveLength(6);
     expect(bodyOf(sent().at(-2))).toBe(`${en().lines.price}\n\n${en().guide}`);
+    at(NOW + 35 * 60_000);
     await post(dm("instagram", "U1", "thanks"));
     expect(sent()).toHaveLength(7); // the WhatsApp pointer after the follow goes past the limit, at most every 6 hours
     await post(dm("instagram", "U1", "thanks again"));
     expect(sent()).toHaveLength(7);
+    // A day later: "Welcome back!" with the link, then the questions.
     at(NOW + 25 * HOUR);
     await post(dm("instagram", "U1", "thanks"));
-    expect(sent()).toHaveLength(8);
+    expect(sent()).toHaveLength(9);
+    expect(bodyOf(sent().at(-2))).toBe("Welcome back! You can book your ₹99 15-minute call with Shantha Rao here:");
+    expect(buttonsOf(sent().at(-2))).toEqual([{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }]);
+    expect(sent().at(-1).message.quick_replies).toEqual(QR_EN);
   });
 
   it("writing again without following: the ask with [Book on WhatsApp] too; a question at once, small talk after 10 minutes", async () => {
@@ -346,31 +370,35 @@ describe("POST /meta/webhook", () => {
     await post(dm("instagram", "U1", "hello"));
     expect(sent()).toHaveLength(1); // small talk within 10 minutes: nothing
     await post(dm("instagram", "U1", "how much?"));
+    expect(sent()).toHaveLength(1); // within a minute of the ask: one reply a minute
+    at(NOW + 61_000);
+    await post(dm("instagram", "U1", "how much??"));
     expect(sent()).toHaveLength(2);
-    expect(bodyOf(sent()[1])).toBe(en().askAgain);
-    expect(bodyOf(sent()[1])).toBe("We share a short Pranic Healing tip every week, so please follow us and tap below. You can also book a ₹99 call with Shantha Rao on WhatsApp straight away.");
+    expect(bodyOf(sent()[1])).toBe(`${en().lines.price}\n\n${en().askAgain}`);
+    expect(en().askAgain).toBe("We share a short Pranic Healing tip every week, so please follow us and tap below. You can also book a ₹99 call with Shantha Rao on WhatsApp straight away.");
     expect(buttonsOf(sent()[1])).toEqual([
       { type: "web_url", url: config.social.instagramUrl, title: "Visit profile" },
       { type: "postback", title: "I'm following", payload: FOLLOWING },
-      { type: "web_url", url: WA_BOOK, title: "Book on WhatsApp" },
+      { type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" },
     ]);
     await post(dm("instagram", "U1", "price??"));
     expect(sent()).toHaveLength(2); // within 10 minutes of that: nothing more
     expect((await contact("instagram", "U1")).topic).toBe("price"); // a later question still sets the topic
     expect((await contact("instagram", "U1")).step).toBe("ASKED"); // still asked to follow
-    at(NOW + 11 * 60_000);
+    at(NOW + 12 * 60_000);
     await post(dm("instagram", "U1", "hi"));
     expect(sent()).toHaveLength(3);
     // Messenger: the same as text, with both links and [I've followed].
     await post(dm("messenger", "P1", "hello"));
-    await post(dm("messenger", "P1", "can I book a call?"));
+    at(NOW + 13 * 60_000);
+    await post(dm("messenger", "P1", "hello?"));
     expect(sent().at(-1).message).toEqual({ text: msgrAskAgain(), quick_replies: followQr(), metadata: METADATA });
   });
 
   it("past the daily limit, a question before the follow still gets the WhatsApp link if it hasn't gone in 6 hours", async () => {
     await db.prepare("INSERT INTO social_contacts (platform, user_id, step, last_in_at, last_auto_at, autos_since, autos_today) VALUES ('instagram', 'U1', 'ASKED', ?1, ?1, ?1, 3)").bind(iso(NOW - HOUR)).run();
     await post(dm("instagram", "U1", "how do I book?"));
-    expect(bodyOf(sent().at(-1))).toBe(en().askAgain);
+    expect(bodyOf(sent().at(-1))).toBe(`${en().lines.book}\n\n${en().askAgain}`);
     at(NOW + 20 * 60_000);
     await post(dm("instagram", "U1", "hello??"));
     expect(sent()).toHaveLength(1);
@@ -525,27 +553,32 @@ describe("POST /meta/webhook", () => {
     await post(t);
     await post(t);
     expect(sent()).toHaveLength(3); // the ask, then the guide and the questions
-    expect(profileCalls()).toHaveLength(1);
+    expect(profileCalls()).toHaveLength(2); // the first DM's check and the tap's
   });
 
   it("a failed send is logged by code only and doesn't move the step on", async () => {
     const lines: string[] = [];
     vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void lines.push(a.join(" ")));
     fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ error: { code: 10, message: "secret detail U1" } }), { status: 400 }));
-    await post(dm("instagram", "U1", "my secret words"));
+    await post(dm("messenger", "P1", "my secret words"));
     expect(lines).toContain("social send failed 10");
-    expect(lines.join("\n")).not.toMatch(/secret|U1/);
-    expect((await contact("instagram", "U1")).step).toBe("NEW");
+    expect(lines.join("\n")).not.toMatch(/secret|P1/);
+    expect((await contact("messenger", "P1")).step).toBe("NEW");
     vi.restoreAllMocks();
   });
 
-  it("after 30 days without a message the flow starts again", async () => {
+  it("after 30 days without a message the flow starts again; someone who confirmed the follow gets 'Welcome back!' instead of the ask", async () => {
     await post(tap("messenger", "P1"));
     expect((await contact("messenger", "P1")).step).toBe("LINKED");
+    expect((await contact("messenger", "P1")).followed_at).toBe(iso(NOW));
+    await post(dm("messenger", "P2", "hi")); // asked, never tapped
     at(NOW + 31 * 24 * HOUR);
     await post(dm("messenger", "P1", "hi"));
+    expect(sent().at(-1).message).toEqual({ text: withLink("Welcome back! You can book your ₹99 15-minute call with Shantha Rao here:"), quick_replies: QR_EN, metadata: METADATA });
+    expect((await contact("messenger", "P1")).step).toBe("LINKED");
+    await post(dm("messenger", "P2", "hi"));
     expect(bodyOf(sent().at(-1))).toBe(msgrAsk());
-    expect((await contact("messenger", "P1")).step).toBe("ASKED");
+    expect((await contact("messenger", "P2")).step).toBe("ASKED");
   });
 
   it("'delete my data' deletes their row at once and says so", async () => {
@@ -608,7 +641,7 @@ describe("POST /meta/webhook", () => {
   it("the clean-up deletes old message ids after a week and a person's row 90 days after their last message", async () => {
     await post(dm("instagram", "U1", "hi"));
     await cleanSocial(env(), NOW + 6 * 24 * HOUR);
-    expect(await count("SELECT COUNT(*) n FROM social_seen")).toBe(2); // in: and out:
+    expect(await count("SELECT COUNT(*) n FROM social_seen")).toBe(3); // in:, out: and the one-reply-a-minute key
     await cleanSocial(env(), NOW + 8 * 24 * HOUR);
     expect(await count("SELECT COUNT(*) n FROM social_seen")).toBe(0);
     expect(await count("SELECT COUNT(*) n FROM social_contacts")).toBe(1);
@@ -679,7 +712,8 @@ describe("comments: a private reply starts the same flow", () => {
     expect(buttonsOf(m).map((b: Json) => b.payload ?? b.url)).toEqual([config.social.instagramUrl, FOLLOWING]);
     const row = await contact("instagram", "IGSID1");
     expect(row).toMatchObject({ step: "ASKED", commenter_id: "AUTH1", autos_today: 1 });
-    // ... and the flow goes on from their tap.
+    // ... and the flow goes on from their tap (they follow now).
+    followsFirst = true;
     await post(tap("instagram", "IGSID1"));
     expect(bodyOf(sent().at(-2))).toBe(`${en().lines.what}\n\n${en().guide}`); // the comment's topic, answered after the follow
     // No comment text, username or name is kept.
@@ -712,7 +746,8 @@ describe("comments: a private reply starts the same flow", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("someone who had the link in the last 30 days gets only [Book on WhatsApp] for a comment on another post, at most once a week", async () => {
+  it("someone who had the link in the last 30 days, or follows us, gets only [Book on WhatsApp] for a comment on another post, once a week", async () => {
+    followsFirst = true;
     await post(igComment("AUTH1", "MEDIA1"));
     await post(tap("instagram", "IGSID1"));
     expect((await contact("instagram", "IGSID1")).step).toBe("LINKED");
@@ -724,7 +759,7 @@ describe("comments: a private reply starts the same flow", () => {
     expect(m.recipient).toEqual({ comment_id: `c${cid}` });
     expect(bodyOf(m)).toBe(en().commentBook);
     expect(bodyOf(m)).toBe("Thank you for your comment! To book a ₹99 15-minute call with Shantha Rao, tap below and message us on WhatsApp.");
-    expect(buttonsOf(m)).toEqual([{ type: "web_url", url: WA_BOOK, title: "Book on WhatsApp" }]);
+    expect(buttonsOf(m)).toEqual([{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }]);
     expect((await contact("instagram", "IGSID1")).step).toBe("LINKED");
     at(NOW + 5 * 24 * HOUR);
     await post(igComment("AUTH1", "MEDIA3"));
@@ -733,9 +768,14 @@ describe("comments: a private reply starts the same flow", () => {
     at(NOW + 10 * 24 * HOUR);
     await post(igComment("AUTH1", "MEDIA4"));
     expect(sent()).toHaveLength(before + 2);
-    // After 30 days, the follow ask again.
+    // After 30 days: Instagram confirmed the follow, so still only the link (never the follow ask again).
     at(NOW + 31 * 24 * HOUR);
     await post(igComment("AUTH1", "MEDIA5"));
+    expect(bodyOf(sent().at(-1))).toBe(en().commentBook);
+    // Someone who had the link but never confirmed a follow, after 30 days: the follow ask.
+    commentRecipient = "IGSID3";
+    await db.prepare("INSERT INTO social_contacts (platform, user_id, commenter_id, step, link_sent_at, last_in_at) VALUES ('instagram', 'IGSID3', 'AUTH3', 'LINKED', ?1, ?1)").bind(iso(NOW)).run();
+    await post(igComment("AUTH3", "MEDIA5"));
     expect(bodyOf(sent().at(-1))).toBe(en().ask);
     // Facebook: the link written out, no buttons.
     commentRecipient = "PSID1";
@@ -778,6 +818,7 @@ describe("comments: a private reply starts the same flow", () => {
 
   it("Instagram: if the buttons are refused in a private reply, the ask goes as text, and a typed 'following' counts as the tap", async () => {
     refuseTemplateReply = true;
+    followsFirst = true;
     await post(igComment("AUTH1", "MEDIA1"));
     const m = sent().at(-1);
     expect(m.message.text).toBe(`${en().ask}\n\n${config.social.instagramUrl}\n${en().typeFollowing}`);

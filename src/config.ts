@@ -331,6 +331,8 @@ export const config = {
     contactEmail: "dishadirahealing@gmail.com", // the contact address on the website's privacy page, for the data deletion page
     maxAutosPerDay: 3, // automated messages to one person in 24 hours, at most (the WhatsApp link itself always goes, once)
     nudgeEveryHours: 6, // the WhatsApp link again (after the follow, or with the second ask before it) past the daily limit at most this often
+    welcomeBackHours: 24, // after the link, someone who writes again after this long gets "Welcome back!" with the link and questions
+    burstSeconds: 60, // typed messages: at most one unprompted reply (ask, ask again, pointer, welcome back) per person in this long
     commentLinkEveryDays: 7, // someone who had the link comments on another post: a private reply with only [Book on WhatsApp], at most this often
     restartAfterDays: 30, // no message from them for this long: the flow starts again
     pauseHours: 24, // a person from the team wrote by hand (or a safety message went): no automation in that chat for this long
@@ -356,6 +358,15 @@ export const config = {
     notFollowedWords: ["no", "not", "not yet", "nope", "haven't", "havent", "didn't", "didnt", "don't", "dont", "can't", "cant", "unable", "how do i follow",
       "how to follow", "how can i follow", "where to follow", "nahi", "nahin", "nhi", "nai", "kaise follow", "follow kaise", "नहीं", "नही", "कैसे फ़ॉलो",
       "फ़ॉलो कैसे", "कैसे फॉलो", "फॉलो कैसे"],
+    // "Not interested", "stop": one polite line, then no automated message until the flow restarts (config.words.optOut too, alone).
+    stopWords: ["not interested", "no interest", "no thanks", "no thank you", "stop messaging", "stop sending", "dont message", "don't message me",
+      "unsubscribe", "interested nahi", "interest nahi", "nahi chahiye", "mat bhejo", "message mat karo", "रुचि नहीं", "नहीं चाहिए", "मैसेज मत करो", "मत भेजो"],
+    // "I booked already", "paid": thank them, no more selling. With paidProblemWords: point them to "Talk to a person" on WhatsApp.
+    bookedWords: ["booked", "i booked", "i have booked", "already booked", "booking done", "booked already", "i paid", "i have paid", "already paid",
+      "paid already", "payment done", "payment kar diya", "pay kar diya", "book kar liya", "booking ho gayi", "booking kar li", "बुक कर लिया", "बुकिंग हो गई",
+      "पेमेंट कर दिया", "पेमेंट हो गया"],
+    paidProblemWords: ["no confirmation", "not confirmed", "not received", "didn't get", "did not get", "didnt get", "no message", "deducted", "money cut",
+      "payment failed", "confirmation nahi", "nahi aaya", "nahi mila", "कन्फ़र्मेशन नहीं", "नहीं आया", "नहीं मिला", "कट गए"],
     // Besides links, config.noise promotions and scams, and job seekers: these make a social message junk (one follow ask at most, no link).
     junkWords: ["promotion", "promotions", "paid promotion", "promote", "shoutout", "shout out", "influencer", "brand deal", "collab", "collaboration",
       "usdt", "binance", "nft", "airdrop", "trading", "investment", "forex", "buy followers", "more followers", "real followers", "increase followers", "buy likes", "dm for promo"],
@@ -366,6 +377,10 @@ export const config = {
         "कितना", "कितने", "कितनी", "फ़ीस", "फीस", "कीमत", "दाम", "शुल्क"],
       refund: ["refund", "refunds", "money back", "paisa wapas", "paise wapas", "रिफंड", "रिफ़ंड", "पैसे वापस"],
       how: ["how does the call work", "how the call works", "how is the call", "what happens on the call", "what happens in the call", "call kaise", "कॉल कैसे"],
+      // Her number, or a call now: the same answer as on WhatsApp (no number; book the call and she calls you).
+      call: ["call me", "can i call", "call you", "call her", "your number", "her number", "phone number", "contact number", "mobile number", "whatsapp number",
+        "number please", "number do", "number dijiye", "number bhejo", "talk to her", "speak to her", "speak to shantha", "talk to shantha", "नंबर", "कॉल करूं",
+        "बात करनी"],
       book: ["book", "booking", "appointment", "session", "sessions", "slot", "slots", "consult", "consultation", "बुक", "बुकिंग", "अपॉइंटमेंट", "सेशन"],
       where: ["where", "address", "location", "located", "in person", "visit", "kahan", "kaha", "dubai", "uae", "abroad", "outside india", "another country", "usa", "uk",
         "canada", "australia", "singapore", "online", "by phone", "on phone", "phone pe", "phone par", "कहाँ", "कहां", "पता", "विदेश", "दुबई"],

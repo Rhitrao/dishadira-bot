@@ -224,6 +224,9 @@ type Conv = {
   id: number; wa_id: string; mode: string; locale: string; consent_at: string | null; greeted_at: string | null; last_ack_at: string | null; firstQuestion: string | null;
 };
 
+// The reference an Instagram or Messenger reply puts in the WhatsApp text it prefills (src/social.ts bookLink).
+export const REF_PATTERN = /\s*\(ref:\s*((?:IG|FB)[A-Z0-9]{5})\)/i;
+
 async function handleMessage(env: Env, m: Msg, from: string, name: string | undefined): Promise<void> {
   const db = env.DB;
   const secs = Number(m.timestamp);
@@ -253,7 +256,14 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
   await ensureState(db, conv.id);
 
   const choice = m.interactive?.button_reply?.id ?? m.interactive?.list_reply?.id ?? null;
-  const text = m.type === "text" ? (m.text?.body ?? "") : null;
+  let text = m.type === "text" ? (m.text?.body ?? "") : null;
+  // A chat opened from an Instagram or Messenger reply carries "(ref: IGK7Q2M)" in the text we prefilled (src/social.ts): the code links
+  // the two (to count bookings that started there) and is taken out before anything stores or reads the message.
+  const ref = text?.match(REF_PATTERN);
+  if (text && ref) {
+    text = text.replace(REF_PATTERN, "").trim();
+    await db.prepare("UPDATE social_contacts SET wa_conversation_id = ?1 WHERE ref_code = ?2").bind(conv.id, ref[1].toUpperCase()).run();
+  }
   // A tap is stored as the label of the button or list row (our own words), so the console can say "Tapped: …"; the chat wipe removes it
   // like any text, and the assistant never reads it (src/ai.ts leaves taps out).
   const tapLabel = (m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? m.button?.text)?.slice(0, 100) || null;
