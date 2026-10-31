@@ -20,6 +20,11 @@ Quick replies and links work in both apps.
    Instagram: [Visit profile] [I'm following]. Messenger: the same text, then `Our Page: https://www.facebook.com/profile.php?id=…`,
    and the quick reply [I've followed].
 
+   **Someone who already follows us** skips this: on Instagram the bot asks Instagram on their first message (if Instagram doesn't
+   answer, they get the ask); on Messenger only someone who tapped "I've followed" before. They get the way to book straight away
+   ("Thanks for being part of our community! …", or "Welcome back! You can book your ₹99 15-minute call with Shantha Rao here:" if they
+   had the link before), even after 30 days away.
+
    A comment gets this as a **private reply** (a DM that Instagram or Facebook links to the comment). One per person per post. If the
    buttons or quick reply are refused there, the same words go as text with the link and "Once you follow, reply "following" here."
 2. **"I'm following"** (tapped, or typed: "following", "followed", "done", "ok", "yes", "haan", "follow kiya", "follow kar diya",
@@ -32,7 +37,8 @@ Quick replies and links work in both apps.
    > on WhatsApp straight away.
 
    Instagram: [Visit profile] [I'm following] [Book on WhatsApp]. Messenger: the text, `Our Page: <link>`, `Book on WhatsApp: <link>`,
-   [I've followed]. A question gets it at once; anything else 10 minutes after the bot's last message.
+   [I've followed]. A question gets it at once, after one line on that question if it has a topic (price, booking, her number,
+   abroad…); anything else 10 minutes after the bot's last message.
 4. **After the follow**: if their first message asked about price, booking, where (by phone, abroad, Dubai), what Pranic Healing is,
    how the call works or refunds, one short line on that first; then the way to book: "This is Disha Dira's automated booking
    assistant. Tap below to book a ₹99 15-minute call…" with **[Book on WhatsApp]** (Messenger: `Book on WhatsApp: <link>`; it opens
@@ -40,23 +46,36 @@ Quick replies and links work in both apps.
    the call works]**. Each answers in one line with the WhatsApp link. A message naming an illness never gets a medical answer, only
    the way to book (the WhatsApp bot's safety rules apply there).
 5. **After that**: a typed question on those topics gets its line; any other message (or photo, voice note) gets "For bookings and
-   questions, message us on WhatsApp: <link>. We reply there." at most every 6 hours. A **comment on another post** gets a private
+   questions, message us on WhatsApp: <link>. We reply there." at most every 6 hours; after a day away, "Welcome back! You can book
+   your ₹99 15-minute call with Shantha Rao here:" with the link and the questions. A **comment on another post** gets a private
    reply with only the WhatsApp link ("Thank you for your comment! To book a ₹99 15-minute call with Shantha Rao, tap below and message
    us on WhatsApp."), at most once a week. After 30 days with no message, it all starts again.
-6. **Safety**: a crisis message, in a DM or a comment, gets the same Tele-MANAS message as WhatsApp (a comment gets it as the private
+6. **Booked**: the WhatsApp link carries a short code, e.g. "Hi, I'd like to book a ₹99 call (ref: IGK7Q2M)". The WhatsApp bot takes
+   the code out of the message (the greeting and menu work as usual) and links the two chats. Once that WhatsApp chat has a paid call,
+   session or package, or they say "I booked" / "paid", they never get the follow ask or the ₹99 call again: "Welcome back! For your
+   booking, a new session (₹799) or a package, message us on WhatsApp. We reply there:" with the link ("Hi" typed). "I booked already"
+   gets "Thank you! We'll see you on WhatsApp. 🙏"; "I paid but no confirmation" gets "please don't pay again… tap "Talk to a person""
+   with the link. The 9pm digest has "Instagram and Messenger (last 7 days): N people, N opened WhatsApp, N booked".
+7. **Stop**: "not interested", "stop", "unsubscribe", "बंद करो": "Okay, we won't send you any more automatic messages here…", then
+   nothing (DMs and comments) until they tap a button or 30 days pass. Insults get no reply at all.
+8. **Her number or a call**: "We don't take calls here or share a number. The quickest way to talk to Shantha Rao is the ₹99 15-minute
+   call…". Abroad or Dubai: "All calls and sessions are by phone, so you can join from anywhere… India time."
+9. **Safety**: a crisis message, in a DM or a comment, gets the same Tele-MANAS message as WhatsApp (a comment gets it as the private
    reply; no follow ask, nothing sold for a week), you get an urgent item in /admin and an email. An emergency gets the 112 / 108
    message and the item.
-7. **You can take over**: if you (or anyone on the Page) write to someone by hand in the Instagram or Page inbox, the bot stays out of
+10. **You can take over**: if you (or anyone on the Page) write to someone by hand in the Instagram or Page inbox, the bot stays out of
    that chat for 24 hours.
-8. At most 3 automated messages per person a day. Past that, the answers to a tap ("not yet", the way to book, the quick-reply
+11. At most 3 automated messages per person a day, and at most one reply nobody tapped for per minute (ten messages in a minute get
+   one reply). Past that, the answers to a tap ("not yet", the way to book, the quick-reply
    answers) still go, and the WhatsApp link still goes to someone who writes if they haven't had it in 6 hours. Spam, links, paid
    promotions, crypto and job seekers get the first follow ask at most (and the link only if they tap "I'm following"). A phone number
    alone is not spam (people send theirs to be called; the reply points them to WhatsApp). No number is shown except inside the wa.me
    link. No message or comment text is stored.
-9. **Ignored**: story mentions, reactions, unsent messages, read and delivery receipts, opt-ins, and anything that reaches the bot more
+12. **Ignored**: story mentions, reactions, unsent messages, read and delivery receipts, opt-ins, and anything that reaches the bot more
    than 24 hours late (Meta allows replies only within 24 hours of the person's last message; nothing is ever sent later or on a
    schedule). On Messenger an m.me link or ad opened in an existing chat (`messaging_referrals`, optional webhook field) counts as a
-   first message.
+   first message (ads from Meta allow replies for 7 days, but the bot only ever answers at once). A reply to a private reply days later
+   is a normal DM.
 
 Hindi: Devanagari, or Roman Hindi words like "kya", "kitna", "hai", "kar diya", get the Hindi messages; a later English message
 switches back.
@@ -134,6 +153,20 @@ you are done without App Review. If it doesn't, do App Review on that same app (
      `comments`.
    - Subscribe the Page to the app: Graph API Explorer with the Page token,
      `POST <page id>/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_echoes,feed` → `{"success": true}`.
+   - Optional, **ice breakers** (up to 4 starter questions shown to someone opening a chat with us for the first time; mobile only).
+     Graph API Explorer with the Page token, two calls (Messenger, then Instagram); each tap arrives as a first message (follow ask,
+     the topic kept for after the follow). Meta allows 10 such calls per 10 minutes:
+     `POST me/messenger_profile` and `POST me/messenger_profile?platform=instagram`, each with the body
+     ```json
+     {"ice_breakers": [{"locale": "default", "call_to_actions": [
+       {"question": "Book a ₹99 call", "payload": "SOCIAL_Q_BOOK"},
+       {"question": "Prices", "payload": "SOCIAL_Q_PRICE"},
+       {"question": "What is Pranic Healing?", "payload": "SOCIAL_Q_WHAT"},
+       {"question": "How does the call work?", "payload": "SOCIAL_Q_HOW"}]}]}
+     ```
+     (for Instagram also `"platform": "instagram"` in the body). Docs:
+     https://developers.facebook.com/docs/messenger-platform/reference/messenger-profile-api/ice-breakers and
+     https://developers.facebook.com/docs/messenger-platform/instagram/features/ice-breakers
    - **Publish the app** (left menu → Publish). Meta sends webhooks only to published apps, whatever the review status.
 9. **Turn it on**: change `SOCIAL_REPLIES = "false"` to `"true"` under `[env.live.vars]` in `wrangler.toml` in a PR, merge, then
    **Actions → Deploy → live**. `"false"` stops every reply at once (the webhook still answers Meta). The /admin "Sends" pause also
@@ -176,7 +209,8 @@ clear in the docs, which is why A comes first.
 
 - **Website privacy page**: add Instagram and Facebook Messenger to "What we collect" and "Who we share it with": "If you message us
   on Instagram or Facebook Messenger, or comment on our posts, an automated assistant replies with our WhatsApp booking link. We keep
-  only the id Instagram or Facebook gives us for you, your language and the reply step, never your messages, and delete it 90 days
+  only the id Instagram or Facebook gives us for you, your language, the reply step and a short booking reference (linked to your
+  WhatsApp chat with us if you use it), never your messages, and delete it 90 days
   after your last message. See https://bot.disha-dira.com/data-deletion."
 - The data deletion page lists the contact email from `config.social.contactEmail` (the address on the privacy page).
 - The facts in the replies come from `docs/KNOWLEDGE.md` and the prices in Settings. Change the words in `src/social.ts`
@@ -188,6 +222,8 @@ clear in the docs, which is why A comes first.
 - Button template: 1–3 buttons, text up to 640 characters, not shown on Instagram on the web, and not in the Facebook app (so the bot
   uses it on Instagram only). Quick replies: up to 13, titles up to 20 characters, gone after the next message; on Instagram only on
   text messages and not on desktop. Messenger text up to 2,000 characters; Instagram text under 1,000 bytes.
+- Private replies: one per comment, within 7 days of it, and Meta limits how many go per hour; a refused one is logged by its code and
+  the next comment on that post may try again.
 - Private replies on Messenger take "all messaging types available for using the Send API" (Meta's private replies page).
 - Meta wants the webhook's 200 within 5 seconds; the bot's Meta calls time out after 2.5 seconds each.
 - Docs used: see the header of `src/social.ts`.

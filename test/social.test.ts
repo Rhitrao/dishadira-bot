@@ -4,7 +4,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import app from "../src/index";
 import { config } from "../src/config";
 import { allCopy } from "../src/copy";
-import { cleanSocial, detectLang, FOLLOWING, METADATA, socialWords } from "../src/social";
+import { cleanSocial, detectLang, FOLLOWING, METADATA, socialLines, socialWords } from "../src/social";
 import { iso } from "../src/slots";
 import { newDb } from "./db";
 
@@ -653,15 +653,151 @@ describe("POST /meta/webhook", () => {
     for (const w of [en(), hi()]) {
       for (const t of [w.btnVisit, ...Object.values(w.btnFollowing), w.btnBook, ...Object.values(w.qrTitles)]) expect(t.length, t).toBeLessThanOrEqual(20);
       for (const line of Object.values(w.lines)) expect(`${line}\n\n${w.guide}`.length).toBeLessThanOrEqual(640);
-      for (const t of [w.ask, w.askAgain, w.notYet, w.questions, w.commentBook]) expect(t.length).toBeLessThanOrEqual(640);
+      for (const t of [w.ask, w.notYet, w.questions, w.commentBook, w.welcomeBack, w.welcomeBooked, w.paidProblem, w.stopped, w.thanksBooked]) expect(t.length).toBeLessThanOrEqual(640);
+      for (const line of Object.values(w.lines)) expect(`${line}\n\n${w.askAgain}`.length).toBeLessThanOrEqual(640);
+      for (const line of Object.values(w.lines)) expect(`${line}\n\n${w.guideMember}`.length).toBeLessThanOrEqual(640);
       // Messenger text (2,000 characters) with the longest link written out.
       const link = `https://wa.me/1?text=${encodeURIComponent(w.prefill)}`;
       for (const line of Object.values(w.lines)) expect(`${line}\n\n${w.guide}\n\n${w.btnBook}: ${link}`.length).toBeLessThanOrEqual(2000);
       expect(`${w.askAgain}\n\n${w.pageLabel}: ${PAGE}\n${w.btnBook}: ${link}`.length).toBeLessThanOrEqual(2000);
       expect(new TextEncoder().encode(w.after("https://wa.me/1?text=" + "x".repeat(120))).length).toBeLessThan(1000);
       // No phone number anywhere except inside the wa.me link.
-      for (const t of [w.ask, w.askAgain, w.notYet, w.guide, w.questions, w.deleted, w.commentBook, ...Object.values(w.lines)]) expect(t).not.toMatch(/\d{6,}|\+91/);
+      for (const t of [w.ask, w.askAgain, w.notYet, w.guide, w.guideMember, w.welcomeBack, w.welcomeBooked, w.thanksBooked, w.paidProblem, w.stopped, w.questions, w.deleted, w.commentBook, ...Object.values(w.lines)]) expect(t).not.toMatch(/\d{6,}|\+91/);
     }
+  });
+});
+
+describe("returning people, bookings and the other realistic cases", () => {
+  const MIN = 60_000;
+  const waMessage = (wamid: string, body: string) => ({ entry: [{ changes: [{ value: { contacts: [{ wa_id: "919999999999", profile: { name: "Test" } }], messages: [{ id: wamid, from: "919999999999", timestamp: String(Math.floor(Date.now() / 1000)), type: "text", text: { body } }] } }] }] });
+  const icebreaker = (p: P, user: string, payload: string) => wrap(p, [from(user, p, { postback: { mid: `m_ib${user}`, title: "Prices", payload } })]);
+
+  it("Instagram: someone who already follows us gets no follow ask on their first DM: the topic line, the way to book, the questions", async () => {
+    followsFirst = true;
+    await post(dm("instagram", "U1", "how much is a session?"));
+    expect(profileCalls()).toHaveLength(1);
+    const [guide, questions] = sent();
+    expect(bodyOf(guide)).toBe(`${en().lines.price}\n\n${en().guideMember}`);
+    expect(en().guideMember).toMatch(/^Thanks for being part of our community! This is Disha Dira's automated booking assistant\./);
+    expect(buttonsOf(guide)).toEqual([{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }]);
+    expect(questions.message.quick_replies).toEqual(QR_EN);
+    expect(await contact("instagram", "U1")).toMatchObject({ step: "LINKED", followed_at: iso(NOW), ref_code: "IGAAAAA" });
+    // No answer from Instagram: the normal ask (fail open). Spam never skips the ask.
+    follows = "error";
+    await post(dm("instagram", "U2", "hi"));
+    expect(bodyOf(sent().at(-1))).toBe(en().ask);
+    follows = true;
+    await post(dm("instagram", "U3", "Grow your business with our SEO services, get more leads"));
+    expect(bodyOf(sent().at(-1))).toBe(en().ask);
+  });
+
+  it("the WhatsApp chat their link opens is linked by the code (taken out of the message); once paid, they get 'Welcome back' for bookings, not the ₹99 call", async () => {
+    await post(tap("messenger", "P1"));
+    expect(bodyOf(sent().at(-1))).toContain(`(ref%3A%20FBAAAAA)`);
+    // They open WhatsApp: the prefilled text arrives with the code.
+    expect((await post(waMessage("wamid.R1", "Hi, I'd like to book a ₹99 call (ref: FBAAAAA)"), "/wa/webhook")).status).toBe(200);
+    const conv = await db.prepare("SELECT id FROM conversations WHERE wa_id = '919999999999'").first<{ id: number }>();
+    expect((await contact("messenger", "P1")).wa_conversation_id).toBe(conv!.id);
+    const stored = await db.prepare("SELECT body FROM messages WHERE wa_message_id = 'wamid.R1'").first<{ body: string }>();
+    expect(stored!.body).toBe("Hi, I'd like to book a ₹99 call");
+    expect(sent().at(-1).messaging_product).toBe("whatsapp"); // the WhatsApp bot answered as usual
+    expect(await socialLines(env(), NOW)).toEqual(["- Messenger: 1 people, 1 opened WhatsApp, 0 booked"]);
+    // The ₹99 call is paid.
+    const intro = await db.prepare("INSERT INTO intros (conversation_id, service, state) VALUES (?1, 'HEALING', 'PAID')").bind(conv!.id).run();
+    await db.prepare("INSERT INTO payments (provider, purpose, target_id, amount_paise, state) VALUES ('razorpay', 'INTRO', ?1, 9900, 'PAID')").bind(intro.meta.last_row_id).run();
+    expect(await socialLines(env(), NOW)).toEqual(["- Messenger: 1 people, 1 opened WhatsApp, 1 booked"]);
+    at(NOW + 2 * 24 * HOUR);
+    await post(dm("messenger", "P1", "hello"));
+    expect(sent().at(-1).message).toEqual({
+      text: `${en().welcomeBooked}\n\nBook on WhatsApp: ${waLink("messenger", "Hi")}`,
+      metadata: METADATA,
+    });
+    expect(en().welcomeBooked).toBe("Welcome back! For your booking, a new session (₹799) or a package, message us on WhatsApp. We reply there:");
+    // A question is still answered; a comment gets the same welcome, privately.
+    await post(dm("messenger", "P1", "how much is a session"));
+    expect(bodyOf(sent().at(-1))).toBe(withLink(en().lines.price));
+    commentRecipient = "P1";
+    await post({ object: "page", entry: [{ id: "PAGE1", changes: [{ field: "feed", value: { from: { id: "P1" }, item: "comment", verb: "add", comment_id: "fcb1", post_id: "PO9", message: "Lovely" } }] }] });
+    expect(sent().at(-1).message.text).toBe(`${en().welcomeBooked}\n\nBook on WhatsApp: ${waLink("messenger", "Hi")}`);
+    // The digest has the section.
+    const { digestText } = await import("../src/report");
+    expect(await digestText(env(), NOW + 2 * 24 * HOUR)).toContain("Instagram and Messenger (last 7 days)\n- Messenger: 1 people, 1 opened WhatsApp, 1 booked");
+  });
+
+  it("'I booked already' / 'paid' / our WhatsApp number: thanks and no more selling; paid with no confirmation: 'Talk to a person' on WhatsApp", async () => {
+    await post(dm("instagram", "U1", "hi"));
+    at(NOW + 2 * MIN);
+    await post(dm("instagram", "U1", "I booked already"));
+    expect(bodyOf(sent().at(-1))).toBe("Thank you! We'll see you on WhatsApp. 🙏");
+    expect((await contact("instagram", "U1")).said_booked_at).toBe(iso(NOW + 2 * MIN));
+    at(NOW + 7 * HOUR);
+    await post(dm("instagram", "U1", "hello"));
+    expect(bodyOf(sent().at(-1))).toBe(en().welcomeBooked); // never the follow ask again
+    await post(dm("messenger", "P1", "Maine payment kar diya but confirmation nahi aaya"));
+    expect(bodyOf(sent().at(-1))).toBe(`${hi().paidProblem}\n\nWhatsApp पर बुक करें: ${waLink("messenger", "नमस्ते")}`);
+    await post(dm("messenger", "P2", `ok ${config.businessNumber}`));
+    expect(bodyOf(sent().at(-1))).toBe(en().thanksBooked);
+    await post(dm("messenger", "P3", "is it paid?"));
+    expect(bodyOf(sent().at(-1))).toBe(msgrAsk()); // a question about paying is not "I paid"
+  });
+
+  it("'not interested' / 'stop': one polite line, then nothing (comments too) until they tap or 30 days pass; insults get nothing", async () => {
+    await post(dm("messenger", "P1", "hi"));
+    at(NOW + 2 * MIN);
+    await post(dm("messenger", "P1", "Not interested, please stop"));
+    expect(bodyOf(sent().at(-1))).toBe("Okay, we won't send you any more automatic messages here. If you'd like to book later, message us on WhatsApp anytime.");
+    const n0 = sent().length;
+    at(NOW + 20 * MIN);
+    await post(dm("messenger", "P1", "how much?"));
+    commentRecipient = "P1";
+    await post({ object: "page", entry: [{ id: "PAGE1", changes: [{ field: "feed", value: { from: { id: "P1" }, item: "comment", verb: "add", comment_id: "fcs1", post_id: "PO1", message: "Nice" } }] }] });
+    expect(sent()).toHaveLength(n0);
+    await post(qrFollow("P1")); // a deliberate tap ends it
+    expect(bodyOf(sent().at(-1))).toBe(withLink(en().guide));
+    // Hindi "stop"; and the 30-day restart ends a stop.
+    await post(dm("instagram", "U1", "बंद करो"));
+    expect(bodyOf(sent().at(-1))).toBe(hi().stopped);
+    at(NOW + 32 * 24 * HOUR);
+    await post(dm("instagram", "U1", "namaste, kitna hai?"));
+    expect(bodyOf(sent().at(-1))).toBe(hi().ask);
+    // Insults: no reply, first message or later, DM or comment.
+    const n1 = sent().length;
+    await post(dm("instagram", "R1", "you idiot"));
+    await post({ object: "instagram", entry: [{ id: "IG1", changes: [{ field: "comments", value: { from: { id: "R2" }, id: "cr1", text: "shut up bot", media: { id: "M1" } } }] }] });
+    expect(sent()).toHaveLength(n1);
+  });
+
+  it("her number or a call: the WhatsApp-only line, never a number; abroad / Dubai: by phone from anywhere, India time", async () => {
+    await post(dm("messenger", "P1", "hi"));
+    at(NOW + 2 * MIN);
+    await post(dm("messenger", "P1", "Can you give me Shantha's phone number?"));
+    expect(bodyOf(sent().at(-1))).toBe(`${en().lines.call}\n\n${en().askAgain}\n\nOur Page: ${PAGE}\nBook on WhatsApp: ${WA_BOOK}`);
+    expect(en().lines.call).toBe("We don't take calls here or share a number. The quickest way to talk to Shantha Rao is the ₹99 15-minute call: you choose a time on WhatsApp, and she calls you.");
+    await post(qrFollow("P1"));
+    at(NOW + 4 * MIN);
+    await post(dm("messenger", "P1", "I am in Dubai, can I still join?"));
+    expect(bodyOf(sent().at(-1))).toBe(withLink(en().lines.where));
+    await post(dm("messenger", "P1", "call me please"));
+    expect(bodyOf(sent().at(-1))).toBe(withLink(en().lines.call));
+    for (const w of [en(), hi()]) expect(w.lines.call).not.toMatch(/\d{6,}|\+91/);
+  });
+
+  it("ten messages in a minute get one reply; an ice breaker tap is a first message (follow ask, topic kept); a reply to a private reply days later is a normal DM", async () => {
+    for (let i = 0; i < 10; i++) await post(dm("instagram", "U1", i % 2 ? "hello?" : "how much is it???"));
+    expect(sent()).toHaveLength(1);
+    await post(icebreaker("instagram", "U2", "SOCIAL_Q_PRICE"));
+    expect(bodyOf(sent().at(-1))).toBe(en().ask);
+    expect((await contact("instagram", "U2")).topic).toBe("price");
+    await post(icebreaker("messenger", "P2", "SOCIAL_Q_HOW"));
+    expect(bodyOf(sent().at(-1))).toBe(msgrAsk());
+    await post(qrFollow("P2"));
+    expect(bodyOf(sent().at(-1))).toBe(withLink(`${en().lines.how}\n\n${en().guide}`));
+    // A comment's private reply, answered three days later.
+    commentRecipient = "IGSID9";
+    await post({ object: "instagram", entry: [{ id: "IG1", changes: [{ field: "comments", value: { from: { id: "AUTH9" }, id: "cd1", text: "Beautiful", media: { id: "M1" } } }] }] });
+    at(NOW + 3 * 24 * HOUR);
+    await post(dm("instagram", "IGSID9", "how much is it?"));
+    expect(bodyOf(sent().at(-1))).toBe(`${en().lines.price}\n\n${en().askAgain}`);
   });
 });
 
