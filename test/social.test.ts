@@ -9,6 +9,7 @@ import { iso } from "../src/slots";
 import { newDb } from "./db";
 
 const SECRET = "test-app-secret";
+const PUB = "https://bot.example.invalid"; // PUBLIC_URL: Messenger writes the short links (ticket 33)
 const NOW = Date.parse("2026-10-30T06:00:00Z");
 const HOUR = 3_600_000;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,7 +28,7 @@ let n = 0;
 
 let emails: { to: string; subject: string; text: string }[];
 const env = () =>
-  ({ DB: db, ...flags, DIGEST_TO: "owner@example.invalid", EMAIL: { send: async (m: { to: string; subject: string; text: string }) => void emails.push(m) }, WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "wa-verify", WA_TOKEN: "tok", WA_PHONE_ID: "1000", META_VERIFY_TOKEN: "meta-verify", META_PAGE_TOKEN: "ptok", META_PAGE_ID: "PAGE1", META_IG_ID: "IG1" }) as never;
+  ({ DB: db, ...flags, DIGEST_TO: "owner@example.invalid", EMAIL: { send: async (m: { to: string; subject: string; text: string }) => void emails.push(m) }, WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "wa-verify", WA_TOKEN: "tok", WA_PHONE_ID: "1000", META_VERIFY_TOKEN: "meta-verify", META_PAGE_TOKEN: "ptok", META_PAGE_ID: "PAGE1", META_IG_ID: "IG1", PUBLIC_URL: PUB }) as never;
 
 async function sign(raw: string, secret = SECRET) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -52,10 +53,11 @@ const qr = (p: P, user: string, topic: string, id: string) => wrap(p, [from(user
 // The reference code in the WhatsApp text: random in the Worker, pinned here (crypto.getRandomValues gives zeros: "AAAAA").
 const waLink = (p: P, text = "Hi, I'd like to book a ₹99 call") =>
   `https://wa.me/${config.businessNumber.replace(/\D/g, "")}?text=${encodeURIComponent(`${text} (ref: ${p === "instagram" ? "IG" : "FB"}AAAAA)`)}`;
-const WA_BOOK = waLink("messenger");
+// Messenger writes the short links (<PUBLIC_URL>/b/<ref>, /fb); Instagram's button keeps the wa.me link.
+const WA_BOOK = `${PUB}/b/FBAAAAA`;
 const WA_BOOK_IG = waLink("instagram");
-const WA_BOOK_HI = waLink("messenger", "नमस्ते, मुझे ₹99 की कॉल बुक करनी है");
-const PAGE = config.social.facebookPageUrl;
+const WA_BOOK_HI = `${PUB}/b/FBAAAAA/hi`;
+const PAGE = `${PUB}/fb`;
 // Messenger: plain text with the links written out (the Facebook app can't show button templates), quick replies for the taps.
 const msgrAsk = (w = socialWords("en")) => `${w.ask}\n\n${w.pageLabel}: ${PAGE}`;
 const msgrAskAgain = (w = socialWords("en"), link = WA_BOOK) => `${w.askAgain}\n\n${w.pageLabel}: ${PAGE}\n${w.btnBook}: ${link}`;
@@ -195,7 +197,7 @@ describe("POST /meta/webhook", () => {
     const [m] = sent();
     expect(m.messaging_type).toBe("RESPONSE");
     expect(m.message).toEqual({ text: msgrAsk(), quick_replies: followQr(), metadata: METADATA });
-    expect(m.message.text).toBe(`${en().ask}\n\nOur Page: https://www.facebook.com/profile.php?id=61588921902210`);
+    expect(m.message.text).toBe(`${en().ask}\n\nOur Page: https://bot.example.invalid/fb`);
     // Tapping the quick reply (message.quick_reply.payload) sends the way to book.
     await post(qrFollow("P1"));
     expect(sent().at(-1).message.text).toBe(withLink(en().guide));
@@ -210,7 +212,7 @@ describe("POST /meta/webhook", () => {
       ["how does the call work", "how"],
       ["do you give a refund", "refund"],
       ["hello", null],
-      ["Can it cure my diabetes? what is the price", null], // never a medical answer
+      ["Can it cure my diabetes? what is the price", "medical"], // WhatsApp's careful medical answer, never a cure claim
     ];
     for (const [i, [text, topic]] of cases.entries()) {
       await post(dm("instagram", `K${i}`, text));
@@ -226,9 +228,10 @@ describe("POST /meta/webhook", () => {
     expect(guide.message.quick_replies).toBeUndefined(); // Instagram: quick replies only on text
     expect(questions.message).toEqual({ text: en().questions, quick_replies: QR_EN });
     expect((await contact("instagram", "K0")).topic).toBeNull();
-    // The medical one gets no answer line: only the way to book (where the WhatsApp bot's safety rules apply).
+    // The medical one gets WhatsApp's medical answer (no cure claim), then the way to book.
     await post(tap("instagram", "K7"));
-    expect(bodyOf(sent().at(-2))).toBe(en().guide);
+    expect(bodyOf(sent().at(-2))).toBe(`${allCopy.en.answerMedical}\n\n${en().guide}`);
+    expect(en().lines.medical).toMatch(/^Pranic healing is meant to support your wellbeing alongside your doctor's care, not replace it/);
     expect(en().lines.what).toContain("complements medical care and is not a substitute");
     expect(en().guide).toContain("automated booking assistant");
   });
@@ -316,7 +319,7 @@ describe("POST /meta/webhook", () => {
     const before = sent().length;
     await post(dm("messenger", "P1", "thanks!"));
     expect(sent().at(-1).message).toEqual({ text: en().after(WA_BOOK), quick_replies: QR_EN, metadata: METADATA });
-    expect(bodyOf(sent().at(-1))).toMatch(/^For bookings and questions, message us on WhatsApp:\nhttps:\/\/wa\.me\/\d+\?text=.*\nWe reply there\.$/);
+    expect(bodyOf(sent().at(-1))).toBe("For bookings and questions, message us on WhatsApp:\nhttps://bot.example.invalid/b/FBAAAAA\nWe reply there.");
     await post(dm("messenger", "P1", "ok"));
     expect(sent()).toHaveLength(before + 1); // inside 6 hours: nothing
     await post(dm("messenger", "P1", "Hello, can i book"));
@@ -333,7 +336,9 @@ describe("POST /meta/webhook", () => {
     followsFirst = true;
     await post(tap("instagram", "U1"));
     await post(media("instagram", "U1", "audio"));
-    expect(bodyOf(sent().at(-1))).toBe(en().after(WA_BOOK_IG));
+    // Instagram: the button only, the link is not written out in the text (ticket 33).
+    expect(bodyOf(sent().at(-1))).toBe("For bookings and questions, tap below to message us on WhatsApp. We reply there.");
+    expect(bodyOf(sent().at(-1))).not.toMatch(/https?:|wa\.me/);
     expect(buttonsOf(sent().at(-1))).toEqual([{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }]);
   });
 
@@ -715,7 +720,9 @@ describe("returning people, bookings and the other realistic cases", () => {
 
   it("the WhatsApp chat their link opens is linked by the code (taken out of the message); once paid, they get 'Welcome back' for bookings, not the ₹99 call", async () => {
     await post(tap("messenger", "P1"));
-    expect(bodyOf(sent().at(-1))).toContain(`(ref%3A%20FBAAAAA)`);
+    expect(bodyOf(sent().at(-1))).toContain(`${PUB}/b/FBAAAAA`);
+    const short = await app.request("/b/FBAAAAA", {}, env());
+    expect(short.headers.get("Location")).toContain(`(ref%3A%20FBAAAAA)`);
     // They open WhatsApp: the prefilled text arrives with the code.
     expect((await post(waMessage("wamid.R1", "Hi, I'd like to book a ₹99 call (ref: FBAAAAA)"), "/wa/webhook")).status).toBe(200);
     const conv = await db.prepare("SELECT id FROM conversations WHERE wa_id = '919999999999'").first<{ id: number }>();
@@ -731,7 +738,7 @@ describe("returning people, bookings and the other realistic cases", () => {
     at(NOW + 2 * 24 * HOUR);
     await post(dm("messenger", "P1", "hello"));
     expect(sent().at(-1).message).toEqual({
-      text: `${en().welcomeBooked}\n\nBook on WhatsApp: ${waLink("messenger", "Hi")}`,
+      text: `${en().welcomeBooked}\n\nBook on WhatsApp: ${`${PUB}/b/FBAAAAA/back`}`,
       metadata: METADATA,
     });
     expect(en().welcomeBooked).toBe("Welcome back! For your booking, a new session (₹799) or a package, message us on WhatsApp. We reply there:");
@@ -740,7 +747,7 @@ describe("returning people, bookings and the other realistic cases", () => {
     expect(bodyOf(sent().at(-1))).toBe(withLink(en().lines.price));
     commentRecipient = "P1";
     await post({ object: "page", entry: [{ id: "PAGE1", changes: [{ field: "feed", value: { from: { id: "P1" }, item: "comment", verb: "add", comment_id: "fcb1", post_id: "PO9", message: "Lovely" } }] }] });
-    expect(sent().at(-1).message.text).toBe(`${en().welcomeBooked}\n\nBook on WhatsApp: ${waLink("messenger", "Hi")}`);
+    expect(sent().at(-1).message.text).toBe(`${en().welcomeBooked}\n\nBook on WhatsApp: ${`${PUB}/b/FBAAAAA/back`}`);
     // The digest has the section.
     const { digestText } = await import("../src/report");
     expect(await digestText(env(), NOW + 2 * 24 * HOUR)).toContain("Instagram and Messenger (last 7 days)\n- Messenger: 1 people, 1 opened WhatsApp, 1 booked");
@@ -756,7 +763,7 @@ describe("returning people, bookings and the other realistic cases", () => {
     await post(dm("instagram", "U1", "hello"));
     expect(bodyOf(sent().at(-1))).toBe(en().welcomeBooked); // never the follow ask again
     await post(dm("messenger", "P1", "Maine payment kar diya but confirmation nahi aaya"));
-    expect(bodyOf(sent().at(-1))).toBe(`${hi().paidProblem}\n\nWhatsApp पर बुक करें: ${waLink("messenger", "नमस्ते")}`);
+    expect(bodyOf(sent().at(-1))).toBe(`${hi().paidProblem}\n\nWhatsApp पर बुक करें: ${`${PUB}/b/FBAAAAA/hi/back`}`);
     await post(dm("messenger", "P2", `ok ${config.businessNumber}`));
     expect(bodyOf(sent().at(-1))).toBe(en().thanksBooked);
     await post(dm("messenger", "P3", "is it paid?"));
