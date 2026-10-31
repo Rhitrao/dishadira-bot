@@ -69,7 +69,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 30 Six booking days Mon–Sat, holidays, "she calls you" and "call me" (no migration; PR https://github.com/Rhitrao/dishadira-bot/pull/45)
 - [ ] 31 Fixes from the launch simulations (PR https://github.com/Rhitrao/dishadira-bot/pull/46; merged with Ticket 30)
 - [ ] 32 Instagram and Messenger DM and comment replies (migration 0012, SOCIAL_REPLIES "false"; PR https://github.com/Rhitrao/dishadira-bot/pull/50)
-- [ ] 33 Instagram and Messenger FAQs and short links (no migration; PR: see the branch `social-faqs-short-links`)
+- [ ] 33 Instagram and Messenger FAQs and short links (no migration; PR https://github.com/Rhitrao/dishadira-bot/pull/54)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
