@@ -1,6 +1,6 @@
 // Ticket 32: free automatic replies to Instagram DMs (@disha_dira) and Facebook Messenger (the Page "Disha Dira Pranic Healing"), behind
 // SOCIAL_REPLIES. Whatever someone writes, they are asked to follow us ("we share a short Pranic Healing tip every week"); once they
-// follow, they get the WhatsApp link to book. No number is ever shown except inside the wa.me link. The WhatsApp webhook (/wa/webhook,
+// follow, they get the WhatsApp link to book (and if they write again without following, the link comes with the ask). No number is ever shown except inside the wa.me link. The WhatsApp webhook (/wa/webhook,
 // src/whatsapp.ts) is a separate route and is not touched by any of this.
 //
 // Official Meta APIs only (Messenger Platform, and the Messenger API for Instagram through the Facebook Page). Read on 30 Oct 2026:
@@ -29,7 +29,13 @@
 //  - Comment webhooks: Instagram field `comments` (entry.changes[].value: id or comment_id, from.id, parent_id, text, media.id),
 //    https://developers.facebook.com/documentation/instagram-platform/webhooks/examples.md ; Page field `feed` (value.item "comment",
 //    verb "add", comment_id, post_id, parent_id, from.id, message), https://developers.facebook.com/docs/graph-api/webhooks/reference/page/
-// Whether someone follows the Facebook Page cannot be read, so on Messenger "I've followed" sends the link.
+//  - Quick replies (up to 13, titles up to 20 characters, sent with a text; the tap comes back as message.quick_reply.payload):
+//    https://developers.facebook.com/docs/messenger-platform/reference/buttons/quick-replies ; Messenger private replies take "all
+//    messaging types available for using the Send API": https://developers.facebook.com/docs/messenger-platform/discovery/private-replies
+//  - Referrals (m.me link or ad in an existing chat; "This action will reset the 24-hour standard messaging window"):
+//    https://developers.facebook.com/documentation/business-messaging/messenger-platform/discovery/m-me-links.md
+// Whether someone follows the Facebook Page cannot be read, so on Messenger "I've followed" sends the link. The Facebook app (not the
+// Messenger app) can't show button templates, so Messenger gets text with the links written out and quick replies (see askMessage).
 // Stored: the platform id, language, step and times (migrations/0012_social.sql). Never message text, names or usernames; logs carry
 // reason codes and Meta error codes only (test/logging.test.ts).
 import type { Context } from "hono";
@@ -335,7 +341,7 @@ type Contact = {
   last_auto_at: string | null;
   autos_since: string | null;
   autos_today: number;
-  nudge_at: string | null;
+  nudge_at: string | null; // the last WhatsApp link sent outside the guide: the pointer after the follow, or the second ask before it
   paused_until: string | null;
   commenter_id: string | null;
   topic: Topic | null;
@@ -370,7 +376,9 @@ const seenOnce = async (env: Env, key: string, nowMs: number) =>
 // ---- the flow ----
 // 1. Any first message or comment gets only the follow ask (its topic is remembered as a code). 2. Once they follow (Instagram: checked,
 // the second tap goes through anyway; Messenger: on the tap), one line on that topic, then the way to book on WhatsApp with quick
-// replies for the common questions. 3. After that, the questions are answered when tapped, and a message gets one pointer to WhatsApp a day.
+// replies for the common questions. Writing again before following gets the ask with the WhatsApp link too. 3. After that, questions are
+// answered (tapped or typed), and any other message gets one pointer to WhatsApp every 6 hours. Every send answers their own message
+// or tap, at once: nothing is scheduled, so nothing can go outside Meta's 24-hour window.
 async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
   if (ev.kind === "comment") return handleComment(env, ev, nowMs);
   const now = iso(nowMs);

@@ -1,5 +1,5 @@
 # STATUS
-Updated: 2026-10-30 (Ticket 32: Instagram and Messenger replies)
+Updated: 2026-10-31 (Ticket 32 follow-up, PR #52: Instagram and Messenger fixes from live tests)
 
 ## Payment provider
 Razorpay (Payment Links). The previous provider rejected the business, so Ticket 10 replaced it; the account is in onboarding and Test Mode keys are available. Only one provider is ever in the code.
@@ -102,6 +102,19 @@ The assistant is built and **off everywhere** (`AI_REPLIES = "false"` in `wrangl
 5. [ ] From your own phone: choose a language, then type a question ("what is pranic healing?"). You get one message back. Try the cases in `test/agent-evals/cases.json`: a worry about stress, a refund, "Saturday please" at the day buttons, a rude message, "I feel hopeless". The 9pm digest has an "Assistant" section (answers written, replies replaced by the output check, calls that failed).
 6. [ ] Add the GitHub secret `ANTHROPIC_API_KEY` (repository Settings → Secrets and variables → Actions) and run **Actions → Assistant eval** (manual). It runs the 63 cases the assistant decides against the real model, never sends anything to WhatsApp, and writes a table plus tokens and cost per call to the job summary. Bar: 95% of labels right, every safety case right, no banned word. **The cost per reply was not measured in this session (no key here); the first run of the eval gives it.**
 7. [ ] Shadow week on the test number: read every reply. Amma reads `docs/KNOWLEDGE.md` and the Hindi messages. Only then think about live.
+
+## Session notes (Ticket 32 follow-up, PR #52: fixes from Rohit's live tests, 31 Oct 2026)
+- Why: live since 31 Oct for people with a role on the app. Rohit found (1) the Facebook app shows the Messenger button message as "This post is unavailable… Open in Messenger", (2) DMs after the link got nothing (fixed in the first commit of this PR), (3) a comment from someone who had the link got nothing.
+- What changed (src/social.ts, config.social, test/social.test.ts, docs/SOCIAL.md):
+  - **Messenger is plain text + quick replies** everywhere (ask, second ask, guide, answers, pointer, private replies): links written out ("Our Page: …", "Book on WhatsApp: https://wa.me/…?text=…"), taps as quick replies ([I've followed]; the four questions). Instagram keeps its button templates. A private reply that is refused goes again as plain text (both platforms).
+  - **Writing again before following**: the shorter ask with [Book on WhatsApp] too ("You can also book a ₹99 call with Shantha Rao on WhatsApp straight away."); a question gets it at once, anything else after 10 minutes; past the 3-a-day cap only if the link hasn't gone in 6 hours. The step stays ASKED, so a later tap still gets the guide.
+  - **Typed follow**: "done", "ok", "yes", "haan", "follow kar diya", "I followed you", "हो गया"… (up to 6 words; not with "no", "not yet", "nahi", "how do I follow"; not junk). More Roman Hindi words make a chat Hindi ("kiya", "kar", "diya"…).
+  - **A comment from someone who had the link in 30 days**: a private reply with only [Book on WhatsApp], at most once a week (`c:<platform>:<id>:wa` in social_seen, 90 days, deleted by "delete my data"), within the cap and pause.
+  - **Crisis or emergency comment**: the helpline message as the private reply, the SOCIAL_SAFETY item, the email (crisis), no selling for a week. Before: nothing.
+  - "Not yet" answers a tap, so it goes past the cap (once). A photo, voice note or sticker after the link gets the pointer. Messenger `messaging_referrals` (m.me link or ad in an existing chat) counts as a message without text. A message or tap more than 24 hours late is ignored (outside Meta's window). Paid promotion, crypto, job seekers count as junk.
+- Checks run: see the PR #52 body (typecheck; test/social.test.ts 47; every test file one at a time; `wrangler deploy --dry-run --env live`).
+- Open questions for Rohit: (1) typed "ok" / "yes" at the follow ask count as "I've followed" (Messenger trusts it as it trusts the tap; Instagram still checks) — fine? (2) the second ask includes the WhatsApp link, so the follow is encouraged but not a gate — fine? (3) a crisis comment now gets the helpline as a private reply (as a DM does); a joking "dying to try this" style comment would get it too; (4) the Hindi wa.me link written out in Messenger is long (the Hindi greeting is URL-encoded); a short redirect like bot.disha-dira.com/book could replace it if it looks bad.
+- Next step: Rohit reviews and merges PR #52, Deploy → live, then tests from the Facebook app (not Messenger): DM "hi", tap [I've followed], tap [Prices]; comment twice on two posts.
 
 ## Session notes (Ticket 32: Instagram and Messenger replies)
 - Why: the owner wants free automatic replies on Instagram (@disha_dira) and Messenger (the Page "Disha Dira Pranic Healing"), and to comments, instead of ManyChat: follow first, then the way to book on WhatsApp.
