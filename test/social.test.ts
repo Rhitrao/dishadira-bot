@@ -4,7 +4,8 @@ import type { D1Database } from "@cloudflare/workers-types";
 import app from "../src/index";
 import { config } from "../src/config";
 import { allCopy } from "../src/copy";
-import { cleanSocial, detectLang, FOLLOWING, METADATA, socialLines, socialWords } from "../src/social";
+import { matchTopic } from "../src/router";
+import { cleanSocial, detectLang, FOLLOWING, METADATA, socialLines, socialWords, topicOf } from "../src/social";
 import { iso } from "../src/slots";
 import { newDb } from "./db";
 
@@ -678,9 +679,9 @@ describe("POST /meta/webhook", () => {
 
   it("every button title is at most 20 characters and every text fits Meta's limits, in both languages", () => {
     for (const w of [en(), hi()]) {
-      for (const t of [w.btnVisit, ...Object.values(w.btnFollowing), w.btnBook, ...Object.values(w.qrTitles)]) expect(t.length, t).toBeLessThanOrEqual(20);
+      for (const t of [w.btnVisit, ...Object.values(w.btnFollowing), w.btnBook, w.btnChat, ...Object.values(w.qrTitles)]) expect(t.length, t).toBeLessThanOrEqual(20);
       for (const line of Object.values(w.lines)) expect(`${line}\n\n${w.guide}`.length).toBeLessThanOrEqual(640);
-      for (const t of [w.ask, w.notYet, w.questions, w.commentBook, w.welcomeBack, w.welcomeBooked, w.paidProblem, w.stopped, w.thanksBooked]) expect(t.length).toBeLessThanOrEqual(640);
+      for (const t of [w.ask, w.notYet, w.questions, w.commentBook, w.welcomeBack, w.welcomeBooked, w.paidProblem, w.stopped, w.thanksBooked, w.after()]) expect(t.length).toBeLessThanOrEqual(640);
       for (const line of Object.values(w.lines)) expect(`${line}\n\n${w.askAgain}`.length).toBeLessThanOrEqual(640);
       for (const line of Object.values(w.lines)) expect(`${line}\n\n${w.guideMember}`.length).toBeLessThanOrEqual(640);
       // Messenger text (2,000 characters) with the longest link written out.
@@ -689,7 +690,17 @@ describe("POST /meta/webhook", () => {
       expect(`${w.askAgain}\n\n${w.pageLabel}: ${PAGE}\n${w.btnBook}: ${link}`.length).toBeLessThanOrEqual(2000);
       expect(new TextEncoder().encode(w.after("https://wa.me/1?text=" + "x".repeat(120))).length).toBeLessThan(1000);
       // No phone number anywhere except inside the wa.me link.
-      for (const t of [w.ask, w.askAgain, w.notYet, w.guide, w.guideMember, w.welcomeBack, w.welcomeBooked, w.thanksBooked, w.paidProblem, w.stopped, w.questions, w.deleted, w.commentBook, ...Object.values(w.lines)]) expect(t).not.toMatch(/\d{6,}|\+91/);
+      for (const t of [w.ask, w.askAgain, w.notYet, w.guide, w.guideMember, w.welcomeBack, w.welcomeBooked, w.thanksBooked, w.paidProblem, w.stopped, w.questions, w.deleted, w.commentBook, w.after(), ...Object.values(w.lines)]) expect(t).not.toMatch(/\d{6,}|\+91/);
+      // Ticket 33: every answer (WhatsApp's too), alone and with the way to book, on Instagram (640) and Messenger (2,000, the long link
+      // when PUBLIC_URL is unset); no *bold*; WhatsApp's buttons are only ever named "on WhatsApp".
+      const cp = allCopy[w === en() ? "en" : "hi"];
+      for (const [topic, line] of Object.entries(w.lines)) {
+        expect(line.length, topic).toBeGreaterThan(20);
+        expect(line.length, topic).toBeLessThanOrEqual(640);
+        expect(`${line}\n\n${w.guide}\n\n${w.btnBook}: ${link}`.length, topic).toBeLessThanOrEqual(2000);
+        expect(line, topic).not.toContain("*");
+        for (const b of [cp.btnPerson, cp.btnHelp, cp.rowMyBookings, cp.btnBook, "Menu", "मेनू"]) if (line.includes(`"${b}"`)) expect(line, topic).toContain("WhatsApp");
+      }
     }
   });
 });
@@ -849,6 +860,161 @@ describe("returning people, bookings and the other realistic cases", () => {
     commentRecipient = "IGSID8";
     await post({ object: "instagram", entry: [{ id: "IG1", changes: [{ field: "comments", value: { from: { id: "AUTH8" }, id: "cdel4", text: "Info", media: { id: "M7" } } }] }] });
     expect(sent().at(-1).recipient).toEqual({ comment_id: "cdel4" });
+  });
+});
+
+describe("ticket 33: WhatsApp's FAQ answers on Instagram and Messenger", () => {
+  const MIN = 60_000;
+  const LONG_HI = waLink("instagram", "नमस्ते");
+  const chatLink = (p: P, hiLang = false) => (p === "instagram" ? waLink("instagram", hiLang ? "नमस्ते" : "Hi") : `${PUB}/b/FBAAAAA${hiLang ? "/hi" : ""}/back`);
+  // Typed after the link, in English: the WhatsApp router's topic, and the line social sends (WhatsApp's own words).
+  const cases: [string, string, string][] = [
+    ["Is this a scam?", "trust", allCopy.en.answerTrust],
+    ["What are your timings?", "timings", allCopy.en.faqAnswers.timings],
+    ["Can I come to your clinic?", "in_person", allCopy.en.answerInPerson],
+    ["Do you accept paypal?", "abroad", allCopy.en.answerAbroad.replace('tap "Talk to a person"', 'message us on WhatsApp and tap "Talk to a person" there')],
+    ["I think someone put buri nazar on my family", "black_magic", allCopy.en.answerConcern],
+    ["What is the process?", "how_it_works", allCopy.en.faqAnswers.how_it_works],
+    ["Why should I do pranic healing?", "what", socialWords("en").lines.what],
+    ["When is my call?", "my_booking", 'To see your booking, message us on WhatsApp and tap "Help", then "My bookings" there.'],
+    ["money deducted twice, what now?", "payment_issue", allCopy.en.answerPayment.replace('tap "Talk to a person"', 'message us on WhatsApp and tap "Talk to a person" there')],
+    ["I have thyroid, can it help?", "medical", allCopy.en.answerMedical],
+  ];
+  const NO_BOOK = ["my_booking", "payment_issue", "medical"];
+
+  it("the topics: WhatsApp's router answers them, and so does social (\"Why should I do pranic healing?\" included)", () => {
+    for (const [text, topic, line] of cases) {
+      expect(topicOf(text), text).toBe(topic);
+      expect(en().lines[topicOf(text)!], text).toBe(line);
+    }
+    expect(matchTopic("Why should I do pranic healing?")).toBe("what_is_this"); // WhatsApp answers it with "what is this"
+    // Social's own topics and greetings are unchanged.
+    expect(topicOf("how much is it")).toBe("price");
+    expect(topicOf("I live in Dubai, can I join?")).toBe("where");
+    expect(topicOf("Can I book an appointment")).toBe("book");
+    expect(topicOf("discount please")).toBe("price"); // the router's word, social's line
+    for (const t of ["good morning", "hello", "ok thanks", "namaste ji"]) expect(topicOf(t), t).toBeNull();
+    // Hindi and Roman Hindi.
+    expect(topicOf("क्या यह असली है?")).toBe("trust");
+    expect(topicOf("meri call kab hai")).toBe("my_booking");
+    expect(topicOf("मुझे शुगर है")).toBe("medical");
+    expect(hi().lines.trust).toBe(allCopy.hi.answerTrust);
+    expect(hi().lines.abroad).toContain('हमें WhatsApp पर मैसेज करें और वहाँ "किसी से बात करें" दबाएँ');
+    expect(hi().lines.my_booking).toBe('अपनी बुकिंग देखने के लिए हमें WhatsApp पर मैसेज करें और वहाँ "मदद", फिर "मेरी बुकिंग" दबाएँ।');
+    for (const w of [en(), hi()]) expect(w.lines.medical).not.toMatch(/\bcure[sd]?\b(?! any)|ठीक कर/i);
+  });
+
+  it("Messenger, after the link: each answer with the short WhatsApp link and the questions; illness, bookings and payments: [Message on WhatsApp]", async () => {
+    await post(qrFollow("P1"));
+    for (const [i, [text, topic, line]] of cases.entries()) {
+      at(NOW + (i + 1) * MIN);
+      await post(dm("messenger", "P1", text));
+      const m = sent().at(-1).message;
+      if (NO_BOOK.includes(topic)) expect(m, text).toEqual({ text: `${line}\n\nMessage on WhatsApp: ${chatLink("messenger")}`, metadata: METADATA });
+      else expect(m, text).toEqual({ text: `${line}\n\nBook on WhatsApp: ${WA_BOOK}`, quick_replies: QR_EN, metadata: METADATA });
+      expect(m.text).not.toMatch(/wa\.me|%20/);
+    }
+    expect(sent()).toHaveLength(1 + cases.length);
+    // The same topic again the same day: nothing (each topic once a day); the pointer then waits its 6 hours.
+    await post(dm("messenger", "P1", "Is it a scam really?"));
+    expect(sent()).toHaveLength(1 + cases.length + 1); // the pointer, once
+    await post(dm("messenger", "P1", "are you fake"));
+    expect(sent()).toHaveLength(1 + cases.length + 1);
+  });
+
+  it("Instagram, after the link: the answer and its button; Hindi gets Hindi", async () => {
+    followsFirst = true;
+    await post(tap("instagram", "U1"));
+    await post(dm("instagram", "U1", "Is this a scam?"));
+    expect(sent().at(-1).message.attachment.payload).toEqual({ template_type: "button", text: allCopy.en.answerTrust, buttons: [{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }] });
+    await post(dm("instagram", "U1", "I have thyroid, can it help?"));
+    expect(sent().at(-1).message.attachment.payload).toEqual({ template_type: "button", text: allCopy.en.answerMedical, buttons: [{ type: "web_url", url: chatLink("instagram"), title: "Message on WhatsApp" }] });
+    // Hindi, both platforms.
+    await post(tap("instagram", "U2"));
+    await post(dm("instagram", "U2", "kya ye fraud hai?"));
+    expect(bodyOf(sent().at(-1))).toBe(allCopy.hi.answerTrust);
+    expect(buttonsOf(sent().at(-1))).toEqual([{ type: "web_url", url: waLink("instagram", "नमस्ते, मुझे ₹99 की कॉल बुक करनी है"), title: "WhatsApp पर बुक करें" }]);
+    await post(dm("instagram", "U2", "मेरी कॉल कब है?"));
+    expect(bodyOf(sent().at(-1))).toBe(hi().lines.my_booking);
+    expect(buttonsOf(sent().at(-1))).toEqual([{ type: "web_url", url: LONG_HI, title: "WhatsApp पर लिखें" }]);
+    await post(qrFollow("P2"));
+    await post(dm("messenger", "P2", "कॉल किस समय होती है?"));
+    expect(bodyOf(sent().at(-1))).toBe(`${allCopy.hi.faqAnswers.timings}\n\nWhatsApp पर बुक करें: ${WA_BOOK_HI}`);
+    await post(dm("messenger", "P2", "मुझे शुगर है, क्या यह मदद करेगा?"));
+    expect(bodyOf(sent().at(-1))).toBe(`${allCopy.hi.answerMedical}\n\nWhatsApp पर लिखें: ${chatLink("messenger", true)}`);
+  });
+
+  it("before the follow: the ask again carries the answer line; safety still comes first", async () => {
+    await post(dm("messenger", "P1", "hi"));
+    at(NOW + 2 * MIN);
+    await post(dm("messenger", "P1", "Is this a scam?"));
+    expect(bodyOf(sent().at(-1))).toBe(`${allCopy.en.answerTrust}\n\n${en().askAgain}\n\nOur Page: ${PAGE}\nBook on WhatsApp: ${WA_BOOK}`);
+    await post(dm("instagram", "U1", "hello"));
+    at(NOW + 4 * MIN);
+    await post(dm("instagram", "U1", "Why should I do pranic healing?"));
+    expect(bodyOf(sent().at(-1))).toBe(`${en().lines.what}\n\n${en().askAgain}`);
+    expect(buttonsOf(sent().at(-1)).map((b: Json) => b.title)).toEqual(["Visit profile", "I'm following", "Book on WhatsApp"]);
+    // A first message's topic waits for the follow, then leads the guide.
+    await post(dm("messenger", "P3", "What are your timings?"));
+    expect(bodyOf(sent().at(-1))).toBe(msgrAsk());
+    await post(qrFollow("P3"));
+    expect(bodyOf(sent().at(-1))).toBe(withLink(`${allCopy.en.faqAnswers.timings}\n\n${en().guide}`));
+    // A crisis is still the helpline message, never an FAQ answer.
+    await post(dm("messenger", "P4", "I want to die, is this a scam"));
+    expect(bodyOf(sent().at(-1))).toBe(allCopy.en.crisis.replaceAll("*", ""));
+  });
+});
+
+describe("ticket 33: short links", () => {
+  const digits = config.businessNumber.replace(/\D/g, "");
+  const get = (path: string, e = env()) => app.request(path, { redirect: "manual" }, e);
+
+  it("/b/<ref> and /b/<ref>/hi send the person to WhatsApp with the same text and ref; /back with \"Hi\"", async () => {
+    for (const [path, url] of [
+      ["/b/FBAAAAA", waLink("messenger")],
+      ["/b/FBAAAAA/hi", waLink("messenger", "नमस्ते, मुझे ₹99 की कॉल बुक करनी है")],
+      ["/b/IGK7Q2M", `https://wa.me/${digits}?text=${encodeURIComponent("Hi, I'd like to book a ₹99 call (ref: IGK7Q2M)")}`],
+      ["/b/FBGJCGT/back", `https://wa.me/${digits}?text=${encodeURIComponent("Hi (ref: FBGJCGT)")}`],
+      ["/b/FBGJCGT/hi/back", `https://wa.me/${digits}?text=${encodeURIComponent("नमस्ते (ref: FBGJCGT)")}`],
+      ["/b/FBGJCGT/", waLink("messenger").replace("FBAAAAA", "FBGJCGT")],
+    ]) {
+      const res = await get(path);
+      expect(res.status, path).toBe(302);
+      expect(res.headers.get("Location"), path).toBe(url);
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+    }
+    // Public: no Access, no PUBLIC_URL needed, nothing stored.
+    expect((await get("/b/FBAAAAA", { ...(env() as object), PUBLIC_URL: undefined } as never)).status).toBe(302);
+    expect(await count("SELECT COUNT(*) n FROM social_seen")).toBe(0);
+  });
+
+  it("anything that is not a ref code goes to plain wa.me: never a 404, never the input echoed", async () => {
+    for (const path of ["/b", "/b/", "/b/FBAAAA", "/b/FBAAAAAA", "/b/fbaaaaa", "/b/FB0AAAA", "/b/FBIAAAA", "/b/XXAAAAA", "/b/FBAAAAA/fr", "/b/FBAAAAA/back/hi",
+      "/b/%3Cscript%3E", "/b/FBAAAAA%0d%0aSet-Cookie:x", "/b/FBAAAAA/hi/back/x", "/b/" + "A".repeat(500)]) {
+      const res = await get(path);
+      expect(res.status, path).toBe(302);
+      expect(res.headers.get("Location"), path).toBe(`https://wa.me/${digits}`);
+    }
+  });
+
+  it("/fb goes to the Facebook Page and /ig to the Instagram profile", async () => {
+    const fb = await get("/fb");
+    expect(fb.status).toBe(302);
+    expect(fb.headers.get("Location")).toBe(config.social.facebookPageUrl);
+    const ig = await get("/ig");
+    expect(ig.status).toBe(302);
+    expect(ig.headers.get("Location")).toBe(config.social.instagramUrl);
+  });
+
+  it("Messenger writes the short links (before and after); without PUBLIC_URL, the long ones as before", async () => {
+    await post(dm("messenger", "P1", "hi"));
+    at(NOW + 2 * 60_000);
+    await post(dm("messenger", "P1", "how much?"));
+    expect(bodyOf(sent().at(-1))).toBe(`${en().lines.price}\n\n${en().askAgain}\n\nOur Page: https://bot.example.invalid/fb\nBook on WhatsApp: https://bot.example.invalid/b/FBAAAAA`);
+    const noBase = () => ({ ...(env() as object), PUBLIC_URL: undefined }) as never;
+    const raw = JSON.stringify(dm("messenger", "P2", "hi"));
+    await app.request("/meta/webhook", { method: "POST", body: raw, headers: { "X-Hub-Signature-256": await sign(raw) } }, noBase());
+    expect(bodyOf(sent().at(-1))).toBe(`${en().ask}\n\nOur Page: ${config.social.facebookPageUrl}`);
   });
 });
 
