@@ -327,10 +327,13 @@ export const config = {
   // Automatic replies to Instagram DMs and Facebook Messenger (ticket 32, src/social.ts), behind SOCIAL_REPLIES. Public addresses only.
   social: {
     instagramUrl: "https://www.instagram.com/disha_dira/", // the "Visit profile" button on Instagram
-    facebookPageUrl: "https://www.facebook.com/profile.php?id=61588921902210", // the [Open our Page] button on Messenger (the Page's public address); empty: https://www.facebook.com/<META_PAGE_ID>
+    facebookPageUrl: "https://www.facebook.com/profile.php?id=61588921902210", // "Our Page: <link>" in the Messenger follow ask (the Page's public address); empty: https://www.facebook.com/<META_PAGE_ID>
     contactEmail: "dishadirahealing@gmail.com", // the contact address on the website's privacy page, for the data deletion page
     maxAutosPerDay: 3, // automated messages to one person in 24 hours, at most (the WhatsApp link itself always goes, once)
-    nudgeEveryHours: 24, // after the link: "message us on WhatsApp" at most this often, otherwise nothing
+    nudgeEveryHours: 6, // the WhatsApp link again (after the follow, or with the second ask before it) past the daily limit at most this often
+    welcomeBackHours: 24, // after the link, someone who writes again after this long gets "Welcome back!" with the link and questions
+    burstSeconds: 60, // typed messages: at most one unprompted reply (ask, ask again, pointer, welcome back) per person in this long
+    commentLinkEveryDays: 7, // someone who had the link comments on another post: a private reply with only [Book on WhatsApp], at most this often
     restartAfterDays: 30, // no message from them for this long: the flow starts again
     pauseHours: 24, // a person from the team wrote by hand (or a safety message went): no automation in that chat for this long
     repeatAskMinutes: 10, // the same follow ask is not sent again within this long (unless a question got an answer line)
@@ -343,10 +346,30 @@ export const config = {
     hinglish: [
       "kya", "hai", "hain", "kitna", "kitne", "kitni", "kaise", "kahan", "kaha", "kab", "aap", "aapka", "aapki", "mujhe", "mera", "meri", "mere", "karna", "karni",
       "chahiye", "batao", "bataiye", "bataye", "haan", "nahi", "nahin", "hoga", "hota", "mein", "liye", "kripya", "dhanyavad", "shukriya", "ji", "bhai", "didi",
+      "kiya", "diya", "liya", "gaya", "kar", "karo", "kijiye", "hoon", "hun", "acha", "accha", "achha", "theek", "thik", "namaskar", "sakte", "sakti", "sakta",
+      "chahta", "chahti", "milega",
     ],
-    // Typed instead of tapping "I'm following" (a short message, at the follow ask): counts as the tap.
-    followedWords: ["following", "followed", "i'm following", "im following", "i am following", "i followed", "i have followed", "follow kiya", "follow kar liya",
-      "follow kar diya", "फ़ॉलो किया", "फॉलो किया", "फ़ॉलो कर लिया", "फॉलो कर लिया", "फ़ॉलो कर दिया", "फॉलो कर दिया"],
+    // Typed instead of tapping "I'm following" (a message of up to 6 words, at the follow ask, with none of notFollowedWords): counts as
+    // the tap. On Instagram the follow is still checked; on Messenger it is trusted, as the tap is.
+    followedWords: ["following", "followed", "follow done", "i'm following", "im following", "i am following", "i followed", "i have followed", "already following",
+      "already followed", "i follow you", "done", "ok", "okay", "yes", "yeah", "yep", "sure",
+      "haan", "han", "haa", "ha", "ji haan", "follow kiya", "follow kar liya", "follow kar diya", "follow ho gaya", "kar diya", "kar liya", "ho gaya",
+      "फ़ॉलो किया", "फॉलो किया", "फ़ॉलो कर लिया", "फॉलो कर लिया", "फ़ॉलो कर दिया", "फॉलो कर दिया", "हाँ", "जी हाँ", "कर दिया", "कर लिया", "हो गया"],
+    notFollowedWords: ["no", "not", "not yet", "nope", "haven't", "havent", "didn't", "didnt", "don't", "dont", "can't", "cant", "unable", "how do i follow",
+      "how to follow", "how can i follow", "where to follow", "nahi", "nahin", "nhi", "nai", "kaise follow", "follow kaise", "नहीं", "नही", "कैसे फ़ॉलो",
+      "फ़ॉलो कैसे", "कैसे फॉलो", "फॉलो कैसे"],
+    // "Not interested", "stop": one polite line, then no automated message until the flow restarts (config.words.optOut too, alone).
+    stopWords: ["not interested", "no interest", "no thanks", "no thank you", "stop messaging", "stop sending", "dont message", "don't message me",
+      "unsubscribe", "interested nahi", "interest nahi", "nahi chahiye", "mat bhejo", "message mat karo", "रुचि नहीं", "नहीं चाहिए", "मैसेज मत करो", "मत भेजो"],
+    // "I booked already", "paid": thank them, no more selling. With paidProblemWords: point them to "Talk to a person" on WhatsApp.
+    bookedWords: ["booked", "i booked", "i have booked", "already booked", "booking done", "booked already", "i paid", "i have paid", "already paid",
+      "paid already", "payment done", "payment kar diya", "pay kar diya", "book kar liya", "booking ho gayi", "booking kar li", "बुक कर लिया", "बुकिंग हो गई",
+      "पेमेंट कर दिया", "पेमेंट हो गया"],
+    paidProblemWords: ["no confirmation", "not confirmed", "not received", "didn't get", "did not get", "didnt get", "no message", "deducted", "money cut",
+      "payment failed", "confirmation nahi", "nahi aaya", "nahi mila", "कन्फ़र्मेशन नहीं", "नहीं आया", "नहीं मिला", "कट गए"],
+    // Besides links, config.noise promotions and scams, and job seekers: these make a social message junk (one follow ask at most, no link).
+    junkWords: ["promotion", "promotions", "paid promotion", "promote", "shoutout", "shout out", "influencer", "brand deal", "collab", "collaboration",
+      "usdt", "binance", "nft", "airdrop", "trading", "investment", "forex", "buy followers", "more followers", "real followers", "increase followers", "buy likes", "dm for promo"],
     // The topic of their first message (a code, never the text), answered in one line once they follow. Tried in this order; the first
     // match wins. A message that names an illness (config.router.topics.medical) gets no topic: no medical answer, only the way to book.
     keywords: {
@@ -354,6 +377,10 @@ export const config = {
         "कितना", "कितने", "कितनी", "फ़ीस", "फीस", "कीमत", "दाम", "शुल्क"],
       refund: ["refund", "refunds", "money back", "paisa wapas", "paise wapas", "रिफंड", "रिफ़ंड", "पैसे वापस"],
       how: ["how does the call work", "how the call works", "how is the call", "what happens on the call", "what happens in the call", "call kaise", "कॉल कैसे"],
+      // Her number, or a call now: the same answer as on WhatsApp (no number; book the call and she calls you).
+      call: ["call me", "can i call", "call you", "call her", "your number", "her number", "phone number", "contact number", "mobile number", "whatsapp number",
+        "number please", "number do", "number dijiye", "number bhejo", "talk to her", "speak to her", "speak to shantha", "talk to shantha", "नंबर", "कॉल करूं",
+        "बात करनी"],
       book: ["book", "booking", "appointment", "session", "sessions", "slot", "slots", "consult", "consultation", "बुक", "बुकिंग", "अपॉइंटमेंट", "सेशन"],
       where: ["where", "address", "location", "located", "in person", "visit", "kahan", "kaha", "dubai", "uae", "abroad", "outside india", "another country", "usa", "uk",
         "canada", "australia", "singapore", "online", "by phone", "on phone", "phone pe", "phone par", "कहाँ", "कहां", "पता", "विदेश", "दुबई"],

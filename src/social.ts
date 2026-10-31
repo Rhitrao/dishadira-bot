@@ -1,6 +1,6 @@
 // Ticket 32: free automatic replies to Instagram DMs (@disha_dira) and Facebook Messenger (the Page "Disha Dira Pranic Healing"), behind
 // SOCIAL_REPLIES. Whatever someone writes, they are asked to follow us ("we share a short Pranic Healing tip every week"); once they
-// follow, they get the WhatsApp link to book. No number is ever shown except inside the wa.me link. The WhatsApp webhook (/wa/webhook,
+// follow, they get the WhatsApp link to book (and if they write again without following, the link comes with the ask). No number is ever shown except inside the wa.me link. The WhatsApp webhook (/wa/webhook,
 // src/whatsapp.ts) is a separate route and is not touched by any of this.
 //
 // Official Meta APIs only (Messenger Platform, and the Messenger API for Instagram through the Facebook Page). Read on 30 Oct 2026:
@@ -29,7 +29,13 @@
 //  - Comment webhooks: Instagram field `comments` (entry.changes[].value: id or comment_id, from.id, parent_id, text, media.id),
 //    https://developers.facebook.com/documentation/instagram-platform/webhooks/examples.md ; Page field `feed` (value.item "comment",
 //    verb "add", comment_id, post_id, parent_id, from.id, message), https://developers.facebook.com/docs/graph-api/webhooks/reference/page/
-// Whether someone follows the Facebook Page cannot be read, so on Messenger "I've followed" sends the link.
+//  - Quick replies (up to 13, titles up to 20 characters, sent with a text; the tap comes back as message.quick_reply.payload):
+//    https://developers.facebook.com/docs/messenger-platform/reference/buttons/quick-replies ; Messenger private replies take "all
+//    messaging types available for using the Send API": https://developers.facebook.com/docs/messenger-platform/discovery/private-replies
+//  - Referrals (m.me link or ad in an existing chat; "This action will reset the 24-hour standard messaging window"):
+//    https://developers.facebook.com/documentation/business-messaging/messenger-platform/discovery/m-me-links.md
+// Whether someone follows the Facebook Page cannot be read, so on Messenger "I've followed" sends the link. The Facebook app (not the
+// Messenger app) can't show button templates, so Messenger gets text with the links written out and quick replies (see askMessage).
 // Stored: the platform id, language, step and times (migrations/0012_social.sql). Never message text, names or usernames; logs carry
 // reason codes and Meta error codes only (test/logging.test.ts).
 import type { Context } from "hono";
@@ -38,8 +44,8 @@ import { prices } from "./business";
 import { config } from "./config";
 import { copyFor, rupees, type Lang } from "./copy";
 import type { Env } from "./env";
-import { classifyWithoutAI, LINK } from "./gate";
-import { detectSafety, hasPhrase, normalize } from "./safety";
+import { classifyWithoutAI, isJobText, isOptOut, LINK } from "./gate";
+import { detectSafety, hasPhrase, normalize, type Safety } from "./safety";
 import { recipients } from "./business";
 import { sendEmailToEach } from "./mail";
 import { raiseAttention } from "./send";
@@ -66,17 +72,27 @@ const qrTopic = (payload: string): Topic | null => QUESTIONS.find((t) => QR(t) =
 
 type Words = {
   ask: string;
+  askAgain: string; // they wrote again without following: the ask, and the way to book straight away
   notYet: string;
   guide: string; // after the follow: the way to book
+  guideMember: string; // the same for someone who already follows us when they first write (Instagram checks)
+  welcomeBack: string; // a follower who had the link and comes back (the link, then the questions)
+  welcomeBooked: string; // someone who has booked (or says so) comes back: the way to WhatsApp, no ₹99 call
+  thanksBooked: string; // "I booked already", "paid"
+  paidProblem: string; // "I paid but got no confirmation"
+  stopped: string; // "not interested", "stop"
   questions: string; // Instagram: the quick replies' own message (Instagram puts quick replies on text only)
   after: (url: string) => string;
+  commentBook: string; // a comment from someone who already had the link
+  pageLabel: string; // Messenger: "Our Page: <url>"
   deleted: string;
   lines: Record<Topic, string>;
   qrTitles: Record<(typeof QUESTIONS)[number], string>;
-  btnVisit: Record<Platform, string>;
+  btnVisit: string; // Instagram only
   btnFollowing: Record<Platform, string>;
   btnBook: string;
   prefill: string;
+  prefillBack: string; // the WhatsApp text for someone who has booked
   typeFollowing: string;
   publicReply: string;
 };
@@ -85,14 +101,25 @@ export function socialWords(lang: Lang): Words {
   const p = prices();
   const intro = rupees(p.intro);
   const mins = config.slots.callMinutes;
+  const booking = `This is Disha Dira's automated booking assistant. Tap below to book a ${intro} ${mins}-minute call with Shantha Rao on WhatsApp. You choose the time, and she calls you.`;
+  const bookingHi = `यह दिशा दिरा का ऑटोमैटिक बुकिंग असिस्टेंट है। नीचे टैप करके WhatsApp पर शांता राव जी के साथ ${intro} की ${mins} मिनट की कॉल बुक करें। समय आप चुनते हैं, और वे आपको कॉल करती हैं।`;
   if (lang === "hi")
     return {
       ask: "नमस्ते, दिशा दिरा में रुचि लेने के लिए धन्यवाद! हम हर हफ़्ते प्राणिक हीलिंग का एक छोटा टिप शेयर करते हैं। कृपया हमें फ़ॉलो करें, फिर नीचे टैप करें, और हमारा बुकिंग असिस्टेंट सेशन में आपकी मदद करेगा।",
+      askAgain: `हम हर हफ़्ते प्राणिक हीलिंग का एक छोटा टिप शेयर करते हैं, इसलिए कृपया हमें फ़ॉलो करें और नीचे टैप करें। आप चाहें तो अभी सीधे WhatsApp पर शांता राव जी के साथ ${intro} की कॉल भी बुक कर सकते हैं।`,
       notYet: "लगता है फ़ॉलो अभी तक नहीं पहुँचा है। हमारी प्रोफ़ाइल पर Follow टैप करें, फिर नीचे टैप करें।",
-      guide: `फ़ॉलो करने के लिए धन्यवाद! यह दिशा दिरा का ऑटोमैटिक बुकिंग असिस्टेंट है। नीचे टैप करके WhatsApp पर शांता राव जी के साथ ${intro} की ${mins} मिनट की कॉल बुक करें। समय आप चुनते हैं, और वे आपको कॉल करती हैं।`,
+      guide: `फ़ॉलो करने के लिए धन्यवाद! ${bookingHi}`,
+      guideMember: `हमारे समुदाय का हिस्सा होने के लिए धन्यवाद! ${bookingHi}`,
+      welcomeBack: `फिर से स्वागत है! शांता राव जी के साथ अपनी ${intro} की ${mins} मिनट की कॉल यहाँ बुक करें:`,
+      welcomeBooked: `फिर से स्वागत है! अपनी बुकिंग, नए सेशन (${rupees(p.single)}) या पैकेज के लिए हमें WhatsApp पर मैसेज करें, हम वहीं जवाब देते हैं:`,
+      thanksBooked: "धन्यवाद! WhatsApp पर मिलते हैं। 🙏",
+      paidProblem: 'अगर आपने पेमेंट कर दिया है पर कन्फ़र्मेशन नहीं आया, तो कृपया दोबारा पेमेंट न करें। हमें WhatsApp पर मैसेज करें और "किसी से बात करें" टैप करें, हमारी टीम देख लेगी:',
+      stopped: "ठीक है, हम यहाँ आपको अब कोई ऑटोमैटिक मैसेज नहीं भेजेंगे। बाद में बुक करना हो, तो कभी भी WhatsApp पर मैसेज करें।",
       questions: "कोई सवाल है? नीचे टैप करें।",
       after: (url) => `बुकिंग और सवालों के लिए हमें WhatsApp पर मैसेज करें:\n${url}\nहम वहीं जवाब देते हैं।`,
-      deleted: "हो गया। इन जवाबों के लिए हमने आपके बारे में जो रखा था (आपका Instagram या Messenger id, भाषा और जवाब के चरण), वह मिटा दिया है। आपके मैसेज हम कभी नहीं रखते।",
+      commentBook: `कमेंट के लिए धन्यवाद! शांता राव जी के साथ ${intro} की ${mins} मिनट की कॉल बुक करने के लिए नीचे टैप करके हमें WhatsApp पर मैसेज करें।`,
+      pageLabel: "हमारा पेज",
+      deleted: "हो गया। इन जवाबों के लिए हमने आपके बारे में जो रखा था (आपका Instagram या Messenger id, भाषा, जवाब के चरण और बुकिंग रेफ़रेंस), वह मिटा दिया है। आपके मैसेज हम कभी नहीं रखते।",
       lines: {
         price: `शांता राव जी के साथ पहली ${mins} मिनट की कॉल ${intro} की है। एक सेशन ${rupees(p.single)} का है, या ${p.pack10.sessions} सेशन ${rupees(p.pack10.paise)} में और ${p.pack20.sessions} सेशन ${rupees(p.pack20.paise)} में।`,
         refund: `अगर पहली कॉल के बाद शांता राव जी को लगे कि सेशन आपके लिए सही नहीं है, तो ${intro} वापस कर दिए जाते हैं। कॉल छूट जाए तो एक बार मुफ़्त में नया समय चुन सकते हैं।`,
@@ -100,22 +127,33 @@ export function socialWords(lang: Lang): Words {
         book: `आप WhatsApp पर शांता राव जी के साथ ${intro} की ${mins} मिनट की कॉल बुक कर सकते हैं। समय आप चुनते हैं।`,
         where: "सभी कॉल और सेशन फ़ोन पर होते हैं, इसलिए आप कहीं से भी जुड़ सकते हैं, भारत में या विदेश में (जैसे दुबई)। समय भारत के समय से होता है।",
         what: "प्राणिक हीलिंग बिना छुए की जाने वाली एक सौम्य एनर्जी हीलिंग पद्धति है। यह डॉक्टर के इलाज के साथ चलती है, उसकी जगह नहीं लेती।",
+        call: `हम यहाँ कॉल नहीं लेते और नंबर नहीं देते। शांता राव जी से बात करने का सबसे आसान तरीका ${intro} की ${mins} मिनट की कॉल है: आप WhatsApp पर समय चुनें, और वे आपको कॉल करेंगी।`,
       },
       qrTitles: { book: `${intro} कॉल बुक करें`, price: "फ़ीस", what: "प्राणिक हीलिंग", how: "कॉल कैसे होती है" },
-      btnVisit: { instagram: "प्रोफ़ाइल देखें", messenger: "हमारा पेज खोलें" },
+      btnVisit: "प्रोफ़ाइल देखें",
       btnFollowing: { instagram: "मैंने फ़ॉलो किया", messenger: "मैंने फ़ॉलो किया" },
       btnBook: "WhatsApp पर बुक करें",
       prefill: `नमस्ते, मुझे ${intro} की कॉल बुक करनी है`,
+      prefillBack: "नमस्ते",
       typeFollowing: 'फ़ॉलो करने के बाद यहाँ "following" लिखकर भेजें।',
       publicReply: "आपको DM भेजा है 🙏",
     };
   return {
     ask: "Namaste, and thank you for your interest in Disha Dira! We share a short Pranic Healing tip every week. Please follow us, then tap below and our booking assistant will help you with a session.",
+    askAgain: `We share a short Pranic Healing tip every week, so please follow us and tap below. You can also book a ${intro} call with Shantha Rao on WhatsApp straight away.`,
     notYet: "It looks like the follow hasn't come through yet. Tap Follow on our profile, then tap below.",
-    guide: `Thank you for following! This is Disha Dira's automated booking assistant. Tap below to book a ${intro} ${mins}-minute call with Shantha Rao on WhatsApp. You choose the time, and she calls you.`,
+    guide: `Thank you for following! ${booking}`,
+    guideMember: `Thanks for being part of our community! ${booking}`,
+    welcomeBack: `Welcome back! You can book your ${intro} ${mins}-minute call with Shantha Rao here:`,
+    welcomeBooked: `Welcome back! For your booking, a new session (${rupees(p.single)}) or a package, message us on WhatsApp. We reply there:`,
+    thanksBooked: "Thank you! We'll see you on WhatsApp. 🙏",
+    paidProblem: 'If you paid but no confirmation came, please don\'t pay again. Message us on WhatsApp and tap "Talk to a person", and our team will check it:',
+    stopped: "Okay, we won't send you any more automatic messages here. If you'd like to book later, message us on WhatsApp anytime.",
     questions: "Have a question? Tap one below.",
     after: (url) => `For bookings and questions, message us on WhatsApp:\n${url}\nWe reply there.`,
-    deleted: "Done. We have deleted what we kept about you for these replies (your Instagram or Messenger id, language and reply steps). We never keep your messages.",
+    commentBook: `Thank you for your comment! To book a ${intro} ${mins}-minute call with Shantha Rao, tap below and message us on WhatsApp.`,
+    pageLabel: "Our Page",
+    deleted: "Done. We have deleted what we kept about you for these replies (your Instagram or Messenger id, language, reply steps and booking reference). We never keep your messages.",
     lines: {
       price: `A first ${mins}-minute call with Shantha Rao is ${intro}. A session is ${rupees(p.single)}, or ${p.pack10.sessions} sessions for ${rupees(p.pack10.paise)} and ${p.pack20.sessions} for ${rupees(p.pack20.paise)}.`,
       refund: `If Shantha Rao feels a session isn't the right fit after your first call, the ${intro} is refunded. If you miss the call, you get one free chance to pick a new time.`,
@@ -123,19 +161,27 @@ export function socialWords(lang: Lang): Words {
       book: `You can book a ${intro} ${mins}-minute call with Shantha Rao on WhatsApp. You pick the time.`,
       where: "All calls and sessions are by phone, so you can join from anywhere, in India or abroad (such as Dubai). Times are in India time.",
       what: "Pranic Healing is a gentle, no-touch energy healing practice. It complements medical care and is not a substitute for it.",
+      call: `We don't take calls here or share a number. The quickest way to talk to Shantha Rao is the ${intro} ${mins}-minute call: you choose a time on WhatsApp, and she calls you.`,
     },
     qrTitles: { book: `Book a ${intro} call`, price: "Prices", what: "About Pranic Healing", how: "How the call works" },
-    btnVisit: { instagram: "Visit profile", messenger: "Open our Page" },
+    btnVisit: "Visit profile",
     btnFollowing: { instagram: "I'm following", messenger: "I've followed" },
     btnBook: "Book on WhatsApp",
     prefill: `Hi, I'd like to book a ${intro} call`,
+    prefillBack: "Hi",
     typeFollowing: 'Once you follow, reply "following" here.',
     publicReply: "Sent you a DM 🙏",
   };
 }
 
 const waDigits = () => config.businessNumber.replace(/\D/g, "");
-export const bookLink = (w: Words) => `https://wa.me/${waDigits()}?text=${encodeURIComponent(w.prefill)}`;
+// The WhatsApp link, with our prefilled text and their reference code ("(ref: IGK7Q2M)"): the WhatsApp bot takes the code out and links
+// the two chats, so a booking that started here can be counted (REF_PATTERN, src/whatsapp.ts). No name or text goes with it.
+export const bookLink = (w: Words, ref: string, back = false) =>
+  `https://wa.me/${waDigits()}?text=${encodeURIComponent(`${back ? w.prefillBack : w.prefill} (ref: ${ref})`)}`;
+const REF_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I/L
+const newRef = (p: Platform) =>
+  (p === "instagram" ? "IG" : "FB") + [...crypto.getRandomValues(new Uint8Array(5))].map((b) => REF_CHARS[b % REF_CHARS.length]).join("");
 const profileUrl = (env: Env, platform: Platform) =>
   platform === "instagram" ? config.social.instagramUrl : config.social.facebookPageUrl || `https://www.facebook.com/${env.META_PAGE_ID}`;
 
@@ -152,8 +198,22 @@ export function topicOf(text: string): Topic | null {
   return null;
 }
 
-// Links, promotions, scams, abuse: nothing beyond the first follow ask.
-const isJunk = (text: string) => LINK.test(text) || classifyWithoutAI(text) !== "TO_CLASSIFIER";
+// Links, promotions, scams, abuse, job seekers: nothing beyond the first follow ask (and the link only if they tap or type "following").
+// A phone number is not junk: people send theirs to be called back, and the reply points them to WhatsApp (nothing is stored).
+const isJunk = (text: string) =>
+  LINK.test(text) || classifyWithoutAI(text) !== "TO_CLASSIFIER" || isJobText(text) || hasPhrase(text, config.social.junkWords);
+
+// Insults and threats get no reply at all (the same word lists as WhatsApp, config.noise).
+const isRude = (text: string) => classifyWithoutAI(text) === "abuse";
+const isStop = (text: string) => isOptOut(text) || hasPhrase(text, config.social.stopWords);
+// "I booked already", "paid", or our own WhatsApp number or link sent back to us: they are on WhatsApp already. Short messages only, and
+// not a question ("is it paid?").
+const words = (text: string) => normalize(text).split(" ").filter(Boolean).length;
+const saysBooked = (text: string) =>
+  (words(text) <= 10 && !/[?？]/.test(text) && hasPhrase(text, config.social.bookedWords)) || text.replace(/\D/g, "").includes(waDigits().slice(-10)) || /wa\.me\//i.test(text);
+
+// A question (not small talk): it gets an answer before the 10-minute pause on a repeated follow ask is over.
+const isQuestion = (text: string) => /[?？]/.test(text) || topicOf(text) !== null || hasPhrase(text, config.router.topics.medical);
 
 const DELETE_WORDS = ["delete my data", "delete my instagram data", "delete my messenger data", "delete my facebook data", "remove my data", "erase my data",
   "mera data delete karo", "mera data delete kar do", "मेरा डेटा डिलीट करें", "मेरा डेटा डिलीट करो", "मेरा डेटा हटाएं", "मेरा डेटा हटा दें"];
@@ -168,12 +228,19 @@ type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null);
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : typeof v === "number" ? String(v) : null);
 
-// One item of entry.messaging, as an event we act on, or the reason we leave it alone.
-export function readEvent(platform: Platform, ownId: string, raw: unknown): Event | { ignore: string } {
+// One item of entry.messaging, as an event we act on, or the reason we leave it alone. Shapes handled: a message (text, attachments
+// only: photo, voice note, sticker, shared post or reel; an Instagram story reply is a message with reply_to.story), a quick-reply tap
+// (message.quick_reply.payload, both platforms), a button tap (postback, both platforms; "Get started" too), and on Messenger a referral
+// (m.me link or ad in an existing chat, messaging_referrals: it reopens the 24-hour window, so it counts as a message without text).
+// Ignored: story mentions, unsends, reactions, reads, deliveries, opt-ins, handovers, Instagram referrals, and anything that arrives
+// more than 24 hours late (a reply then would be outside Meta's messaging window).
+export function readEvent(platform: Platform, ownId: string, raw: unknown, nowMs = Date.now()): Event | { ignore: string } {
   const item = obj(raw);
   if (!item) return { ignore: "SCHEMA_INVALID" };
   const sender = str(obj(item.sender)?.id);
   const recipient = str(obj(item.recipient)?.id);
+  const ts = typeof item.timestamp === "number" ? (item.timestamp < 1e12 ? item.timestamp * 1000 : item.timestamp) : null;
+  const late = ts !== null && nowMs - ts > config.windowHours * HOUR;
   const m = obj(item.message);
   if (m) {
     const mid = str(m.mid);
@@ -183,6 +250,7 @@ export function readEvent(platform: Platform, ownId: string, raw: unknown): Even
     }
     if (!sender) return { ignore: "NO_SENDER" };
     if (sender === ownId) return { ignore: "OWN_MESSAGE" };
+    if (late) return { ignore: "OUTSIDE_WINDOW" };
     if (m.is_deleted === true) return { ignore: "DELETED" };
     if (!mid) return { ignore: "NO_ID" }; // e.g. an admin_text handoff notice
     const atts = Array.isArray(m.attachments) ? m.attachments : [];
@@ -194,8 +262,15 @@ export function readEvent(platform: Platform, ownId: string, raw: unknown): Even
   const pb = obj(item.postback);
   if (pb) {
     if (!sender) return { ignore: "NO_SENDER" };
+    if (late) return { ignore: "OUTSIDE_WINDOW" };
     const mid = str(pb.mid) ?? `pb:${sender}:${str(item.timestamp) ?? ""}:${str(pb.payload) ?? ""}`;
     return { kind: "tap", platform, user: sender, mid, payload: str(pb.payload) ?? "" };
+  }
+  if (obj(item.referral)) {
+    if (platform !== "messenger") return { ignore: "REFERRAL" };
+    if (!sender || sender === ownId) return { ignore: "NO_SENDER" };
+    if (late) return { ignore: "OUTSIDE_WINDOW" };
+    return { kind: "dm", platform, user: sender, mid: `ref:${sender}:${ts ?? ""}`, text: null };
   }
   if (item.read) return { ignore: "READ" };
   if (item.delivery) return { ignore: "DELIVERY" };
@@ -306,10 +381,15 @@ type Contact = {
   last_auto_at: string | null;
   autos_since: string | null;
   autos_today: number;
-  nudge_at: string | null;
+  nudge_at: string | null; // the last WhatsApp link sent outside the guide: the pointer after the follow, or the second ask before it
   paused_until: string | null;
   commenter_id: string | null;
   topic: Topic | null;
+  followed_at: string | null; // migrations/0013_social_more.sql
+  ref_code: string | null;
+  wa_conversation_id: number | null;
+  stopped_at: string | null;
+  said_booked_at: string | null;
 };
 
 async function loadContact(env: Env, platform: Platform, user: string): Promise<Contact> {
@@ -317,7 +397,8 @@ async function loadContact(env: Env, platform: Platform, user: string): Promise<
   return (
     row ?? {
       platform, user_id: user, lang: "en", step: "NEW", asks: 0, link_sent_at: null, last_in_at: null, last_auto_at: null, autos_since: null, autos_today: 0,
-      nudge_at: null, paused_until: null, commenter_id: null, topic: null,
+      nudge_at: null, paused_until: null, commenter_id: null, topic: null, followed_at: null, ref_code: null, wa_conversation_id: null, stopped_at: null,
+      said_booked_at: null,
     }
   );
 }
@@ -325,12 +406,15 @@ async function loadContact(env: Env, platform: Platform, user: string): Promise<
 async function saveContact(env: Env, r: Contact, nowMs: number): Promise<void> {
   await env.DB
     .prepare(
-      `INSERT INTO social_contacts (platform, user_id, lang, step, asks, link_sent_at, last_in_at, last_auto_at, autos_since, autos_today, nudge_at, paused_until, commenter_id, topic, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+      `INSERT INTO social_contacts (platform, user_id, lang, step, asks, link_sent_at, last_in_at, last_auto_at, autos_since, autos_today, nudge_at, paused_until,
+         commenter_id, topic, updated_at, followed_at, ref_code, stopped_at, said_booked_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
        ON CONFLICT (platform, user_id) DO UPDATE SET lang = ?3, step = ?4, asks = ?5, link_sent_at = ?6, last_in_at = ?7, last_auto_at = ?8,
-         autos_since = ?9, autos_today = ?10, nudge_at = ?11, paused_until = ?12, commenter_id = ?13, topic = ?14, updated_at = ?15`,
+         autos_since = ?9, autos_today = ?10, nudge_at = ?11, paused_until = ?12, commenter_id = ?13, topic = ?14, updated_at = ?15, followed_at = ?16,
+         ref_code = ?17, stopped_at = ?18, said_booked_at = ?19`,
     )
-    .bind(r.platform, r.user_id, r.lang, r.step, r.asks, r.link_sent_at, r.last_in_at, r.last_auto_at, r.autos_since, r.autos_today, r.nudge_at, r.paused_until, r.commenter_id, r.topic, iso(nowMs))
+    .bind(r.platform, r.user_id, r.lang, r.step, r.asks, r.link_sent_at, r.last_in_at, r.last_auto_at, r.autos_since, r.autos_today, r.nudge_at, r.paused_until,
+      r.commenter_id, r.topic, iso(nowMs), r.followed_at, r.ref_code, r.stopped_at, r.said_booked_at)
     .run();
 }
 
@@ -339,9 +423,13 @@ const seenOnce = async (env: Env, key: string, nowMs: number) =>
   (await env.DB.prepare("INSERT OR IGNORE INTO social_seen (key, at) VALUES (?1, ?2)").bind(key, iso(nowMs)).run()).meta.changes > 0;
 
 // ---- the flow ----
-// 1. Any first message or comment gets only the follow ask (its topic is remembered as a code). 2. Once they follow (Instagram: checked,
-// the second tap goes through anyway; Messenger: on the tap), one line on that topic, then the way to book on WhatsApp with quick
-// replies for the common questions. 3. After that, the questions are answered when tapped, and a message gets one pointer to WhatsApp a day.
+// 1. Any first message or comment gets only the follow ask (its topic is remembered as a code); someone we know follows us (Instagram:
+// checked; Messenger: tapped before) skips it. 2. Once they follow (Instagram: checked, the second tap goes through anyway; Messenger: on
+// the tap), one line on that topic, then the way to book on WhatsApp with quick replies for the common questions. Writing again before
+// following gets the ask with the WhatsApp link too. 3. After that, questions are answered (tapped or typed), and any other message gets
+// one pointer to WhatsApp every 6 hours ("Welcome back!" with the questions after a day away). Someone who has booked (their WhatsApp
+// chat has a payment, or they say so) gets no follow ask and no ₹99 call: only the way back to WhatsApp. Every send answers their own
+// message or tap, at once: nothing is scheduled, so nothing can go outside Meta's 24-hour window.
 async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
   if (ev.kind === "comment") return handleComment(env, ev, nowMs);
   const now = iso(nowMs);
@@ -357,8 +445,9 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
     return;
   }
 
-  // After a month of silence the flow starts again.
-  if (ago(r.last_in_at, nowMs) > config.social.restartAfterDays * DAY) Object.assign(r, { step: "NEW", asks: 0, link_sent_at: null, nudge_at: null, topic: null });
+  // After a month of silence the flow starts again (a known follower is not asked to follow again, and a "stop" ends).
+  const away = ago(r.last_in_at, nowMs);
+  if (away > config.social.restartAfterDays * DAY) Object.assign(r, { step: "NEW", asks: 0, nudge_at: null, topic: null, stopped_at: null });
   r.last_in_at = now;
   const text = ev.kind === "dm" ? ev.text : null;
   if (text) r.lang = detectLang(text, r.lang);
@@ -372,25 +461,96 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
 
   if (r.paused_until && Date.parse(r.paused_until) > nowMs) return void (await saveContact(env, r, nowMs));
   if (ago(r.autos_since, nowMs) >= DAY) Object.assign(r, { autos_since: now, autos_today: 0 });
-  if (text && r.step !== "LINKED") r.topic ??= topicOf(text);
+  // "Stop" holds until a tap (a deliberate choice) or the 30-day restart. Insults get nothing.
+  if (r.stopped_at && ev.kind !== "tap") return void (await saveContact(env, r, nowMs));
+  r.stopped_at = null;
+  if (text && isRude(text)) return void (await saveContact(env, r, nowMs));
+  if (text && isStop(text)) {
+    if (await send(env, r, { text: w.stopped }, nowMs, { always: true })) r.stopped_at = now;
+    return void (await saveContact(env, r, nowMs));
+  }
+  // "I booked", "paid" (or our WhatsApp number sent back): thanks, and no more selling. Paid with no confirmation: "Talk to a person".
+  if (text && (saysBooked(text) || paidTrouble(text))) {
+    const msg = paidTrouble(text) ? linkMessage(r, w, w.paidProblem, true) : { text: w.thanksBooked };
+    if (await send(env, r, msg, nowMs, { always: true })) r.said_booked_at = now;
+    return void (await saveContact(env, r, nowMs));
+  }
 
-  const question = ev.kind === "tap" ? qrTopic(ev.payload) : null;
-  // A typed "following" at the follow ask counts as the tap (a private reply may have gone out as plain text).
-  const typedFollow = !!text && (r.step === "ASKED" || r.step === "RECHECK") && normalize(text).split(" ").length <= 5 && hasPhrase(text, config.social.followedWords);
+  const question = ev.kind === "tap" ? qrTopic(ev.payload) : null; // a quick reply, or an ice breaker before the first message
+  if (r.step !== "LINKED") r.topic ??= text ? topicOf(text) : question;
+  const junk = !!text && isJunk(text);
+  // A typed "following", "done", "ok", "haan", "follow kar diya"... at the follow ask counts as the tap ("not yet", "how do I follow" don't).
+  const typedFollow = !!text && !junk && (r.step === "ASKED" || r.step === "RECHECK") && words(text) <= 6 &&
+    hasPhrase(text, config.social.followedWords) && !hasPhrase(text, config.social.notFollowedWords);
   const tapped = (ev.kind === "tap" && ev.payload === FOLLOWING) || typedFollow;
-  if (r.step === "LINKED") {
-    if (question) await answerQuestion(env, r, w, question, nowMs);
-    // Otherwise one short pointer to WhatsApp a day, and nothing more.
-    else if (ago(r.nudge_at, nowMs) >= config.social.nudgeEveryHours * HOUR && (await send(env, r, { text: w.after(bookLink(w)) }, nowMs))) r.nudge_at = now;
+  const sixHours = (at: string | null) => ago(at, nowMs) >= config.social.nudgeEveryHours * HOUR;
+  // Replies nobody tapped for (the ask, the ask again, the pointer, welcome back): one per person a minute, so ten messages in a minute
+  // get one reply and two that arrive together don't both get the ask. A message past that changes nothing.
+  const firstThisMinute = () => seenOnce(env, `b:${r.platform}:${r.user_id}:${Math.floor(nowMs / (config.social.burstSeconds * 1000))}`, nowMs);
+  const asked = question ?? (text && !junk ? topicOf(text) : null);
+
+  if (await hasBooked(env, r)) {
+    // Booked: a question gets its line; anything else the way back to WhatsApp ("Welcome back!"), every 6 hours. No follow ask, no ₹99 call.
+    const answered = asked ? await answerQuestion(env, r, w, asked, nowMs) : false;
+    if (!answered && ev.kind === "dm" && !junk && sixHours(r.nudge_at)) {
+      if (!(await firstThisMinute())) return;
+      if (await send(env, r, linkMessage(r, w, w.welcomeBooked, true), nowMs, { always: true })) r.nudge_at = now;
+    }
+  } else if (r.step === "LINKED") {
+    // A tapped question, or a typed one on a known topic ("can I book?", "how much?"), gets its line and [Book on WhatsApp] (each topic
+    // once a day). Any other message (a photo or voice note too) gets one pointer to WhatsApp, with the link, at most every 6 hours;
+    // after a day away, "Welcome back!" with the link and the questions.
+    const answered = asked ? await answerQuestion(env, r, w, asked, nowMs) : false;
+    if (!answered && ev.kind === "dm" && !junk && sixHours(r.nudge_at)) {
+      if (!(await firstThisMinute())) return;
+      const back = away >= config.social.welcomeBackHours * HOUR;
+      if (back ? await sendBooking(env, r, w, w.welcomeBack, nowMs) : await send(env, r, pointerMessage(r, w), nowMs, { always: true })) r.nudge_at = now;
+    }
   } else if (tapped) {
     await followTap(env, r, w, nowMs);
-  } else if (text && isJunk(text)) {
-    if (r.step === "NEW" && (await send(env, r, askMessage(env, r.platform, w), nowMs))) r.step = "ASKED";
-  } else {
-    const repeat = r.step !== "NEW" && ago(r.last_auto_at, nowMs) < config.social.repeatAskMinutes * 60_000;
-    if (!repeat && (await send(env, r, askMessage(env, r.platform, w), nowMs)) && r.step === "NEW") r.step = "ASKED";
+  } else if (r.step === "NEW") {
+    // The first message of a round. Someone we know follows us gets the way to book straight away ("Welcome back!" if they had it
+    // before); everyone else the follow ask. Spam never skips the ask.
+    if (!(await firstThisMinute())) return;
+    if (!junk && (await knownFollower(env, r, nowMs))) await sendBooking(env, r, w, r.link_sent_at ? w.welcomeBack : w.guideMember, nowMs);
+    else if (await send(env, r, askMessage(env, r, w), nowMs)) r.step = "ASKED";
+  } else if ((ev.kind === "dm" && !junk) || question) {
+    // They wrote again without following: the ask again (after one line on their question, if it has a topic), now with [Book on
+    // WhatsApp] too, so the follow is asked for but never stands between a person and booking. A question gets it at once (the first
+    // time), anything else 10 minutes after our last message. Past the daily limit it still goes if the WhatsApp link hasn't gone to them
+    // in the last 6 hours.
+    const soon = ago(r.last_auto_at, nowMs) < config.social.repeatAskMinutes * 60_000;
+    if (!soon || ((!!question || (!!text && isQuestion(text))) && !r.nudge_at)) {
+      if (!(await firstThisMinute())) return;
+      if (await send(env, r, askMessage(env, r, w, true, asked ? w.lines[asked] : ""), nowMs, { always: sixHours(r.nudge_at) })) r.nudge_at = now;
+    }
   }
   await saveContact(env, r, nowMs);
+}
+
+// "I paid" with "no confirmation", "money deducted"...
+const paidTrouble = (text: string) => hasPhrase(text, ["paid", "payment", "pay", "पेमेंट", ...config.social.bookedWords]) && hasPhrase(text, config.social.paidProblemWords);
+
+// Booked: they said so, or the WhatsApp chat their code opened has a paid ₹99 call, session or package (refunded later counts too).
+async function hasBooked(env: Env, r: Contact): Promise<boolean> {
+  if (r.said_booked_at) return true;
+  if (!r.wa_conversation_id) return false;
+  const row = await env.DB.prepare(`SELECT ${paidIn("?1")} AS paid`).bind(r.wa_conversation_id).first<{ paid: number }>();
+  return !!row?.paid;
+}
+// SQL: the WhatsApp chat `conv` has a payment that went through (the ₹99 call, a session or a package).
+const paidIn = (conv: string) => `EXISTS (SELECT 1 FROM payments p WHERE p.state IN ('PAID', 'REFUND_PENDING', 'REFUNDED', 'REFUND_FAILED') AND (
+  (p.purpose = 'INTRO' AND p.target_id IN (SELECT id FROM intros WHERE conversation_id = ${conv})) OR
+  (p.purpose = 'SESSION' AND p.target_id IN (SELECT id FROM sessions WHERE conversation_id = ${conv})) OR
+  (p.purpose = 'PACKAGE' AND p.target_id IN (SELECT id FROM packages WHERE conversation_id = ${conv}))))`;
+
+// Do we know they follow us? Instagram: we ask (only a clear yes counts; on no answer they get the ask). Messenger can't be asked, so
+// only a tap on "I've followed" before counts.
+async function knownFollower(env: Env, r: Contact, nowMs: number): Promise<boolean> {
+  if (r.platform === "messenger") return !!r.followed_at;
+  if (!(await sendsOn(env)) || (await followsUs(env, r.user_id)) !== true) return false; // nothing reaches Meta while sends are off
+  r.followed_at = iso(nowMs);
+  return true;
 }
 
 // "delete my data": their row and every key with their id, at once, and a short reply to say so.
@@ -405,46 +565,63 @@ async function forget(env: Env, r: Contact, w: Words): Promise<void> {
 
 // The crisis message (Tele-MANAS, 112) or the emergency message, as the WhatsApp bot sends them; no selling for a week after a crisis
 // message (config.safety.noSellDays), a day after an emergency; one SOCIAL_SAFETY item, and for a crisis an email to the safety contact.
-async function safetyReply(env: Env, r: Contact, safety: "CRISIS" | "EMERGENCY", nowMs: number): Promise<void> {
-  const cp = copyFor(r.lang);
-  await send(env, r, { text: (safety === "CRISIS" ? cp.crisis : cp.emergency).replaceAll("*", "") }, nowMs, { safety: true });
+async function safetyReply(env: Env, r: Contact, safety: Safety, nowMs: number): Promise<void> {
+  await send(env, r, safetyMessage(r.lang, safety), nowMs, { safety: true });
   r.paused_until = iso(nowMs + (safety === "CRISIS" ? config.safety.noSellDays * DAY : config.social.pauseHours * HOUR));
   await saveContact(env, r, nowMs);
-  const where = r.platform === "instagram" ? "Instagram" : "Facebook Messenger";
-  const fresh = await raiseAttention(env.DB, SAFETY_ITEM, `${r.platform}:${await shortHash(r.user_id)}`);
+  await alertTeam(env, r.platform, r.user_id, safety);
+}
+
+const safetyMessage = (lang: Lang, safety: Safety): Message => ({ text: (safety === "CRISIS" ? copyFor(lang).crisis : copyFor(lang).emergency).replaceAll("*", "") });
+
+async function alertTeam(env: Env, platform: Platform, user: string, safety: Safety): Promise<void> {
+  const where = platform === "instagram" ? "Instagram" : "Facebook Messenger";
+  const fresh = await raiseAttention(env.DB, SAFETY_ITEM, `${platform}:${await shortHash(user)}`);
   if (fresh && safety === "CRISIS") {
     await sendEmailToEach(env, await recipients(env, "safety"), `Urgent: crisis message on ${where}`,
       `A crisis message arrived on ${where}. The bot sent the helpline message (Tele-MANAS 14416, 112) and keeps no message text. Open the ${where === "Instagram" ? "Instagram" : "Page"} inbox now and write to them yourself.`);
   }
 }
 
-// A comment on our post or reel gets one private reply: the follow ask, which starts the same flow. One per commenter per post; nobody who
-// had the link in the last 30 days; not while the team has the chat; within the same daily limit. The comment text is only read for its
-// language and topic, never stored.
+// A comment on our post or reel gets one private reply (one per commenter per post; not while the team has the chat; within the daily
+// limit): the follow ask, which starts the same flow. Someone who had the link in the last 30 days, or is a known follower, gets only
+// [Book on WhatsApp] instead ("Welcome back!" for someone who has booked), at most once a week. Nothing after "stop" or an insult. A crisis or emergency comment gets the helpline message privately (never a sales message) and the team is told,
+// as for a DM. The comment text is only read for its language, topic and safety, never stored.
 async function handleComment(env: Env, ev: Extract<Event, { kind: "comment" }>, nowMs: number): Promise<void> {
   const now = iso(nowMs);
-  const postKey = `c:${ev.platform}:${ev.author}:${ev.post}`;
-  if (!(await seenOnce(env, postKey, nowMs))) return;
   const known = await env.DB
     .prepare("SELECT * FROM social_contacts WHERE platform = ?1 AND (user_id = ?2 OR commenter_id = ?2) ORDER BY last_in_at DESC LIMIT 1")
     .bind(ev.platform, ev.author)
     .first<Contact>();
   let r = known ?? (await loadContact(env, ev.platform, ev.author));
-  if (ago(r.link_sent_at, nowMs) < config.social.restartAfterDays * DAY) return;
-  if (r.paused_until && Date.parse(r.paused_until) > nowMs) return;
-  if (ev.text && detectSafety(ev.text)) return; // never a sales message under a crisis comment; the team sees the comment itself
-  if (ago(r.autos_since, nowMs) >= DAY) Object.assign(r, { autos_since: now, autos_today: 0 });
-  if (r.autos_today >= config.social.maxAutosPerDay || !(await sendsOn(env))) return;
   if (ev.text) r.lang = detectLang(ev.text, r.lang);
-  const topic = ev.text ? topicOf(ev.text) : null;
   const w = socialWords(r.lang);
   const to = { comment_id: ev.mid };
-  let out = await graphSend(env, ev.platform, to, askMessage(env, ev.platform, w));
-  // If the buttons are refused in an Instagram private reply, the same ask as text, with the profile link and "reply following" (a typed
-  // "following" counts as the tap). Messenger takes every message type in a private reply.
-  if (!out && ev.platform === "instagram") out = await graphSend(env, ev.platform, to, { text: `${w.ask}\n\n${profileUrl(env, ev.platform)}\n${w.typeFollowing}` });
+  const safety = ev.text ? detectSafety(ev.text) : null;
+  const booked = await hasBooked(env, r);
+  const linked = booked || !!r.followed_at || ago(r.link_sent_at, nowMs) < config.social.restartAfterDays * DAY;
+  const linkKey = `c:${ev.platform}:${r.user_id}:wa`;
+  let message: Message;
+  if (safety) {
+    message = safetyMessage(r.lang, safety);
+  } else {
+    if (!(await seenOnce(env, `c:${ev.platform}:${ev.author}:${ev.post}`, nowMs))) return;
+    if (r.paused_until && Date.parse(r.paused_until) > nowMs) return;
+    if ((r.stopped_at && ago(r.last_in_at, nowMs) <= config.social.restartAfterDays * DAY) || (ev.text && isRude(ev.text))) return;
+    if (linked) {
+      const last = await env.DB.prepare("SELECT at FROM social_seen WHERE key = ?1").bind(linkKey).first<{ at: string }>();
+      if (ago(last?.at ?? null, nowMs) < config.social.commentLinkEveryDays * DAY) return;
+    }
+    if (ago(r.autos_since, nowMs) >= DAY) Object.assign(r, { autos_since: now, autos_today: 0 });
+    if (r.autos_today >= config.social.maxAutosPerDay) return;
+    message = !linked ? askMessage(env, r, w) : linkMessage(r, w, booked ? w.welcomeBooked : w.commentBook, booked);
+  }
+  if (!(safety ? sendsEnvOn(env) : await sendsOn(env))) return safety ? alertTeam(env, ev.platform, r.user_id, safety) : undefined;
+  // If a private reply refuses the message (buttons or quick replies), the same words as plain text with the links written out.
+  const out = (await graphSend(env, ev.platform, to, message)) ?? (await graphSend(env, ev.platform, to, plainText(w, message)));
   if (!out) {
-    await env.DB.prepare("DELETE FROM social_seen WHERE key = ?1").bind(postKey).run(); // a later comment may try again
+    if (!safety) await env.DB.prepare("DELETE FROM social_seen WHERE key = ?1").bind(`c:${ev.platform}:${ev.author}:${ev.post}`).run(); // a later comment may try again
+    else await alertTeam(env, ev.platform, r.user_id, safety);
     return;
   }
   if (out.mid) await seenOnce(env, `out:${out.mid}`, nowMs);
@@ -456,8 +633,18 @@ async function handleComment(env: Env, ev: Extract<Event, { kind: "comment" }>, 
     if (ago(r.autos_since, nowMs) >= DAY) Object.assign(r, { autos_since: now, autos_today: 0 });
   }
   if (r.user_id !== ev.author) r.commenter_id = ev.author;
-  r.topic ??= topic;
-  Object.assign(r, { last_in_at: now, last_auto_at: now, autos_since: r.autos_since ?? now, autos_today: r.autos_today + 1, step: r.step === "NEW" ? "ASKED" : r.step });
+  Object.assign(r, { last_in_at: now, last_auto_at: now, autos_since: r.autos_since ?? now, autos_today: r.autos_today + 1 });
+  if (safety) {
+    r.paused_until = iso(nowMs + (safety === "CRISIS" ? config.safety.noSellDays * DAY : config.social.pauseHours * HOUR));
+    await saveContact(env, r, nowMs);
+    return alertTeam(env, ev.platform, r.user_id, safety);
+  }
+  if (linked) {
+    await env.DB.prepare("INSERT OR REPLACE INTO social_seen (key, at) VALUES (?1, ?2)").bind(linkKey, now).run();
+  } else {
+    r.topic ??= ev.text ? topicOf(ev.text) : null;
+    if (r.step === "NEW") r.step = "ASKED";
+  }
   await saveContact(env, r, nowMs);
   if (config.social.publicReply) await publicReply(env, ev.platform, ev.mid, w.publicReply);
 }
@@ -465,26 +652,36 @@ async function handleComment(env: Env, ev: Extract<Event, { kind: "comment" }>, 
 async function followTap(env: Env, r: Contact, w: Words, nowMs: number): Promise<void> {
   r.asks += 1;
   // Messenger can't tell us whether someone follows the Page. On Instagram the second tap goes through anyway (the owner's choice, so a
-  // real follower is never stuck while Instagram catches up), and so does any answer other than a clear "no" (fail open).
-  if (r.platform === "instagram" && r.asks < 2 && (await followsUs(env, r.user_id)) === false) {
-    if (await send(env, r, buttons(w.notYet, [visitButton(env, r.platform, w), followingButton(r.platform, w)]), nowMs)) r.step = "RECHECK";
-    return;
-  }
-  // The topic line, then the way to book with the questions. It always goes once, even past the daily limit, so nobody who followed is
-  // left without it. Instagram puts quick replies on text only, so there the questions are a second, short message.
-  const text = r.topic ? `${w.lines[r.topic]}\n\n${w.guide}` : w.guide;
-  const guide = buttons(text, [bookButton(w)]);
+  // real follower is never stuck while Instagram catches up), and so does any answer other than a clear "no" (fail open). Only a
+  // confirmed follow (Instagram's yes, Messenger's tap) is remembered, so they aren't asked again when they come back.
+  if (r.platform === "instagram") {
+    const follows = r.asks < 2 ? await followsUs(env, r.user_id) : null;
+    // "Not yet" answers a tap, so it goes past the daily limit too (once: the next tap goes through).
+    if (follows === false) {
+      if (await send(env, r, buttons(w.notYet, [visitButton(w), followingButton(r.platform, w)]), nowMs, { always: true })) r.step = "RECHECK";
+      return;
+    }
+    if (follows) r.followed_at = iso(nowMs);
+  } else r.followed_at = iso(nowMs);
+  await sendBooking(env, r, w, w.guide, nowMs);
+}
+
+// The topic line (if their first message had one), the opening, then the way to book with the questions. It always goes, even past the
+// daily limit, so nobody who followed is left without it. Instagram puts quick replies on text only, so there the questions are a second,
+// short message.
+async function sendBooking(env: Env, r: Contact, w: Words, opening: string, nowMs: number): Promise<boolean> {
+  const text = r.topic ? `${w.lines[r.topic]}\n\n${opening}` : opening;
   let ok: boolean;
-  if (r.platform === "messenger") ok = await send(env, r, withQuestions(guide, w), nowMs, { always: true });
-  else if ((ok = await send(env, r, guide, nowMs, { always: true }))) await send(env, r, withQuestions({ text: w.questions }, w), nowMs, { always: true });
+  if (r.platform === "messenger") ok = await send(env, r, bookMessage(r, w, text), nowMs, { always: true });
+  else if ((ok = await send(env, r, bookMessage(r, w, text), nowMs, { always: true }))) await send(env, r, withQuestions({ text: w.questions }, w), nowMs, { always: true });
   if (ok) Object.assign(r, { step: "LINKED", link_sent_at: iso(nowMs), nudge_at: null, topic: null });
+  return ok;
 }
 
 // A tapped question after the follow: one line and [Book on WhatsApp]; each question at most once a day per person.
-async function answerQuestion(env: Env, r: Contact, w: Words, topic: Topic, nowMs: number): Promise<void> {
-  if (!(await seenOnce(env, `qa:${r.platform}:${r.user_id}:${topic}:${iso(nowMs).slice(0, 10)}`, nowMs))) return;
-  const answer = buttons(w.lines[topic], [bookButton(w)]);
-  await send(env, r, r.platform === "messenger" ? withQuestions(answer, w) : answer, nowMs, { always: true });
+async function answerQuestion(env: Env, r: Contact, w: Words, topic: Topic, nowMs: number): Promise<boolean> {
+  if (!(await seenOnce(env, `qa:${r.platform}:${r.user_id}:${topic}:${iso(nowMs).slice(0, 10)}`, nowMs))) return false;
+  return send(env, r, bookMessage(r, w, w.lines[topic]), nowMs, { always: true });
 }
 
 // ---- messages ----
@@ -492,12 +689,42 @@ type Button = { type: "web_url"; url: string; title: string } | { type: "postbac
 type QuickReply = { content_type: "text"; title: string; payload: string };
 type Message = ({ text: string } | { attachment: { type: "template"; payload: { template_type: "button"; text: string; buttons: Button[] } } }) & { quick_replies?: QuickReply[] };
 
+// Instagram shows button templates. The Facebook app does not (it shows "This post is unavailable… Open in Messenger"), so Messenger
+// gets plain text with the links written out (Messenger and the Facebook app both make them clickable) and quick replies for the taps.
 const buttons = (text: string, list: Button[]): Message => ({ attachment: { type: "template", payload: { template_type: "button", text, buttons: list } } });
-const visitButton = (env: Env, p: Platform, w: Words): Button => ({ type: "web_url", url: profileUrl(env, p), title: w.btnVisit[p] });
+const visitButton = (w: Words): Button => ({ type: "web_url", url: config.social.instagramUrl, title: w.btnVisit });
 const followingButton = (p: Platform, w: Words): Button => ({ type: "postback", title: w.btnFollowing[p], payload: FOLLOWING });
-const bookButton = (w: Words): Button => ({ type: "web_url", url: bookLink(w), title: w.btnBook });
-const askMessage = (env: Env, p: Platform, w: Words): Message => buttons(w.ask, [visitButton(env, p, w), followingButton(p, w)]);
+const refOf = (r: Contact) => (r.ref_code ??= newRef(r.platform));
+const bookButton = (r: Contact, w: Words, back = false): Button => ({ type: "web_url", url: bookLink(w, refOf(r), back), title: w.btnBook });
+const bookLine = (r: Contact, w: Words, back = false) => `${w.btnBook}: ${bookLink(w, refOf(r), back)}`;
 const withQuestions = (m: Message, w: Words): Message => ({ ...m, quick_replies: QUESTIONS.map((t) => ({ content_type: "text", title: w.qrTitles[t], payload: QR(t) })) });
+
+// The follow ask; `again` (they wrote again without following): one line on their question if it had a topic, the shorter ask, and the
+// way to book straight away.
+function askMessage(env: Env, r: Contact, w: Words, again = false, line = ""): Message {
+  const text = again ? `${line ? `${line}\n\n` : ""}${w.askAgain}` : w.ask;
+  if (r.platform === "instagram") return buttons(text, [visitButton(w), followingButton(r.platform, w), ...(again ? [bookButton(r, w)] : [])]);
+  const links = `${w.pageLabel}: ${profileUrl(env, r.platform)}${again ? `\n${bookLine(r, w)}` : ""}`;
+  return { text: `${text}\n\n${links}`, quick_replies: [{ content_type: "text", title: w.btnFollowing.messenger, payload: FOLLOWING }] };
+}
+// A text with [Book on WhatsApp]: Instagram the button; Messenger the link on its own line and the questions as quick replies.
+const bookMessage = (r: Contact, w: Words, text: string): Message =>
+  r.platform === "instagram" ? buttons(text, [bookButton(r, w)]) : withQuestions({ text: `${text}\n\n${bookLine(r, w)}` }, w);
+// A text with the WhatsApp link only (no questions: "Welcome back" after a booking, "paid but no confirmation", a comment's reply).
+// `back`: the WhatsApp text is "Hi" instead of "I'd like to book a ₹99 call".
+const linkMessage = (r: Contact, w: Words, text: string, back = false): Message =>
+  r.platform === "instagram" ? buttons(text, [bookButton(r, w, back)]) : { text: `${text}\n\n${bookLine(r, w, back)}` };
+// After the link: "message us on WhatsApp" (the link is in the text).
+const pointerMessage = (r: Contact, w: Words): Message =>
+  r.platform === "instagram" ? buttons(w.after(bookLink(w, refOf(r))), [bookButton(r, w)]) : withQuestions({ text: w.after(bookLink(w, refOf(r))) }, w);
+// The same message as plain text, if a private reply refuses it (a typed "following" counts as the tap).
+function plainText(w: Words, m: Message): Message {
+  const list = "attachment" in m ? m.attachment.payload.buttons : [];
+  const follow = list.some((b) => b.type === "postback") || !!m.quick_replies?.some((q) => q.payload === FOLLOWING);
+  const tail = [...list.flatMap((b) => (b.type === "web_url" ? [b.url] : [])), ...(follow ? [w.typeFollowing] : [])].join("\n");
+  const text = "text" in m ? m.text : m.attachment.payload.text;
+  return { text: tail ? `${text}\n\n${tail}` : text };
+}
 
 // An automated message to this person: only while sends are on, at most config.social.maxAutosPerDay a day (safety messages and the
 // messages after the follow excepted). The count and the time are saved before the call, so the echo of this message is known to be ours.
@@ -589,6 +816,20 @@ async function shortHash(text: string): Promise<string> {
   return [...new Uint8Array(buf)].slice(0, 6).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// ---- the 9pm digest: people who wrote on Instagram or Messenger in the last 7 days, how many opened WhatsApp with their code, how many booked ----
+export async function socialLines(env: Env, nowMs = Date.now()): Promise<string[]> {
+  const rows = await env.DB
+    .prepare(
+      `SELECT platform, COUNT(*) AS n, COUNT(wa_conversation_id) AS wa,
+         SUM(CASE WHEN said_booked_at IS NOT NULL OR ${paidIn("c.wa_conversation_id")} THEN 1 ELSE 0 END) AS booked
+       FROM social_contacts c WHERE COALESCE(last_in_at, created_at) >= ?1 GROUP BY platform ORDER BY platform`,
+    )
+    .bind(iso(nowMs - 7 * DAY))
+    .all<{ platform: Platform; n: number; wa: number; booked: number }>();
+  if (!rows.results.length) return ["- Nobody wrote."];
+  return rows.results.map((r) => `- ${r.platform === "instagram" ? "Instagram" : "Messenger"}: ${r.n} people, ${r.wa} opened WhatsApp, ${r.booked} booked`);
+}
+
 // ---- clean-up, on the 2-minute cron: dedupe ids after a week, comment keys and a person's row 90 days after their last activity ----
 export async function cleanSocial(env: Env, nowMs = Date.now()): Promise<void> {
   await env.DB.prepare("DELETE FROM social_seen WHERE at < ?1 AND key NOT LIKE 'c:%'").bind(iso(nowMs - config.social.keepSeenDays * DAY)).run();
@@ -614,7 +855,8 @@ h1{font-size:24px;line-height:1.3;margin:0 0 12px}h2{font-size:19px;margin:20px 
 <h1>Delete your data</h1>
 <p>Disha Dira Pranic Healing answers Instagram and Facebook Messenger messages, and comments on our posts, automatically, to send you the link to book on WhatsApp.</p>
 <h2>What we keep</h2>
-<ul><li>The id that Instagram or Facebook gives us for you (not your name or username).</li><li>Your language (English or Hindi) and which reply you have had.</li><li>The times of your last message and of our replies.</li></ul>
+<ul><li>The id that Instagram or Facebook gives us for you (not your name or username).</li><li>Your language (English or Hindi) and which reply you have had.</li><li>The times of your last message and of our replies, whether you follow us (as Instagram tells us, or as you told us), and whether you asked us to stop.</li>
+<li>A short reference code that goes in the WhatsApp message we prepare for you (for example "(ref: IGK7Q2M)"). If you send it, we link it to your WhatsApp chat with us, only to count bookings that started on Instagram or Facebook.</li></ul>
 <p>We do not keep the text of your messages or comments. Message ids are kept for ${config.social.keepSeenDays} days, and the ids of posts you commented on for ${config.social.forgetAfterDays} days, only so nothing is answered twice. Everything is deleted ${config.social.forgetAfterDays} days after your last message.</p>
 <h2>How to delete it now</h2>
 <ul><li>Send <b>delete my data</b> to us in the same Instagram or Messenger chat. It is deleted at once, and you get a short reply to say so.</li>
