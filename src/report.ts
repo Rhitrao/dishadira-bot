@@ -172,6 +172,7 @@ const NEEDS_WORDS: Record<string, string> = {
   LINK_CREATE_FAILED: "Payment links that couldn't be made", SESSION_NOT_OFFERABLE: "Sessions that couldn't be offered", NO_SESSION_SLOTS: "No free session times to offer",
   THREAT: "Threatening messages to read", NO_FREE_TIMES: "Wanted to book but found no free times", NO_PHONE: "Wrote from a username without a phone number",
   REFUND_NOT_STARTED: "Refunds Razorpay hasn't taken yet", SOCIAL_SAFETY: "Safety messages on Instagram or Messenger (read the inbox there)",
+  SOCIAL_THREAT: "Threats on Instagram or Messenger (read the inbox there)",
 };
 
 // The switches that are off, in the words of Settings.

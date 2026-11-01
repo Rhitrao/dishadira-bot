@@ -25,6 +25,7 @@ let followsFirst: boolean; // the answer to the first follow check for each pers
 let checked: Set<string>;
 let commentRecipient: string | null; // the messaging id Meta answers a private reply with
 let refuseTemplateReply: boolean;
+let timeouts: number; // the next N sends reach Meta (they are recorded) but no answer comes in time
 let n = 0;
 
 let emails: { to: string; subject: string; text: string }[];
@@ -92,6 +93,7 @@ beforeEach(async () => {
   commentRecipient = "IGSID1";
   emails = [];
   refuseTemplateReply = false;
+  timeouts = 0;
   social.publicReply = false;
   vi.useFakeTimers({ toFake: ["Date"] });
   at(NOW);
@@ -107,6 +109,7 @@ beforeEach(async () => {
     if (init?.method === "POST" && String(url).endsWith("/messages")) {
       const b = JSON.parse((init as { body: string }).body);
       if (b.recipient?.comment_id && b.message?.attachment && refuseTemplateReply) return new Response(JSON.stringify({ error: { code: 100 } }), { status: 400 });
+      if (timeouts > 0 && timeouts--) throw new DOMException("The operation timed out.", "TimeoutError");
       return new Response(JSON.stringify({ recipient_id: b.recipient?.comment_id ? commentRecipient : b.recipient?.id, message_id: `m_out${++n}` }), { status: 200 });
     }
     if (init?.method === "POST" && String(url).includes("graph.facebook.com")) return new Response(JSON.stringify({ id: `reply${++n}`, messages: [{ id: `wamid.OUT${n}` }] }), { status: 200 });
@@ -669,7 +672,7 @@ describe("POST /meta/webhook", () => {
   it("the clean-up deletes old message ids after a week and a person's row 90 days after their last message", async () => {
     await post(dm("instagram", "U1", "hi"));
     await cleanSocial(env(), NOW + 6 * 24 * HOUR);
-    expect(await count("SELECT COUNT(*) n FROM social_seen")).toBe(3); // in:, out: and the one-reply-a-minute key
+    expect(await count("SELECT COUNT(*) n FROM social_seen")).toBe(4); // in:, out:, the hash of our text and the one-reply-a-minute key
     await cleanSocial(env(), NOW + 8 * 24 * HOUR);
     expect(await count("SELECT COUNT(*) n FROM social_seen")).toBe(0);
     expect(await count("SELECT COUNT(*) n FROM social_contacts")).toBe(1);
@@ -1190,5 +1193,203 @@ describe("comments: a private reply starts the same flow", () => {
       { url: `https://graph.facebook.com/${config.graphVersion}/c${cid - 1}/replies`, body: { message: "आपको DM भेजा है 🙏" } },
       { url: `https://graph.facebook.com/${config.graphVersion}/fc${cid}/comments`, body: { message: "Sent you a DM 🙏" } },
     ]);
+  });
+});
+
+describe("ticket 34: timed-out sends and our own echoes", () => {
+  const MIN = 60_000;
+  const paused = async (p: P, user: string) => (await contact(p, user)).paused_until;
+
+  it("Rohit's test, 1 Nov: the booking message timed out but arrived; its echo 3 minutes later doesn't pause, and 'What are your timings' is answered", async () => {
+    const lines: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void lines.push(a.join(" ")));
+    followsFirst = true; // a known follower
+    await post(dm("instagram", "U1", "Delete my data"));
+    expect(bodyOf(sent().at(-1))).toBe(en().deleted);
+    await post(echo("instagram", "U1", { text: en().deleted }));
+    at(NOW + MIN);
+    timeouts = 1; // Meta takes the booking message, but answers too late
+    await post(dm("instagram", "U1", "Why should I do pranic healing?"));
+    const booking = `${en().lines.what}\n\n${en().guideMember}`;
+    expect(bodyOf(sent().at(-2))).toBe(booking);
+    expect(buttonsOf(sent().at(-2))).toEqual([{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }]);
+    // The send counts as UNKNOWN, not FAILED: the questions still go and the step moves on.
+    expect(sent().at(-1).message).toEqual({ text: en().questions, quick_replies: QR_EN });
+    expect(await contact("instagram", "U1")).toMatchObject({ step: "LINKED", topic: null });
+    expect(lines).toContain("social send failed timeout");
+    expect(lines.join("\n")).not.toMatch(/U1|pranic/i);
+    // (a) Its echo, 3 minutes later, with an id we never got: ours by its text (or, if Meta sends it so, by being a template).
+    at(NOW + 4 * MIN);
+    await post(echo("instagram", "U1", { text: booking }));
+    await post(echo("instagram", "U1", { attachments: [{ type: "template", payload: { template_type: "button", buttons: [] } }] }));
+    await post(echo("instagram", "U1", { text: en().questions, quick_replies: QR_EN }));
+    expect(await paused("instagram", "U1")).toBeNull();
+    // (b) Back from WhatsApp 5 minutes later: the answer, and the booking message is never sent twice.
+    at(NOW + 9 * MIN);
+    await post(dm("instagram", "U1", "What are your timings"));
+    expect(bodyOf(sent().at(-1))).toBe(allCopy.en.faqAnswers.timings);
+    expect(allCopy.en.faqAnswers.timings).toContain("Monday to Saturday, 2 pm to 7 pm");
+    expect(sent().filter((m) => bodyOf(m) === booking)).toHaveLength(1);
+    // The team typing by hand still pauses.
+    at(NOW + 11 * MIN);
+    await post(echo("instagram", "U1", { text: "Hi, this is Shantha's team" }));
+    expect(await paused("instagram", "U1")).not.toBeNull();
+    // No customer text is kept: the hashes are of our own messages.
+    const keys = (await db.prepare("SELECT key FROM social_seen WHERE key LIKE 'ot:%'").all<{ key: string }>()).results.map((r) => r.key);
+    expect(keys.length).toBeGreaterThan(0);
+    for (const k of keys) expect(k).toMatch(/^ot:instagram:U1:[0-9a-f]{12}$/);
+  }, 30_000);
+
+  it("the same minute: a question right after a timed-out booking message is answered, never the booking message again", async () => {
+    followsFirst = true;
+    timeouts = 1;
+    await post(dm("instagram", "U2", "hello"));
+    const guide = sent().at(-2);
+    expect(bodyOf(guide)).toBe(en().guideMember);
+    at(NOW + 20_000);
+    await post(dm("instagram", "U2", "What are your timings"));
+    expect(bodyOf(sent().at(-1))).toBe(allCopy.en.faqAnswers.timings);
+    await post(dm("instagram", "U2", "hello?"));
+    expect(sent().filter((m) => bodyOf(m) === en().guideMember)).toHaveLength(1);
+    // Messenger: the tap's guide times out; the next question is answered, the guide isn't resent.
+    timeouts = 1;
+    await post(qrFollow("P2"));
+    at(NOW + 30_000);
+    await post(dm("messenger", "P2", "how much is it?"));
+    expect(bodyOf(sent().at(-1))).toBe(withLink(en().lines.price));
+    expect(sent().filter((m) => bodyOf(m) === withLink(en().guide))).toHaveLength(1);
+    // A real error answer is still a failure (see "a failed send…"): nothing moves on.
+    fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ error: { code: 10 } }), { status: 400 }));
+    await post(qrFollow("P3"));
+    expect((await contact("messenger", "P3")).step).not.toBe("LINKED");
+  }, 30_000);
+
+  it("'delete my data' also deletes the hashes of our messages to them", async () => {
+    await post(dm("instagram", "U3", "hi"));
+    expect(await count("SELECT COUNT(*) n FROM social_seen WHERE key LIKE 'ot:instagram:U3:%'")).toBe(1);
+    await post(dm("instagram", "U3", "delete my data"));
+    expect(await count("SELECT COUNT(*) n FROM social_seen WHERE key LIKE '%:instagram:U3:%'")).toBe(0);
+  });
+});
+
+describe("ticket 34: insults, threats and sexual messages, as on WhatsApp", () => {
+  const MIN = 60_000;
+  const igComment = (author: string, id: string, text: string, media = "M1") =>
+    ({ object: "instagram", entry: [{ id: "IG1", changes: [{ field: "comments", value: { from: { id: author }, id, text, media: { id: media } } }] }] });
+
+  it("a block word blocks at once: nothing then, nothing after (a tap or a booking question included)", async () => {
+    await post(dm("instagram", "R1", "fuck off"));
+    expect(sent()).toHaveLength(0);
+    expect(await contact("instagram", "R1")).toMatchObject({ offences: 1, blocked_at: iso(NOW) });
+    at(NOW + HOUR);
+    await post(dm("instagram", "R1", "Hello can I book?"));
+    await post(tap("instagram", "R1"));
+    expect(sent()).toHaveLength(0);
+    // Messenger, Hindi block word.
+    await post(dm("messenger", "R2", "chutiya bot"));
+    await post(dm("messenger", "R2", "how much?"));
+    expect(sent()).toHaveLength(0);
+    expect((await contact("messenger", "R2")).blocked_at).not.toBeNull();
+  });
+
+  it("the first mild insult gets nothing, later messages are answered; a second blocks", async () => {
+    await post(dm("instagram", "R3", "you idiot"));
+    expect(sent()).toHaveLength(0);
+    expect(await contact("instagram", "R3")).toMatchObject({ offences: 1, blocked_at: null });
+    at(NOW + 2 * MIN);
+    await post(dm("instagram", "R3", "Hello can I book?"));
+    expect(bodyOf(sent().at(-1))).toBe(en().ask);
+    at(NOW + 4 * MIN);
+    await post(dm("instagram", "R3", "shut up"));
+    expect(sent()).toHaveLength(1);
+    expect((await contact("instagram", "R3")).blocked_at).toBe(iso(NOW + 4 * MIN));
+    at(NOW + 2 * HOUR);
+    await post(dm("instagram", "R3", "Hello can I book?"));
+    expect(sent()).toHaveLength(1);
+  });
+
+  it("sexual messages: no follow ask; a block word blocks, a flirt is an offence", async () => {
+    await post(dm("instagram", "S1", "send nudes"));
+    expect(sent()).toHaveLength(0);
+    expect((await contact("instagram", "S1")).blocked_at).not.toBeNull();
+    await post(dm("messenger", "S2", "you are so sexy"));
+    expect(sent()).toHaveLength(0);
+    expect(await contact("messenger", "S2")).toMatchObject({ offences: 1, blocked_at: null });
+    at(NOW + 2 * MIN);
+    await post(dm("messenger", "S2", "marry me"));
+    expect(sent()).toHaveLength(0);
+    expect((await contact("messenger", "S2")).blocked_at).not.toBeNull();
+  });
+
+  it("a threat gets no reply and an urgent item (once); a second blocks", async () => {
+    await post(dm("instagram", "T1", "I will kill you"));
+    expect(sent()).toHaveLength(0);
+    const item = await db.prepare("SELECT kind, target FROM attention").first<Json>();
+    expect(item.kind).toBe("SOCIAL_THREAT");
+    expect(item.target).toMatch(/^instagram:[0-9a-f]{12}$/);
+    expect(item.target).not.toContain("T1");
+    expect(await contact("instagram", "T1")).toMatchObject({ offences: 1, blocked_at: null });
+    at(NOW + 2 * MIN);
+    await post(dm("instagram", "T1", "dekh lunga tujhe"));
+    expect((await contact("instagram", "T1")).blocked_at).not.toBeNull();
+    expect(await count("SELECT COUNT(*) n FROM attention")).toBe(1);
+    expect(emails).toHaveLength(0);
+  });
+
+  it("blocked: a crisis or emergency message still gets the safety message", async () => {
+    await post(dm("instagram", "B1", "fuck you"));
+    at(NOW + HOUR);
+    await post(dm("instagram", "B1", "I want to die"));
+    expect(bodyOf(sent().at(-1))).toBe(allCopy.en.crisis.replaceAll("*", ""));
+    expect(await count("SELECT COUNT(*) n FROM attention WHERE kind = 'SOCIAL_SAFETY'")).toBe(1);
+    await post(dm("messenger", "B2", "bastard"));
+    await post(dm("messenger", "B2", "my father is having a stroke"));
+    expect(bodyOf(sent().at(-1))).toBe(allCopy.en.emergency.replaceAll("*", ""));
+    expect(sent()).toHaveLength(2);
+  });
+
+  it("'delete my data' still works for someone blocked, and deletes the block", async () => {
+    await post(dm("instagram", "D1", "fuck off"));
+    at(NOW + HOUR);
+    await post(dm("instagram", "D1", "delete my data"));
+    expect(bodyOf(sent().at(-1))).toBe(en().deleted);
+    expect(await contact("instagram", "D1")).toBeNull();
+    at(NOW + 2 * HOUR);
+    await post(dm("instagram", "D1", "Hello can I book?"));
+    expect(bodyOf(sent().at(-1))).toBe(en().ask);
+  });
+
+  it("comments: no private reply to an insulting or sexual comment, counted the same; nothing to someone blocked", async () => {
+    commentRecipient = "IGSIDC";
+    await post(igComment("C1", "cc1", "you idiot"));
+    expect(sent()).toHaveLength(0);
+    expect(await contact("instagram", "C1")).toMatchObject({ offences: 1, blocked_at: null });
+    await post(igComment("C1", "cc2", "send nudes", "M2"));
+    expect((await contact("instagram", "C1")).blocked_at).not.toBeNull();
+    await post(igComment("C1", "cc3", "Lovely post", "M3"));
+    expect(sent()).toHaveLength(0);
+    // Blocked in a DM: their comment gets no private reply either; a crisis comment still gets the helpline message.
+    await post(dm("instagram", "C2", "fuck off"));
+    await post(igComment("C2", "cc4", "Info please"));
+    expect(sent()).toHaveLength(0);
+    await post(igComment("C2", "cc5", "I want to die", "M5"));
+    expect(bodyOf(sent().at(-1))).toBe(allCopy.en.crisis.replaceAll("*", ""));
+    // A threat in a comment raises the item.
+    await post(igComment("C3", "cc6", "I know where you live"));
+    expect(await count("SELECT COUNT(*) n FROM attention WHERE kind = 'SOCIAL_THREAT'")).toBe(1);
+  });
+
+  it("someone with a paid booking on WhatsApp is never blocked (CONTRACT: paying customers are never filtered), but gets no reply to an insult", async () => {
+    await post(qrFollow("K1"));
+    const conv = await db.prepare("INSERT INTO conversations (wa_id) VALUES ('919999999998')").run();
+    const intro = await db.prepare("INSERT INTO intros (conversation_id, service, state) VALUES (?1, 'HEALING', 'PAID')").bind(conv.meta.last_row_id).run();
+    await db.prepare("INSERT INTO payments (provider, purpose, target_id, amount_paise, state) VALUES ('razorpay', 'INTRO', ?1, 9900, 'PAID')").bind(intro.meta.last_row_id).run();
+    await db.prepare("UPDATE social_contacts SET wa_conversation_id = ?1 WHERE user_id = 'K1'").bind(conv.meta.last_row_id).run();
+    const n0 = sent().length;
+    await post(dm("messenger", "K1", "fuck this"));
+    expect(sent()).toHaveLength(n0);
+    expect(await contact("messenger", "K1")).toMatchObject({ offences: 0, blocked_at: null });
+    await post(dm("messenger", "K1", "how much is a session"));
+    expect(bodyOf(sent().at(-1))).toBe(withLink(en().lines.price));
   });
 });

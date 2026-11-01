@@ -36,19 +36,24 @@
 //    https://developers.facebook.com/documentation/business-messaging/messenger-platform/discovery/m-me-links.md
 // Whether someone follows the Facebook Page cannot be read, so on Messenger "I've followed" sends the link. The Facebook app (not the
 // Messenger app) can't show button templates, so Messenger gets text with the links written out and quick replies (see askMessage).
-// Stored: the platform id, language, step and times (migrations/0012_social.sql). Never message text, names or usernames; logs carry
-// reason codes and Meta error codes only (test/logging.test.ts).
+// Insults, threats and sexual messages are handled as on WhatsApp, with the same word lists (config.noise): no reply; a block word or a
+// second offence blocks (no more automatic replies on that channel; safety messages and "delete my data" still work); a threat is an
+// urgent item. Paying customers are never blocked (CONTRACT "Noise").
+// Stored: the platform id, language, step, times and an offence count (migrations/0012_social.sql, 0013, 0014). Never message text, names
+// or usernames (only a short hash of our own outgoing text, to know its echo); logs carry reason codes and Meta error codes only
+// (test/logging.test.ts).
 import type { Context } from "hono";
 import { html } from "hono/html";
 import { prices } from "./business";
 import { config } from "./config";
 import { copyFor, rupees, type Copy, type Lang } from "./copy";
 import type { Env } from "./env";
-import { classifyWithoutAI, isAckWord, isJobText, isMenuWord, isOptOut, LINK } from "./gate";
+import { classifyWithoutAI, isAckWord, isJobText, isMenuWord, isOptOut, isThreat, LINK } from "./gate";
 import { matchTopic, topicText, type Topic as RouterTopic } from "./router";
 import { detectSafety, hasPhrase, normalize, type Safety } from "./safety";
 import { recipients } from "./business";
 import { sendEmailToEach } from "./mail";
+import { isPayingCustomer } from "./noise";
 import { raiseAttention } from "./send";
 import { iso } from "./slots";
 import { sendsEnvOn, sendsOn } from "./switches";
@@ -62,6 +67,7 @@ const DAY = 24 * HOUR;
 export const FOLLOWING = "SOCIAL_FOLLOWING"; // the postback of the "I'm following" button
 export const METADATA = "dd-bot"; // sent with every Messenger message, so its echo is known to be ours
 export const SAFETY_ITEM = "SOCIAL_SAFETY";
+export const THREAT_ITEM = "SOCIAL_THREAT";
 
 // ---- the words (EN and HI). Hindi speaks as "we", so no gender shows (docs/KNOWLEDGE.md §1). It is the automated assistant, never a person.
 // Facts only from docs/KNOWLEDGE.md and the prices in force (src/business.ts). ----
@@ -237,13 +243,11 @@ export function topicOf(text: string): Topic | null {
   return t === null ? null : t in SAME ? SAME[t as keyof typeof SAME] : (t as FromWhatsApp);
 }
 
-// Links, promotions, scams, abuse, job seekers: nothing beyond the first follow ask (and the link only if they tap or type "following").
+// Links, promotions, scams, job seekers: nothing beyond the first follow ask (and the link only if they tap or type "following").
 // A phone number is not junk: people send theirs to be called back, and the reply points them to WhatsApp (nothing is stored).
 const isJunk = (text: string) =>
   LINK.test(text) || classifyWithoutAI(text) !== "TO_CLASSIFIER" || isJobText(text) || hasPhrase(text, config.social.junkWords);
 
-// Insults and threats get no reply at all (the same word lists as WhatsApp, config.noise).
-const isRude = (text: string) => classifyWithoutAI(text) === "abuse";
 const isStop = (text: string) => isOptOut(text) || hasPhrase(text, config.social.stopWords);
 // "I booked already", "paid", or our own WhatsApp number or link sent back to us: they are on WhatsApp already. Short messages only, and
 // not a question ("is it paid?").
@@ -261,7 +265,8 @@ type Event =
   | { kind: "comment"; platform: Platform; mid: string; author: string; post: string; text: string | null }
   | { kind: "dm"; platform: Platform; user: string; mid: string; text: string | null }
   | { kind: "tap"; platform: Platform; user: string; mid: string; payload: string }
-  | { kind: "echo"; platform: Platform; user: string; mid: string; metadata: string | null; text: string | null };
+  // texts: what the echo shows (its text, a template's text); machine: something nobody types in the inbox (buttons, quick replies, nothing at all)
+  | { kind: "echo"; platform: Platform; user: string; mid: string; metadata: string | null; texts: string[]; machine: boolean };
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null);
@@ -285,7 +290,13 @@ export function readEvent(platform: Platform, ownId: string, raw: unknown, nowMs
     const mid = str(m.mid);
     if (m.is_echo === true) {
       if (!recipient || !mid) return { ignore: "NO_SENDER" };
-      return { kind: "echo", platform, user: recipient, mid, metadata: str(m.metadata), text: typeof m.text === "string" ? m.text : null };
+      // Read defensively: Meta does not say what an Instagram echo of a button template carries.
+      const atts = (Array.isArray(m.attachments) ? m.attachments : []).map(obj);
+      const payloads = atts.map((a) => obj(a?.payload));
+      const texts = [m.text, ...payloads.map((p) => p?.text)].filter((t): t is string => typeof t === "string" && t.trim() !== "");
+      const machine = atts.some((a) => a?.type === "template") || payloads.some((p) => !!p?.template_type || Array.isArray(p?.buttons)) ||
+        (Array.isArray(m.quick_replies) && m.quick_replies.length > 0) || (!texts.length && !atts.length);
+      return { kind: "echo", platform, user: recipient, mid, metadata: str(m.metadata), texts, machine };
     }
     if (!sender) return { ignore: "NO_SENDER" };
     if (sender === ownId) return { ignore: "OWN_MESSAGE" };
@@ -429,6 +440,8 @@ type Contact = {
   wa_conversation_id: number | null;
   stopped_at: string | null;
   said_booked_at: string | null;
+  offences: number; // migrations/0014_social_noise.sql
+  blocked_at: string | null;
 };
 
 async function loadContact(env: Env, platform: Platform, user: string): Promise<Contact> {
@@ -437,7 +450,7 @@ async function loadContact(env: Env, platform: Platform, user: string): Promise<
     row ?? {
       platform, user_id: user, lang: "en", step: "NEW", asks: 0, link_sent_at: null, last_in_at: null, last_auto_at: null, autos_since: null, autos_today: 0,
       nudge_at: null, paused_until: null, commenter_id: null, topic: null, followed_at: null, ref_code: null, wa_conversation_id: null, stopped_at: null,
-      said_booked_at: null,
+      said_booked_at: null, offences: 0, blocked_at: null,
     }
   );
 }
@@ -446,14 +459,14 @@ async function saveContact(env: Env, r: Contact, nowMs: number): Promise<void> {
   await env.DB
     .prepare(
       `INSERT INTO social_contacts (platform, user_id, lang, step, asks, link_sent_at, last_in_at, last_auto_at, autos_since, autos_today, nudge_at, paused_until,
-         commenter_id, topic, updated_at, followed_at, ref_code, stopped_at, said_booked_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+         commenter_id, topic, updated_at, followed_at, ref_code, stopped_at, said_booked_at, offences, blocked_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)
        ON CONFLICT (platform, user_id) DO UPDATE SET lang = ?3, step = ?4, asks = ?5, link_sent_at = ?6, last_in_at = ?7, last_auto_at = ?8,
          autos_since = ?9, autos_today = ?10, nudge_at = ?11, paused_until = ?12, commenter_id = ?13, topic = ?14, updated_at = ?15, followed_at = ?16,
-         ref_code = ?17, stopped_at = ?18, said_booked_at = ?19`,
+         ref_code = ?17, stopped_at = ?18, said_booked_at = ?19, offences = ?20, blocked_at = ?21`,
     )
     .bind(r.platform, r.user_id, r.lang, r.step, r.asks, r.link_sent_at, r.last_in_at, r.last_auto_at, r.autos_since, r.autos_today, r.nudge_at, r.paused_until,
-      r.commenter_id, r.topic, iso(nowMs), r.followed_at, r.ref_code, r.stopped_at, r.said_booked_at)
+      r.commenter_id, r.topic, iso(nowMs), r.followed_at, r.ref_code, r.stopped_at, r.said_booked_at, r.offences, r.blocked_at)
     .run();
 }
 
@@ -476,12 +489,15 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
 
   // Someone from the team wrote by hand in the Instagram or Page inbox (not our own message): keep out of that chat for a day.
   if (ev.kind === "echo") {
-    if (ev.metadata === METADATA) return;
+    // Ours: Messenger's metadata; buttons or quick replies (nobody types those in the inbox); the text of something we sent them (its
+    // hash is kept: a send that timed out has no id, and its echo can come minutes later, ticket 34).
+    if (ev.metadata === METADATA || ev.machine) return;
     // Not the team: someone who has never written to us that we know of (right after "delete my data", whose own reply echoes back with
     // no row left, or before their first message is saved), or the Business Suite instant reply (config.social.inboxAutoReplies).
     if (!r.last_in_at) return;
-    if (ev.text && config.social.inboxAutoReplies.some((t) => normalize(ev.text!).startsWith(normalize(t)))) return;
+    if (ev.texts.some((t) => config.social.inboxAutoReplies.some((a) => normalize(t).startsWith(normalize(a))))) return;
     if (await env.DB.prepare("SELECT 1 FROM social_seen WHERE key = ?1").bind(`out:${ev.mid}`).first()) return;
+    for (const t of ev.texts) if (await env.DB.prepare("SELECT 1 FROM social_seen WHERE key = ?1").bind(await ownTextKey(r, t)).first()) return;
     if (ago(r.last_auto_at, nowMs) < config.social.ownEchoSeconds * 1000) return; // our send, whose id is not stored yet
     r.paused_until = iso(nowMs + config.social.pauseHours * HOUR);
     await saveContact(env, r, nowMs);
@@ -501,13 +517,15 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
   // Safety first, as on WhatsApp (CONTRACT "Safety", src/safety.ts): the same fixed message, no follow ask and no selling, and the owner is told.
   const safety = text ? detectSafety(text) : null;
   if (safety) return safetyReply(env, r, safety, nowMs);
+  // Blocked: nothing more on this channel, a tap included. Insults, threats and sexual messages get no reply (and are counted).
+  if (r.blocked_at) return void (await saveContact(env, r, nowMs));
+  if (text && (await offended(env, r, text, nowMs))) return;
 
   if (r.paused_until && Date.parse(r.paused_until) > nowMs) return void (await saveContact(env, r, nowMs));
   if (ago(r.autos_since, nowMs) >= DAY) Object.assign(r, { autos_since: now, autos_today: 0 });
-  // "Stop" holds until a tap (a deliberate choice) or the 30-day restart. Insults get nothing.
+  // "Stop" holds until a tap (a deliberate choice) or the 30-day restart.
   if (r.stopped_at && ev.kind !== "tap") return void (await saveContact(env, r, nowMs));
   r.stopped_at = null;
-  if (text && isRude(text)) return void (await saveContact(env, r, nowMs));
   if (text && isStop(text)) {
     if (await send(env, r, { text: w.stopped }, nowMs, { always: true })) r.stopped_at = now;
     return void (await saveContact(env, r, nowMs));
@@ -574,6 +592,21 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
 // "I paid" with "no confirmation", "money deducted"...
 const paidTrouble = (text: string) => hasPhrase(text, ["paid", "payment", "pay", "पेमेंट", ...config.social.bookedWords]) && hasPhrase(text, config.social.paidProblemWords);
 
+// Insults, threats and sexual messages (classifyWithoutAI, the WhatsApp lists in config.noise): true, and nothing is sent. As on WhatsApp
+// (src/noise.ts applyLabel), a block word (either list) or a second offence blocks, and a threat is an urgent item (src/whatsapp.ts THREAT).
+// Someone with a paid booking on WhatsApp is never blocked (CONTRACT "Noise": paying customers are never filtered).
+async function offended(env: Env, r: Contact, text: string, nowMs: number): Promise<boolean> {
+  const label = classifyWithoutAI(text);
+  if (label !== "abuse" && label !== "flirt_or_sexual") return false;
+  if (isThreat(text)) await raiseAttention(env.DB, THREAT_ITEM, `${r.platform}:${await shortHash(r.user_id)}`);
+  if (!(r.wa_conversation_id && (await isPayingCustomer(env.DB, r.wa_conversation_id, nowMs)))) {
+    r.offences += 1;
+    if (r.offences >= 2 || hasPhrase(text, [...config.noise.abuseBlockWords, ...config.noise.sexualBlockWords])) r.blocked_at = iso(nowMs);
+  }
+  await saveContact(env, r, nowMs);
+  return true;
+}
+
 // Booked: they said so, or the WhatsApp chat their code opened has a paid ₹99 call, session or package (refunded later counts too).
 async function hasBooked(env: Env, r: Contact): Promise<boolean> {
   if (r.said_booked_at) return true;
@@ -596,12 +629,12 @@ async function knownFollower(env: Env, r: Contact, nowMs: number): Promise<boole
   return true;
 }
 
-// "delete my data": their row and every key with their id, at once, and a short reply to say so.
+// "delete my data": their row (a block too) and every key with their id, at once, and a short reply to say so.
 async function forget(env: Env, r: Contact, w: Words): Promise<void> {
   const ids = [r.user_id, r.commenter_id ?? r.user_id];
   await env.DB.batch([
     env.DB.prepare("DELETE FROM social_contacts WHERE platform = ?1 AND (user_id = ?2 OR commenter_id = ?2)").bind(r.platform, r.user_id),
-    ...ids.map((id) => env.DB.prepare("DELETE FROM social_seen WHERE key LIKE ?1 OR key LIKE ?2").bind(`qa:${r.platform}:${id}:%`, `c:${r.platform}:${id}:%`)),
+    ...ids.flatMap((id) => ["qa", "c", "b", "ot"].map((k) => env.DB.prepare("DELETE FROM social_seen WHERE key LIKE ?1").bind(`${k}:${r.platform}:${id}:%`))),
   ]);
   if (!(await sendsOn(env))) return;
   const out = await graphSend(env, r.platform, { id: r.user_id }, { text: w.deleted });
@@ -630,7 +663,8 @@ async function alertTeam(env: Env, platform: Platform, user: string, safety: Saf
 
 // A comment on our post or reel gets one private reply (one per commenter per post; not while the team has the chat; within the daily
 // limit): the follow ask, which starts the same flow. Someone who had the link in the last 30 days, or is a known follower, gets only
-// [Book on WhatsApp] instead ("Welcome back!" for someone who has booked), at most once a week. Nothing after "stop" or an insult. A crisis or emergency comment gets the helpline message privately (never a sales message) and the team is told,
+// [Book on WhatsApp] instead ("Welcome back!" for someone who has booked), at most once a week. Nothing after "stop", and nothing for an
+// insulting, threatening or sexual comment (counted as for a DM) or to someone blocked. A crisis or emergency comment gets the helpline message privately (never a sales message) and the team is told,
 // as for a DM. The comment text is only read for its language, topic and safety, never stored.
 async function handleComment(env: Env, ev: Extract<Event, { kind: "comment" }>, nowMs: number): Promise<void> {
   const now = iso(nowMs);
@@ -650,6 +684,7 @@ async function handleComment(env: Env, ev: Extract<Event, { kind: "comment" }>, 
   if (safety) {
     message = safetyMessage(r.lang, safety);
   } else {
+    if (r.blocked_at || (ev.text && (await offended(env, r, ev.text, nowMs)))) return;
     // One private reply per commenter per post. A key left with no row for them (they sent "delete my data", which can't know their
     // comment id when it differs from their messaging id, or an earlier version kept the key without a row) doesn't count.
     const postKey = `c:${ev.platform}:${ev.author}:${ev.post}`;
@@ -658,7 +693,7 @@ async function handleComment(env: Env, ev: Extract<Event, { kind: "comment" }>, 
       await env.DB.prepare("UPDATE social_seen SET at = ?2 WHERE key = ?1").bind(postKey, now).run();
     }
     if (r.paused_until && Date.parse(r.paused_until) > nowMs) return;
-    if ((r.stopped_at && ago(r.last_in_at, nowMs) <= config.social.restartAfterDays * DAY) || (ev.text && isRude(ev.text))) return;
+    if (r.stopped_at && ago(r.last_in_at, nowMs) <= config.social.restartAfterDays * DAY) return;
     if (linked) {
       const last = await env.DB.prepare("SELECT at FROM social_seen WHERE key = ?1").bind(linkKey).first<{ at: string }>();
       if (ago(last?.at ?? null, nowMs) < config.social.commentLinkEveryDays * DAY) return;
@@ -788,7 +823,8 @@ function plainText(w: Words, m: Message): Message {
 }
 
 // An automated message to this person: only while sends are on, at most config.social.maxAutosPerDay a day (safety messages and the
-// messages after the follow excepted). The count and the time are saved before the call, so the echo of this message is known to be ours.
+// messages after the follow excepted). The count, the time and a hash of the text are saved before the call, so the echo of this message
+// is known to be ours. True when Meta took it, or may have (a timeout): the flow moves on and nothing is sent twice.
 async function send(env: Env, r: Contact, message: Message, nowMs: number, o: { safety?: boolean; always?: boolean } = {}): Promise<boolean> {
   if (!(o.safety ? sendsEnvOn(env) : await sendsOn(env))) return false;
   if (!o.safety && !o.always && r.autos_today >= config.social.maxAutosPerDay) return false;
@@ -796,18 +832,25 @@ async function send(env: Env, r: Contact, message: Message, nowMs: number, o: { 
   r.autos_since ??= r.last_auto_at;
   r.autos_today += 1;
   await saveContact(env, r, nowMs);
+  const shown = "text" in message ? message.text : message.attachment.payload.text;
+  await env.DB.prepare("INSERT OR REPLACE INTO social_seen (key, at) VALUES (?1, ?2)").bind(await ownTextKey(r, shown), iso(nowMs)).run();
   const out = await graphSend(env, r.platform, { id: r.user_id }, message);
   if (out?.mid) await seenOnce(env, `out:${out.mid}`, nowMs);
   return out !== null;
 }
 
+// Our own outgoing text, for this person, as a short hash (never their text): its echo is ours even without a message id.
+const ownTextKey = async (r: Contact, text: string) => `ot:${r.platform}:${r.user_id}:${await shortHash(normalize(text))}`;
+
 const graph = (path: string) => `https://graph.facebook.com/${config.graphVersion}/${path}`;
 const errorCode = async (res: Response) => String(((await res.json().catch(() => null)) as { error?: { code?: unknown } } | null)?.error?.code ?? res.status);
 
 // The Send API (both platforms, the Page token), to a person ({id}) or as the private reply to a comment ({comment_id}). Returns Meta's
-// message id and the person's messaging id, or null. Failures are logged by code only.
+// message id and the person's messaging id; null for an error answer (not sent). No answer in time (or a broken connection) is UNKNOWN,
+// not FAILED: Meta often delivers it anyway (Rohit's live test, 1 Nov), so it counts as sent and is never resent blindly (CONTRACT
+// "Outbound sends"). Failures are logged by code only.
 type Recipient = { id: string } | { comment_id: string };
-type Sent = { mid: string | null; recipient: string | null };
+type Sent = { mid: string | null; recipient: string | null; unknown?: true };
 export async function graphSend(env: Env, platform: Platform, recipient: Recipient, message: Message): Promise<Sent | null> {
   const body =
     platform === "instagram" ? { recipient, message }
@@ -830,7 +873,7 @@ export async function graphSend(env: Env, platform: Platform, recipient: Recipie
     reason = "timeout";
   }
   console.log("social send failed", reason);
-  return null;
+  return reason === "timeout" ? { mid: null, recipient: null, unknown: true } : null;
 }
 
 // Instagram only: true or false from the user profile API, or null when it can't say (then the caller sends the link).
@@ -942,6 +985,7 @@ h1{font-size:24px;line-height:1.3;margin:0 0 12px}h2{font-size:19px;margin:20px 
 <p>Disha Dira Pranic Healing answers Instagram and Facebook Messenger messages, and comments on our posts, automatically, to send you the link to book on WhatsApp.</p>
 <h2>What we keep</h2>
 <ul><li>The id that Instagram or Facebook gives us for you (not your name or username).</li><li>Your language (English or Hindi) and which reply you have had.</li><li>The times of your last message and of our replies, whether you follow us (as Instagram tells us, or as you told us), and whether you asked us to stop.</li>
+<li>How many insulting, threatening or sexual messages you sent (a count, never the words), and whether automatic replies to you have stopped because of them.</li>
 <li>A short reference code that goes in the WhatsApp message we prepare for you (for example "(ref: IGK7Q2M)"). If you send it, we link it to your WhatsApp chat with us, only to count bookings that started on Instagram or Facebook.</li></ul>
 <p>We do not keep the text of your messages or comments. Message ids are kept for ${config.social.keepSeenDays} days, and the ids of posts you commented on for ${config.social.forgetAfterDays} days, only so nothing is answered twice. Everything is deleted ${config.social.forgetAfterDays} days after your last message.</p>
 <h2>How to delete it now</h2>
