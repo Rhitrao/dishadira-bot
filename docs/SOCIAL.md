@@ -13,7 +13,8 @@ Instagram shows buttons. **Messenger gets plain text with the links written out 
 keyboard), because the Facebook app (not the Messenger app) shows a button message as "This post is unavailable… Open in Messenger".
 Quick replies and links work in both apps.
 
-1. **Any first DM or comment** (a question, "hi", a photo, a voice note, a sticker, a shared post, a story reply): only the follow ask.
+1. **Any first DM or comment** (a question, "hi", a photo, a voice note, a sticker, a shared post, a story reply, a story mention):
+   only the follow ask.
    > Namaste, and thank you for your interest in Disha Dira! We share a short Pranic Healing tip every week. Please follow us, then tap
    > below and our booking assistant will help you with a session.
 
@@ -23,10 +24,12 @@ Quick replies and links work in both apps.
    **Someone who already follows us** skips this: on Instagram the bot asks Instagram on their first message (if Instagram doesn't
    answer, they get the ask); on Messenger only someone who tapped "I've followed" before. They get the way to book straight away
    ("Thanks for being part of our community! …", or "Welcome back! You can book your ₹99 15-minute call with Shantha Rao here:" if they
-   had the link before), even after 30 days away.
+   had the link before), also when an old chat starts again (point 5).
 
-   A comment gets this as a **private reply** (a DM that Instagram or Facebook links to the comment). One per person per post. If the
-   buttons or quick reply are refused there, the same words go as text with the link and "Once you follow, reply "following" here."
+   A comment gets this as a **private reply** (a DM that Instagram or Facebook links to the comment). **Every comment on another post
+   or reel gets one**, however many (Meta allows one private reply per comment, within 7 days); several comments on the same post
+   within 24 hours get one (Ticket 35). If the buttons or quick reply are refused there, the same words go as text with the link and
+   "Once you follow, reply "following" here."
 2. **"I'm following"** (tapped, or typed: "following", "followed", "done", "ok", "yes", "haan", "follow kiya", "follow kar diya",
    "I followed you", "हो गया"…; not "not yet", "no", "how do I follow?"): on Instagram the bot checks with Instagram that they follow.
    If not yet: "It looks like the follow hasn't come through yet…" and the same buttons; a second tap goes through anyway (so a real
@@ -37,23 +40,28 @@ Quick replies and links work in both apps.
    > on WhatsApp straight away.
 
    Instagram: [Visit profile] [I'm following] [Book on WhatsApp]. Messenger: the text, `Our Page: <link>`, `Book on WhatsApp: <link>`,
-   [I've followed]. A question gets it at once, after one line on that question if it has a topic (price, booking, her number,
-   abroad…); anything else 10 minutes after the bot's last message.
+   [I've followed]. A question on a known topic gets it at once, every time, after one line on that question (price, booking, her
+   number, abroad…); anything else 10 minutes after the bot's last message.
 4. **After the follow**: if their first message asked about price, booking, where (by phone, abroad, Dubai), what Pranic Healing is,
    how the call works or refunds, one short line on that first; then the way to book: "This is Disha Dira's automated booking
    assistant. Tap below to book a ₹99 15-minute call…" with **[Book on WhatsApp]** (Messenger: `Book on WhatsApp:
    https://bot.disha-dira.com/b/FBGJCGT`; it opens WhatsApp with "Hi, I'd like to book a ₹99 call" typed) and quick replies **[Book a
    ₹99 call] [Prices] [About Pranic Healing] [How the call works]**. Each answers in one line with the WhatsApp link.
-5. **After that**: a typed question gets its answer (each topic once a day; the list is below); any other message (or photo, voice
-   note) gets "For bookings and questions, message us on WhatsApp: <link> We reply there." (Instagram: "…tap below to message us on
-   WhatsApp. We reply there." with the button, no link written out) at most every 6 hours; after a day away, "Welcome back! You can book
-   your ₹99 15-minute call with Shantha Rao here:" with the link and the questions. A **comment on another post** gets a private
-   reply with only the WhatsApp link ("Thank you for your comment! To book a ₹99 15-minute call with Shantha Rao, tap below and message
-   us on WhatsApp."), at most once a week. After 30 days with no message, it all starts again.
+5. **After that, the chat goes on** (Ticket 35, Rohit: "if I come back to a chat after some time, the chat should continue; if it's
+   old, it should restart the conversation"): every question, tapped or typed, gets its answer, **even if asked before** (the list is
+   below; the same question twice within 2 minutes gets one answer); any other message (or photo, voice note) gets "For bookings and
+   questions, message us on WhatsApp: <link> We reply there." (Instagram: "…tap below to message us on WhatsApp. We reply there." with
+   the button, no link written out), one reply a minute (five quick messages get one). A lone "ok", "thanks" or 👍 gets nothing.
+   **24 hours or more after their last message the chat starts again**, as if it were their first message: someone we know follows us
+   gets "Welcome back! You can book your ₹99 15-minute call with Shantha Rao here:" (or the first booking message) with the link and
+   the questions; anyone else the follow ask from the start. A **comment on another post** gets a private reply with only the WhatsApp
+   link ("Thank you for your comment! To book a ₹99 15-minute call with Shantha Rao, tap below and message us on WhatsApp.") if they
+   had the link in the last 30 days or follow us; otherwise the follow ask.
 6. **Booked**: the WhatsApp link carries a short code, e.g. "Hi, I'd like to book a ₹99 call (ref: IGK7Q2M)". The WhatsApp bot takes
    the code out of the message (the greeting and menu work as usual) and links the two chats. Once that WhatsApp chat has a paid call,
    session or package, or they say "I booked" / "paid", they never get the follow ask or the ₹99 call again: "Welcome back! For your
-   booking, a new session (₹799) or a package, message us on WhatsApp. We reply there:" with the link ("Hi" typed). "I booked already"
+   booking, a new session (₹799) or a package, message us on WhatsApp. We reply there:" with the link ("Hi" typed), the first time in a
+   chat; after that a question gets its answer and anything else the short pointer with the link. "I booked already"
    gets "Thank you! We'll see you on WhatsApp. 🙏"; "I paid but no confirmation" gets "please don't pay again… tap "Talk to a person""
    with the link. The 9pm digest has "Instagram and Messenger (last 7 days): N people, N opened WhatsApp, N booked".
 7. **Stop**: "not interested", "stop", "unsubscribe", "बंद करो": "Okay, we won't send you any more automatic messages here…", then
@@ -74,17 +82,46 @@ Quick replies and links work in both apps.
    its own text (kept 7 days, never their text), or buttons and quick replies, which nobody types by hand; so a late echo of its own
    message never pauses it (Ticket 34, Rohit's test of 1 Nov). If Meta is slow to answer a send (2.5 seconds), the bot takes it as
    probably sent and moves on, and never sends the same message again.
-11. At most 3 automated messages per person a day, and at most one reply nobody tapped for per minute (ten messages in a minute get
-   one reply). Past that, the answers to a tap ("not yet", the way to book, the quick-reply
-   answers) still go, and the WhatsApp link still goes to someone who writes if they haven't had it in 6 hours. Spam, links, paid
+11. At most 3 automated messages per person a day before the follow, and at most one reply nobody tapped for per minute (ten messages
+   in a minute get one reply). Past that, the answers to a tap ("not yet", the way to book, the quick-reply answers) and to a question
+   still go, everything after the link goes, and the WhatsApp link still goes to someone who writes if they haven't had it in 6 hours.
+   Comments have no daily limit. Spam, links, paid
    promotions, crypto and job seekers get the first follow ask at most (and the link only if they tap "I'm following"). A phone number
    alone is not spam (people send theirs to be called; the reply points them to WhatsApp). No number is shown except inside the wa.me
    link. No message or comment text is stored.
-12. **Ignored**: story mentions, reactions, unsent messages, read and delivery receipts, opt-ins, and anything that reaches the bot more
-   than 24 hours late (Meta allows replies only within 24 hours of the person's last message; nothing is ever sent later or on a
-   schedule). On Messenger an m.me link or ad opened in an existing chat (`messaging_referrals`, optional webhook field) counts as a
+12. **Ignored**: reactions, unsent messages, read and delivery receipts, opt-ins, and anything that reaches the bot more than 24 hours
+   late (Meta allows replies only within 24 hours of the person's last message). The only messages sent later are the two follow-ups
+   below, always inside that window. On Messenger an m.me link or ad opened in an existing chat (`messaging_referrals`, optional webhook field) counts as a
    first message (ads from Meta allow replies for 7 days, but the bot only ever answers at once). A reply to a private reply days later
    is a normal DM.
+
+13. **Following the account**: Meta sends no webhook when someone follows @disha_dira or the Page (or taps Follow), and doesn't allow a
+   first message to someone who hasn't written to us, so nothing is sent for a follow alone. This can't be built; it is noted here only.
+
+### Follow-ups (Ticket 35): 60 minutes and 20 hours later, on every channel
+
+Someone who sent a real message (not spam or junk, not rude, not only a reaction; on Messenger an ad or m.me link opened in the chat
+doesn't count) and hasn't booked gets, on the channel they wrote on, two more messages: one **60 minutes** and one **20 hours** after
+their last message. A new message from them starts the times again from that message. At most **2 per person per channel in 7 days**.
+**Nothing between 21:00 and 08:00 India time**: one that falls due at night goes at 08:00 if that is still within 23 hours of their
+message (inside Meta's 24-hour window, which WhatsApp, Instagram and Messenger all have), otherwise it is skipped. Free text only,
+never a template.
+
+| When | Instagram (button) / Messenger (the short link written out) | WhatsApp |
+|---|---|---|
+| 60 minutes | "Just checking in: did you find what you were looking for? If you'd like to talk to Shantha Rao, the ₹99 15-minute call is the easiest way. You choose the time, and she calls you." [Book on WhatsApp] | the same words, [Book ₹99 call] (the menu's booking button) |
+| 20 hours | "Whenever you're ready, you can book a ₹99 15-minute call with Shantha Rao. Calls are Monday to Saturday, 2 pm to 7 pm." [Book on WhatsApp] | the same words, [Book ₹99 call] |
+| 20 hours, after an illness is named (only this one) | "Hope you're doing okay. If you'd like to talk to Shantha Rao, just message us on WhatsApp. We're here." [Message on WhatsApp] ("Hi") | "Hope you're doing okay. If you'd like to talk to Shantha Rao, just reply to this message. We're here." (no button) |
+
+The price, the minutes and the days and hours come from Settings and `config` (never typed in); Hindi chats get the Hindi words.
+"An illness named" means the words that make the WhatsApp bot answer without a booking button (`config.router.topics.medical`) in a
+message in the last 7 days. **Not sent** to: anyone with a payment that went through (ever, refunded too), anyone who said they booked
+or paid, "stop" / opted out, blocked or rude (any insult or sexual message), after a crisis or emergency message, while the team has
+the chat (WhatsApp "Talk to a person" until the item is resolved; Instagram/Messenger the 24-hour pause after someone writes by hand),
+a WhatsApp chat with a slot held right now, while sends are off or paused in /admin, while bookings are paused or Amma is away, and on
+Instagram/Messenger while `SOCIAL_REPLIES` is off. Someone whose Instagram or Messenger link opened a WhatsApp chat (the ref code) gets
+WhatsApp's follow-ups only. Each one is claimed once (table `followups`, migration 0015: times and counts only) and never sent again,
+even after a timeout. The 9pm digest says how many went ("Automatic follow-ups (last 24 hours)").
 
 Hindi: Devanagari, or Roman Hindi words like "kya", "kitna", "hai", "kar diya", get the Hindi messages; a later English message
 switches back.

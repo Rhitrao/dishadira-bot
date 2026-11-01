@@ -1,5 +1,5 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-10-29 (v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-11-01 (v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
   read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
@@ -87,6 +87,13 @@ Duplicates/reordered events never duplicate bookings, money, links, refunds or o
 Verify raw-body signatures (Meta X-Hub-Signature-256, Razorpay X-Razorpay-Signature) before trusting or storing.
 Before returning 200, commit the event and its business change plus any reply intent, or return a retriable error.
 Outbound sends: PENDING -> SENDING -> SENT | FAILED | UNKNOWN, claimed atomically. No blind resend after a timeout.
+Automatic follow-ups (v8), on the channel the person wrote on (WhatsApp, Instagram, Messenger), to someone who sent a real message
+  (not spam, rude, or only a reaction) and has not booked: one 60 minutes and one 20 hours after their last real message (a new one
+  starts again), at most 2 per person per channel in 7 days; nothing 21:00-08:00 IST (one due then goes at 08:00 only if still within
+  23 hours of their message); free text inside the 24-hour window only, never a template. An illness named: only a gentle check-in at
+  20 hours, no price, no booking button. Never after a paid booking (ever), "I booked/paid", stop/opt-out, a block or an insult, a safety
+  message, human takeover, while SENDS is off or paused, or while Amma is away; an Instagram/Messenger contact whose code opened a
+  WhatsApp chat gets WhatsApp's only. Prices, minutes and hours from the prices and config in force.
 Outside the 24-hour window only approved templates: call_booked, session_offer, session_confirmed, reminder,
   payment_update, package_confirmed, session_booked, follow_up (no variables; Hindi follow_up_hi). All UTILITY. follow_up stays
   `approved: false` in config until Meta approves it. If a needed template isn't approved, raise attention instead of sending.

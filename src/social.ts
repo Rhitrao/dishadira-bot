@@ -1041,6 +1041,7 @@ h1{font-size:24px;line-height:1.3;margin:0 0 12px}h2{font-size:19px;margin:20px 
 <h2>What we keep</h2>
 <ul><li>The id that Instagram or Facebook gives us for you (not your name or username).</li><li>Your language (English or Hindi) and which reply you have had.</li><li>The times of your last message and of our replies, whether you follow us (as Instagram tells us, or as you told us), and whether you asked us to stop.</li>
 <li>How many insulting, threatening or sexual messages you sent (a count, never the words), and whether automatic replies to you have stopped because of them.</li>
+<li>For the two short follow-up messages we may send within a day of your message: when they went, and whether your message mentioned an illness (only a time, never what you wrote), so that the follow-up is then only a short check-in.</li>
 <li>A short reference code that goes in the WhatsApp message we prepare for you (for example "(ref: IGK7Q2M)"). If you send it, we link it to your WhatsApp chat with us, only to count bookings that started on Instagram or Facebook.</li></ul>
 <p>We do not keep the text of your messages or comments. Message ids are kept for ${config.social.keepSeenDays} days, and the ids of posts you commented on for ${config.social.forgetAfterDays} days, only so nothing is answered twice. Everything is deleted ${config.social.forgetAfterDays} days after your last message.</p>
 <h2>How to delete it now</h2>

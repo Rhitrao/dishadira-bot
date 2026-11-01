@@ -256,6 +256,9 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
       ["checkingPayment", "A payment with the wrong amount"],
       ["holdReleased", "A held time that ended unpaid (button: Book the call, or Choose a time for a session)"],
       ["handbackNotice", "A \"Talk to a person\" request nobody answered in 24 hours (with the menu)"],
+      ["autoFollowUp1", "Automatic follow-up, 60 minutes after their last message, if they haven't booked (with the Book button; never 9 pm to 8 am)"],
+      ["autoFollowUp2", "Automatic follow-up, 20 hours after their last message (with the Book button; at most 2 a week)"],
+      ["autoFollowUpGentle", "The only follow-up after an illness is named, at 20 hours (no button, no price)"],
     ],
   },
 ];

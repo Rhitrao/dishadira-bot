@@ -394,6 +394,8 @@ describe("Instagram and Messenger", () => {
     at(T0 + MIN);
     await dm("instagram", "S1", "not interested");
     await dm("instagram", "X1", "you idiot, fuck off");
+    await dm("instagram", "K1", "how much?");
+    await dm("instagram", "K1", "fuck off"); // a real message, then a block
     await dm("instagram", "H1", "how much?");
     at(T0 + 5 * MIN); // the team writes a few minutes after our reply (an echo right after our own send is taken as ours)
     await signed("/meta/webhook", { object: "instagram", entry: [{ id: "IG1", messaging: [{ sender: { id: "IG1" }, recipient: { id: "H1" }, timestamp: Date.now(), message: { mid: "m_team1", is_echo: true, text: "Hello, this is the team" } }] }] });
