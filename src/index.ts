@@ -3,6 +3,7 @@ import type { Env } from "./env";
 import { admin } from "./admin";
 import { loadPrices } from "./business";
 import { amma } from "./amma";
+import { cleanFollowUps, whatsappFollowUps } from "./followup";
 import { serveFont } from "./fonts";
 import { consoleApp } from "./console";
 import { nudgeWaitingChats } from "./inbox";
@@ -18,7 +19,7 @@ import { REMINDER_AT, sendReminders } from "./remind";
 import { runDigest } from "./report";
 import { raiseAwayItems, raiseTapReminders, recordHeartbeat, returnStaleHumans } from "./watch";
 import { istDay, iso } from "./slots";
-import { bookRedirect, cleanSocial, dataDeletionPage, pageRedirect, profileRedirect, receiveMetaWebhook, verifyMetaWebhook } from "./social";
+import { bookRedirect, cleanSocial, dataDeletionPage, pageRedirect, profileRedirect, receiveMetaWebhook, socialFollowUps, verifyMetaWebhook } from "./social";
 import { sendsOn } from "./switches";
 import { switchOver } from "./switchover";
 import { wipeChats } from "./wipe";
@@ -104,7 +105,8 @@ const scheduled = async (event: { cron: string; scheduledTime?: number }, env: E
   await recordHeartbeat(env).catch(() => 0);
   // One failing job must not stop the others; each is safe to run again.
   for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);
-  for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests, nudgeUnpaidHolds, resendSkippedPaid, sendRefundNotices, cleanSocial]) await job(env).catch(() => 0);
+  for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests, nudgeUnpaidHolds, resendSkippedPaid, sendRefundNotices, cleanSocial,
+    whatsappFollowUps, socialFollowUps, cleanFollowUps]) await job(env).catch(() => 0);
   await runDailyJobs(env, event.scheduledTime ?? Date.now()).catch(() => undefined);
 };
 

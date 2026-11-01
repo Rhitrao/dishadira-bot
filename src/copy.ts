@@ -77,10 +77,11 @@ function weekdayRange(lang: Lang): string {
   return names.length < 2 ? names.join("") : names.slice(0, -1).join(", ") + and + names[names.length - 1];
 }
 
-export const hoursText = (lang: Lang) =>
+// `zone`: "(India time)" too (the follow-ups leave it out, as the owner approved them, ticket 35).
+export const hoursText = (lang: Lang, zone = true) =>
   lang === "hi"
-    ? `कॉल ${weekdayRange("hi")}, ${hourPhrase("hi", config.hours.start)} से ${hourPhrase("hi", config.hours.end)} तक (भारतीय समय) होती हैं।`
-    : `Calls are ${weekdayRange("en")}, ${hourPhrase("en", config.hours.start)} to ${hourPhrase("en", config.hours.end)} (India time).`;
+    ? `कॉल ${weekdayRange("hi")}, ${hourPhrase("hi", config.hours.start)} से ${hourPhrase("hi", config.hours.end)} तक${zone ? " (भारतीय समय)" : ""} होती हैं।`
+    : `Calls are ${weekdayRange("en")}, ${hourPhrase("en", config.hours.start)} to ${hourPhrase("en", config.hours.end)}${zone ? " (India time)" : ""}.`;
 
 // "2" / "2:30": the clock part of a time, for the sentence below.
 const clock = (t: string) => {
@@ -289,6 +290,11 @@ export type Copy = {
   checkingPayment: string; // I19: a payment with the wrong amount
   holdReleased: string; // I11: a hold that ended unpaid
   handbackNotice: string; // I14: a handoff nobody answered in time
+  // Ticket 35: the automatic follow-ups (src/followup.ts), 60 minutes and 20 hours after their last message; the gentle one (an illness
+  // named) only at 20 hours, with no price and no booking button. Instagram and Messenger use the first two as they are (src/social.ts).
+  autoFollowUp1: string;
+  autoFollowUp2: string;
+  autoFollowUpGentle: string;
   answerCall: string; // I1: the fixed answers (src/router.ts)
   answerTrust: string;
   answerAbroad: string;
@@ -566,6 +572,9 @@ const en: Copy = {
   checkingPayment: "We received a payment that we need to check. Our team will sort it out and reply here today. Please don't pay again.",
   holdReleased: "Your held time has been released. Nothing was charged. Tap below to choose a time again.",
   handbackNotice: "Sorry we couldn't reply in time. You can book below, or ask again for a person.",
+  autoFollowUp1: `Just checking in: did you find what you were looking for? If you'd like to talk to Shantha Rao, the ${intro} ${config.slots.callMinutes}-minute call is the easiest way. You choose the time, and she calls you.`,
+  autoFollowUp2: `Whenever you're ready, you can book a ${intro} ${config.slots.callMinutes}-minute call with Shantha Rao. ${hoursText("en", false)}`,
+  autoFollowUpGentle: "Hope you're doing okay. If you'd like to talk to Shantha Rao, just reply to this message. We're here.",
   answerCall:
     `The first call is ${config.slots.callMinutes} minutes, by phone, at the time you pick. Shantha Rao calls you herself, listens to what is going on, ` +
     "and explains how she works and whether a full session would suit you. The call is in the language you chat in, English or Hindi.",
@@ -798,6 +807,9 @@ const hi: Copy = {
   checkingPayment: "हमें एक भुगतान मिला है जिसे हमें जाँचना है। हमारी टीम आज ही इसे ठीक करके यहीं जवाब देगी। कृपया दोबारा भुगतान न करें।",
   holdReleased: "आपके लिए रोका गया समय छोड़ दिया गया है। कोई पैसा नहीं कटा। फिर से समय चुनने के लिए नीचे दबाएँ।",
   handbackNotice: "माफ़ कीजिए, हम समय पर जवाब नहीं दे पाए। आप नीचे से बुक कर सकते हैं, या फिर से किसी व्यक्ति से बात करने को कह सकते हैं।",
+  autoFollowUp1: `हम बस यह जानना चाहते थे: क्या आपको वह मिल गया जो आप ढूँढ रहे थे? अगर आप शांता राव जी से बात करना चाहें, तो ${intro} की ${config.slots.callMinutes} मिनट की कॉल सबसे आसान तरीका है। समय आप चुनते हैं, और वे आपको कॉल करती हैं।`,
+  autoFollowUp2: `जब भी आप तैयार हों, शांता राव जी के साथ ${intro} की ${config.slots.callMinutes} मिनट की कॉल बुक कर सकते हैं। ${hoursText("hi", false)}`,
+  autoFollowUpGentle: "उम्मीद है आप ठीक हैं। अगर आप शांता राव जी से बात करना चाहें, तो बस इस मैसेज का जवाब दें। हम आपके लिए यहाँ हैं।",
   answerCall:
     `पहली कॉल ${config.slots.callMinutes} मिनट की होती है, फ़ोन पर, आपके चुने हुए समय पर। शांता राव जी खुद आपको कॉल करती हैं, आपकी बात सुनती हैं, ` +
     "और बताती हैं कि वे कैसे काम करती हैं और क्या पूरा सेशन आपके लिए ठीक रहेगा। कॉल उसी भाषा में होती है जिसमें आप चैट करते हैं, अंग्रेज़ी या हिंदी।",

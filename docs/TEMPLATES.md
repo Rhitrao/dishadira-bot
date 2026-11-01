@@ -128,7 +128,7 @@ Your session is booked for {{1}} at {{2}} (India time). Shantha Rao will call yo
 
 ## 8. follow_up
 
-Sent from the console's Inbox by a team member when a customer handed to the team has not written for 24 hours, so a normal reply can no longer go (ticket 22). No variables, no buttons. **Not in the CONTRACT's template list yet:** submit it only after Rohit has said yes (STATUS.md, "Blocked").
+Sent from the console's Inbox by a team member when a customer handed to the team has not written for 24 hours, so a normal reply can no longer go (ticket 22). No variables, no buttons. **Not in the CONTRACT's template list yet:** submit it only after Rohit has said yes (STATUS.md, "Blocked"). The bot's own automatic follow-ups (60 minutes and 20 hours after a message, ticket 35, docs/SOCIAL.md) never use this or any template: they are free text inside the 24-hour window only.
 
 **Body**
 
