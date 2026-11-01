@@ -1,7 +1,7 @@
 # STATUS
 Updated: 2026-11-01 (Ticket 34: Instagram and Messenger: timed-out sends, our own echoes, rude and sexual messages)
 
-## Ticket 34 (branch `social-reliability-abuse`, migration 0014)
+## Ticket 34 (PR https://github.com/Rhitrao/dishadira-bot/pull/55, migration 0014)
 - **Fixed: Rohit's live test, 1 Nov (Instagram).** After "Delete my data" and "Why should I do pranic healing?" he got the booking message but not "Have a question? Tap one below.", and "What are your timings" minutes later got no reply. Cause: the booking send took longer than 2.5 s, so it counted as failed although Meta delivered it. The step stayed NEW (the next message would have sent the booking message again, or been dropped in the same minute), and with no message id stored, its echo, arriving after the 60 s window, looked like the team writing by hand, which paused the bot for 24 hours. Now a send with no answer in time is UNKNOWN (counts as sent, never resent; an error answer from Meta is still a failure), and an echo is ours if it carries our text (a short hash of what we sent them is kept 7 days, `ot:<platform>:<id>:<hash>`; never their text) or buttons or quick replies, which nobody types in the inbox. An echo with no text and no attachment at all is also taken as ours (a person in the inbox always sends something). "delete my data" deletes these keys and the one-reply-a-minute keys too.
 - **New: insults, threats and sexual messages** on Instagram and Messenger (DMs and comments), as on WhatsApp with the same lists (`config.noise`): no reply; counted on the contact (`offences`, one count for both kinds); a block word or the second offence sets `blocked_at`: no automatic reply on that channel again, except the crisis and emergency messages, and "delete my data" (which deletes the row, block included). A threat raises an urgent `SOCIAL_THREAT` item (target `<platform>:<hash>`, as SOCIAL_SAFETY). Someone with a paid booking on WhatsApp (the WhatsApp rule, `isPayingCustomer`) is never blocked or counted (CONTRACT "Noise"); their insult still gets no reply. Spam, promotions and job seekers unchanged. The data deletion page lists the count.
 - Checks: `npm run typecheck` clean; `test/social.test.ts` 74/74 (the full file, then the ticket 34 block again after one timing fix in a new test; both new timeout tests fail on the old code); every other test file one at a time, 34 files, 1154/1154; `npx wrangler deploy --dry-run --env live` builds.
@@ -77,7 +77,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 31 Fixes from the launch simulations (PR https://github.com/Rhitrao/dishadira-bot/pull/46; merged with Ticket 30)
 - [ ] 32 Instagram and Messenger DM and comment replies (migration 0012, SOCIAL_REPLIES "false"; PR https://github.com/Rhitrao/dishadira-bot/pull/50)
 - [ ] 33 Instagram and Messenger FAQs and short links (no migration; PR https://github.com/Rhitrao/dishadira-bot/pull/54)
-- [ ] 34 Instagram and Messenger: timed-out sends, our own echoes, rude and sexual messages (migration 0014; PR: see the branch `social-reliability-abuse`)
+- [ ] 34 Instagram and Messenger: timed-out sends, our own echoes, rude and sexual messages (migration 0014; PR https://github.com/Rhitrao/dishadira-bot/pull/55)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
