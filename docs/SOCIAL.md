@@ -57,14 +57,23 @@ Quick replies and links work in both apps.
    gets "Thank you! We'll see you on WhatsApp. 🙏"; "I paid but no confirmation" gets "please don't pay again… tap "Talk to a person""
    with the link. The 9pm digest has "Instagram and Messenger (last 7 days): N people, N opened WhatsApp, N booked".
 7. **Stop**: "not interested", "stop", "unsubscribe", "बंद करो": "Okay, we won't send you any more automatic messages here…", then
-   nothing (DMs and comments) until they tap a button or 30 days pass. Insults get no reply at all.
+   nothing (DMs and comments) until they tap a button or 30 days pass.
+   **Insults, threats and sexual messages** (DM or comment; the same word lists as WhatsApp, `config.noise`) get no reply at all and
+   are counted (Ticket 34). A strong swear word or a sexual block word ("nudes"…) blocks at once; otherwise the second one does. Blocked
+   means no automatic reply on that channel again, DMs or comments; the crisis and emergency messages still go, and "delete my data"
+   still works (it deletes the block too). A threat ("I will kill you", "dekh lunga"…) also gives you an urgent item in /admin
+   ("Threat on Instagram or Messenger"; read it in the inbox there). Someone with a paid booking is never blocked. There is no unblock
+   button yet; a block ends 90 days after their last message, with the rest of their row.
 8. **Her number or a call**: "We don't take calls here or share a number. The quickest way to talk to Shantha Rao is the ₹99 15-minute
    call…". Abroad or Dubai: "All calls and sessions are by phone, so you can join from anywhere… India time."
 9. **Safety**: a crisis message, in a DM or a comment, gets the same Tele-MANAS message as WhatsApp (a comment gets it as the private
    reply; no follow ask, nothing sold for a week), you get an urgent item in /admin and an email. An emergency gets the 112 / 108
    message and the item.
 10. **You can take over**: if you (or anyone on the Page) write to someone by hand in the Instagram or Page inbox, the bot stays out of
-   that chat for 24 hours.
+   that chat for 24 hours. The bot knows its own messages when they echo back by Messenger's metadata, the message id, a short hash of
+   its own text (kept 7 days, never their text), or buttons and quick replies, which nobody types by hand; so a late echo of its own
+   message never pauses it (Ticket 34, Rohit's test of 1 Nov). If Meta is slow to answer a send (2.5 seconds), the bot takes it as
+   probably sent and moves on, and never sends the same message again.
 11. At most 3 automated messages per person a day, and at most one reply nobody tapped for per minute (ten messages in a minute get
    one reply). Past that, the answers to a tap ("not yet", the way to book, the quick-reply
    answers) still go, and the WhatsApp link still goes to someone who writes if they haven't had it in 6 hours. Spam, links, paid
