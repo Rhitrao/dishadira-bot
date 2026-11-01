@@ -325,16 +325,28 @@ export const config = {
     },
   },
   // Automatic replies to Instagram DMs and Facebook Messenger (ticket 32, src/social.ts), behind SOCIAL_REPLIES. Public addresses only.
+  // Automatic follow-ups (ticket 35, src/followup.ts): on the channel they wrote on, to someone who sent a real message and hasn't booked.
+  // Free text inside Meta's 24-hour window only, never a template. Times count from their last real message; a new one starts again.
+  followUp: {
+    firstAfterMinutes: 60,
+    secondAfterHours: 20,
+    lastAfterHours: 23, // never later than this after their last message (inside the 24-hour window)
+    perWeek: 2, // at most this many per person per channel in 7 days
+    nightFrom: "21:00", // India time: nothing from nightFrom to nightUntil; one due at night goes at nightUntil, if still within lastAfterHours
+    nightUntil: "08:00",
+    gentleDays: 7, // an illness named in this long: only the gentle check-in, at secondAfterHours, with no price and no booking button
+  },
   social: {
     instagramUrl: "https://www.instagram.com/disha_dira/", // the "Visit profile" button on Instagram
     facebookPageUrl: "https://www.facebook.com/profile.php?id=61588921902210", // "Our Page: <link>" in the Messenger follow ask (the Page's public address); empty: https://www.facebook.com/<META_PAGE_ID>
     contactEmail: "dishadirahealing@gmail.com", // the contact address on the website's privacy page, for the data deletion page
     maxAutosPerDay: 3, // automated messages to one person in 24 hours, at most (the WhatsApp link itself always goes, once)
-    nudgeEveryHours: 6, // the WhatsApp link again (after the follow, or with the second ask before it) past the daily limit at most this often
-    welcomeBackHours: 24, // after the link, someone who writes again after this long gets "Welcome back!" with the link and questions
+    nudgeEveryHours: 6, // before the follow: the ask again with the WhatsApp link goes past the daily limit at most this often
     burstSeconds: 60, // typed messages: at most one unprompted reply (ask, ask again, pointer, welcome back) per person in this long
-    commentLinkEveryDays: 7, // someone who had the link comments on another post: a private reply with only [Book on WhatsApp], at most this often
-    restartAfterDays: 30, // no message from them for this long: the flow starts again
+    sameAnswerMinutes: 2, // the same question twice within this long gets one answer (otherwise a question is always answered, ticket 35)
+    restartAfterHours: 24, // no message from them for this long: the chat starts again, as if this were their first message (ticket 35)
+    commentPostHours: 24, // several comments on the same post within this long get one private reply (every other comment gets one, ticket 35)
+    rememberDays: 30, // "stop" holds this long without a tap; a comment from someone who had the link this recently gets only [Book on WhatsApp]
     pauseHours: 24, // a person from the team wrote by hand (or a safety message went): no automation in that chat for this long
     repeatAskMinutes: 10, // the same follow ask is not sent again within this long (unless a question got an answer line)
     // The start of the Business Suite instant reply (Inbox → Automations → Instant reply): its echo is not the team writing by hand, so it

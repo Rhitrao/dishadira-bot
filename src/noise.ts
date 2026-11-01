@@ -79,6 +79,13 @@ export async function isPayingCustomer(db: D1Database, convId: number, nowMs = D
   return row !== null;
 }
 
+// SQL: the WhatsApp chat `conv` has ever had a payment that went through (the ₹99 call, a session or a package; refunded later counts too).
+// Instagram and Messenger read it for a chat their link opened (src/social.ts); the follow-ups never go to such a chat (src/followup.ts).
+export const paidInSql = (conv: string) => `EXISTS (SELECT 1 FROM payments p WHERE p.state IN ('PAID', 'REFUND_PENDING', 'REFUNDED', 'REFUND_FAILED') AND (
+  (p.purpose = 'INTRO' AND p.target_id IN (SELECT id FROM intros WHERE conversation_id = ${conv})) OR
+  (p.purpose = 'SESSION' AND p.target_id IN (SELECT id FROM sessions WHERE conversation_id = ${conv})) OR
+  (p.purpose = 'PACKAGE' AND p.target_id IN (SELECT id FROM packages WHERE conversation_id = ${conv}))))`;
+
 // A payment clears the slate: strikes, a quiet period and the "second offence" counters.
 export async function paymentCleared(db: D1Database, convId: number): Promise<void> {
   await db

@@ -159,12 +159,11 @@ describe("POST /meta/webhook", () => {
     expect((await app.request("/wa/webhook", { method: "POST", body: "{}", headers: { "X-Hub-Signature-256": await sign("{}", "other-app-secret") } }, { ...(env() as object), META_APP_SECRET: "other-app-secret" } as never)).status).toBe(401);
   });
 
-  it("ignores reads, deliveries, reactions, story mentions, deleted messages, no sender, another account and odd bodies, with a 200", async () => {
+  it("ignores reads, deliveries, reactions, deleted messages, no sender, another account and odd bodies, with a 200", async () => {
     const items = [
       from("U1", "instagram", { read: { mid: "m_x" } }),
       from("U1", "instagram", { delivery: { mids: ["m_x"] } }),
       from("U1", "instagram", { reaction: { mid: "m_x", action: "react", reaction: "love" } }),
-      from("U1", "instagram", { message: { mid: "m_s1", attachments: [{ type: "story_mention", payload: { url: "https://cdn.example.invalid/s" } }] } }),
       from("U1", "instagram", { message: { mid: "m_d1", is_deleted: true } }),
       { recipient: { id: "IG1" }, timestamp: 1, message: { mid: "m_n1", text: "hi" } },
       from("U1", "instagram", { message: { admin_text: "handoff" } }),
@@ -318,24 +317,32 @@ describe("POST /meta/webhook", () => {
     expect(sent().at(-1).message.quick_replies).toBeUndefined();
   });
 
-  it("after the follow: a typed question gets its line and the button; other messages get the WhatsApp pointer at most every 6 hours", async () => {
+  it("after the follow the chat goes on: every question gets its answer, every other message the pointer; a lone 'thanks' nothing (ticket 35)", async () => {
     await post(tap("messenger", "P1"));
     const before = sent().length;
-    await post(dm("messenger", "P1", "thanks!"));
+    await post(dm("messenger", "P1", "I'll check"));
     expect(sent().at(-1).message).toEqual({ text: en().after(WA_BOOK), quick_replies: QR_EN, metadata: METADATA });
     expect(bodyOf(sent().at(-1))).toBe("For bookings and questions, message us on WhatsApp:\nhttps://bot.example.invalid/b/FBAAAAA\nWe reply there.");
-    await post(dm("messenger", "P1", "ok"));
-    expect(sent()).toHaveLength(before + 1); // inside 6 hours: nothing
+    for (const t of ["thanks!", "ok", "👍"]) await post(dm("messenger", "P1", t));
+    expect(sent()).toHaveLength(before + 1); // a lone "ok" / "thanks" / 👍 needs no reply
     await post(dm("messenger", "P1", "Hello, can i book"));
     expect(bodyOf(sent().at(-1))).toBe(withLink(en().lines.book)); // a known topic is answered, past the daily cap
     await post(dm("messenger", "P1", "how much is it"));
     expect(bodyOf(sent().at(-1))).toBe(withLink(en().lines.price));
     await post(dm("messenger", "P1", "how much is it"));
+    await post(qr("messenger", "P1", "price", "qa-dup"));
     await post(tap("messenger", "P1"));
-    expect(sent()).toHaveLength(before + 3); // the same topic once a day; a stray tap: nothing
-    at(NOW + 7 * HOUR);
+    expect(sent()).toHaveLength(before + 3); // the same question again within 2 minutes (typed or tapped): one answer; a stray tap: nothing
+    at(NOW + 3 * 60_000);
+    await post(dm("messenger", "P1", "how much is it"));
+    expect(bodyOf(sent().at(-1))).toBe(withLink(en().lines.price)); // asked again later: answered again
+    at(NOW + 4 * 60_000);
     await post(dm("messenger", "P1", "hello again"));
-    expect(sent()).toHaveLength(before + 4);
+    expect(bodyOf(sent().at(-1))).toBe(en().after(WA_BOOK)); // no 6-hour silence any more
+    expect(sent()).toHaveLength(before + 5);
+    at(NOW + 5 * 60_000);
+    for (let i = 0; i < 5; i++) await post(dm("messenger", "P1", `one more thing ${i}`));
+    expect(sent()).toHaveLength(before + 6); // five quick messages: one reply
     // Instagram: the pointer with the button; a voice note or photo after the link gets it too.
     followsFirst = true;
     await post(tap("instagram", "U1"));
@@ -352,23 +359,29 @@ describe("POST /meta/webhook", () => {
       at(NOW + i * 11 * 60_000);
       await post(dm("instagram", "U1", t));
     }
-    expect(sent()).toHaveLength(3); // the ask, then the ask with [Book on WhatsApp] twice; the fourth: they have the link, nothing
+    // The ask, then the ask with [Book on WhatsApp] and the line on each question: a question is always answered (ticket 35), past the limit.
+    expect(sent()).toHaveLength(4);
     expect(bodyOf(sent()[1])).toBe(`${en().lines.book}\n\n${en().askAgain}`); // with one line on that message's question
-    expect((await contact("instagram", "U1")).autos_today).toBe(3);
+    expect(bodyOf(sent()[3])).toBe(`${en().lines.what}\n\n${en().askAgain}`);
+    expect((await contact("instagram", "U1")).autos_today).toBe(4);
+    at(NOW + 34 * 60_000);
+    await post(dm("instagram", "U1", "hmm"));
+    expect(sent()).toHaveLength(4); // small talk past the limit: nothing (the link went less than 6 hours ago)
     await post(tap("instagram", "U1")); // "not yet" answers a tap: past the limit
     expect(bodyOf(sent().at(-1))).toBe(en().notYet);
     await post(tap("instagram", "U1")); // the second tap goes through, past the limit
-    expect(sent()).toHaveLength(6);
+    expect(sent()).toHaveLength(7);
     expect(bodyOf(sent().at(-2))).toBe(`${en().lines.price}\n\n${en().guide}`);
     at(NOW + 35 * 60_000);
     await post(dm("instagram", "U1", "thanks"));
-    expect(sent()).toHaveLength(7); // the WhatsApp pointer after the follow goes past the limit, at most every 6 hours
-    await post(dm("instagram", "U1", "thanks again"));
-    expect(sent()).toHaveLength(7);
-    // A day later: "Welcome back!" with the link, then the questions.
+    expect(sent()).toHaveLength(7); // a lone "thanks": nothing
+    await post(dm("instagram", "U1", "will do it later"));
+    expect(sent()).toHaveLength(8); // the WhatsApp pointer after the follow goes past the limit
+    // A day later the chat starts again: Instagram now says they follow, so "Welcome back!" with the link, then the questions.
+    follows = true;
     at(NOW + 25 * HOUR);
     await post(dm("instagram", "U1", "thanks"));
-    expect(sent()).toHaveLength(9);
+    expect(sent()).toHaveLength(10);
     expect(bodyOf(sent().at(-2))).toBe("Welcome back! You can book your ₹99 15-minute call with Shantha Rao here:");
     expect(buttonsOf(sent().at(-2))).toEqual([{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }]);
     expect(sent().at(-1).message.quick_replies).toEqual(QR_EN);
@@ -434,7 +447,7 @@ describe("POST /meta/webhook", () => {
     }
   }, 30_000); // many messages: slow on 2 CPUs
 
-  it("photos, voice notes, stickers, shared posts and story replies are messages; story mentions, reactions and unsends are not", async () => {
+  it("photos, voice notes, stickers, shared posts, story replies and story mentions are messages; reactions and unsends are not", async () => {
     for (const [i, type] of ["image", "audio", "ig_reel", "share"].entries()) {
       await post(media("instagram", `A${i}`, type));
       expect(bodyOf(sent().at(-1)), type).toBe(en().ask);
@@ -445,6 +458,14 @@ describe("POST /meta/webhook", () => {
     await post(wrap("messenger", [from("A8", "messenger", { message: { mid: "m_st1", sticker_id: 369239263222822, attachments: [{ type: "image", payload: { sticker_id: 369239263222822 } }] } })]));
     expect(bodyOf(sent().at(-1))).toBe(msgrAsk());
     expect(sent()).toHaveLength(6);
+    // A story mention (they tagged us in their story, ticket 35): the reply a first message gets; for a known follower, the way to book.
+    await post(wrap("instagram", [from("A7", "instagram", { message: { mid: "m_sm1", attachments: [{ type: "story_mention", payload: { url: "https://cdn.example.invalid/s" } }] } })]));
+    expect(bodyOf(sent().at(-1))).toBe(en().ask);
+    followsFirst = true;
+    await post(wrap("instagram", [from("A6", "instagram", { message: { mid: "m_sm2", attachments: [{ type: "story_mention", payload: { url: "https://cdn.example.invalid/s" } }] } })]));
+    expect(bodyOf(sent().at(-2))).toBe(en().guideMember);
+    await post(wrap("instagram", [from("A5", "instagram", { reaction: { mid: "m_x", action: "react", reaction: "love" } })]));
+    expect(sent()).toHaveLength(9);
   });
 
   it("Messenger: an m.me link or ad in an existing chat (messaging_referrals) gets the follow ask once; opt-ins, handovers, Instagram referrals: nothing", async () => {
@@ -495,7 +516,9 @@ describe("POST /meta/webhook", () => {
     expect(sent()).toHaveLength(1);
     at(NOW + 5 * 60_000 + 25 * HOUR);
     await post(dm("instagram", "U1", "how much?"));
-    expect(sent()).toHaveLength(2);
+    // A day after their last message the chat starts again: Instagram now says they follow, so the way to book (ticket 35).
+    expect(sent()).toHaveLength(3);
+    expect(bodyOf(sent()[1])).toBe(`${en().lines.price}\n\n${en().guideMember}`);
   });
 
   it("our own echoes never pause: Messenger by metadata, Instagram by the stored message id or right after our send", async () => {
@@ -840,7 +863,8 @@ describe("returning people, bookings and the other realistic cases", () => {
     await post({ object: "instagram", entry: [{ id: "IG1", changes: [{ field: "comments", value: { from: { id: "AUTH9" }, id: "cd1", text: "Beautiful", media: { id: "M1" } } }] }] });
     at(NOW + 3 * 24 * HOUR);
     await post(dm("instagram", "IGSID9", "how much is it?"));
-    expect(bodyOf(sent().at(-1))).toBe(`${en().lines.price}\n\n${en().askAgain}`);
+    expect(bodyOf(sent().at(-1))).toBe(en().ask); // days later the chat starts again: the follow ask (the topic kept for after the follow)
+    expect((await contact("instagram", "IGSID9")).topic).toBe("price");
   });
 
   it("after \"delete my data\", a new comment on a post they commented on before gets the follow ask again (comment id ≠ messaging id)", async () => {
@@ -1102,7 +1126,7 @@ describe("comments: a private reply starts the same flow", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("someone who had the link in the last 30 days, or follows us, gets only [Book on WhatsApp] for a comment on another post, once a week", async () => {
+  it("every comment on another post gets a private reply; someone who had the link in the last 30 days, or follows us, gets only [Book on WhatsApp]", async () => {
     followsFirst = true;
     await post(igComment("AUTH1", "MEDIA1"));
     await post(tap("instagram", "IGSID1"));
@@ -1117,13 +1141,16 @@ describe("comments: a private reply starts the same flow", () => {
     expect(bodyOf(m)).toBe("Thank you for your comment! To book a ₹99 15-minute call with Shantha Rao, tap below and message us on WhatsApp.");
     expect(buttonsOf(m)).toEqual([{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }]);
     expect((await contact("instagram", "IGSID1")).step).toBe("LINKED");
-    at(NOW + 5 * 24 * HOUR);
+    // Ticket 35: every comment on another post or reel gets one, however many and however soon; the same post again within a day: none.
+    at(NOW + 2 * 24 * HOUR + 60_000);
     await post(igComment("AUTH1", "MEDIA3"));
-    await post(igComment("AUTH1", "MEDIA2")); // the same post again: never
-    expect(sent()).toHaveLength(before + 1);
-    at(NOW + 10 * 24 * HOUR);
     await post(igComment("AUTH1", "MEDIA4"));
-    expect(sent()).toHaveLength(before + 2);
+    await post(igComment("AUTH1", "MEDIA2"));
+    expect(sent()).toHaveLength(before + 3);
+    expect(sent().slice(-2).map(bodyOf)).toEqual([en().commentBook, en().commentBook]);
+    at(NOW + 3 * 24 * HOUR + 2 * 60_000);
+    await post(igComment("AUTH1", "MEDIA2")); // the same post a day later: one more
+    expect(sent()).toHaveLength(before + 4);
     // After 30 days: Instagram confirmed the follow, so still only the link (never the follow ask again).
     at(NOW + 31 * 24 * HOUR);
     await post(igComment("AUTH1", "MEDIA5"));
@@ -1142,9 +1169,11 @@ describe("comments: a private reply starts the same flow", () => {
     expect(sent().at(-1).message).toEqual({ text: withLink(en().commentBook), metadata: METADATA });
   });
 
-  it("the daily limit, a paused chat and SOCIAL_REPLIES off all stop the private reply", async () => {
+  it("a paused chat and SOCIAL_REPLIES off stop the private reply; the daily limit no longer does (ticket 35)", async () => {
     await db.prepare("INSERT INTO social_contacts (platform, user_id, commenter_id, autos_since, autos_today) VALUES ('instagram', 'IGSID1', 'AUTH1', ?1, 3)").bind(iso(NOW)).run();
     await post(igComment("AUTH1", "MEDIA1"));
+    expect(sent()).toHaveLength(1);
+    fetchMock.mockClear();
     await db.prepare("INSERT INTO social_contacts (platform, user_id, paused_until) VALUES ('messenger', 'AUTH2', ?1)").bind(iso(NOW + HOUR)).run();
     await post(fbComment("AUTH2", "POST1"));
     flags.SOCIAL_REPLIES = "false";

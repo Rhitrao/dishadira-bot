@@ -9,6 +9,7 @@ import { bookingChoice } from "./booking";
 import { bookingsChoice } from "./mybookings";
 import { creditBalance, packChoice, sessionOfferOut } from "./packages";
 import { classifyWithoutAI, gate, isCallRequest, isJobText, isMenuWord, isThreat, plainWord } from "./gate";
+import { noteWhatsAppMessage, realWhatsAppMessage } from "./followup";
 import { requestHuman } from "./handoff";
 import { menuOut } from "./menu";
 import { applyLabel, ensureState, noSellActive } from "./noise";
@@ -274,6 +275,9 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
   const mine = await db.prepare("SELECT id FROM messages WHERE wa_message_id = ?1").bind(m.id).first<{ id: number }>();
 
   const decision = await gate(env, conv, { type: m.type, text, choice });
+  // Ticket 35: the time of their last real message, from which the automatic follow-ups count, and whether it named an illness (then
+  // only the gentle one). Times only (src/followup.ts).
+  if (realWhatsAppMessage(decision, text)) await noteWhatsAppMessage(db, conv.id, at, text);
   if (decision !== "OPT_OUT") await db.prepare("UPDATE person_state SET opted_out_at = NULL WHERE conversation_id = ?1 AND opted_out_at IS NOT NULL").bind(conv.id).run(); // any later message ends an opt-out
 
   const cp = copyFor(conv.locale);
