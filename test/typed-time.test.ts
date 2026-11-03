@@ -144,7 +144,7 @@ describe("a typed time at the time step", () => {
     }
     expect(EN.timeOutside).toContain("Monday to Saturday, 2 pm to 7 pm (India time)"); // from config.hours
     expect(HI.timeNow).toContain(HI.hintDays);
-  });
+  }, 90_000); // five fresh chats walked to the time step, one after another: slow on the CI runner
 
   it("the identical re-prompt never goes twice in a row: the second miss hands the chat to the team (HUMAN, the item, the email, the usual message)", async () => {
     const { from } = await atTimes();
