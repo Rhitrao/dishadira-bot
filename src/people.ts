@@ -21,6 +21,7 @@ import { collapseWiped, describe, earlierLink, isWiped, keptFor, SHOWN_SQL, THRE
 import { peopleCopy, type PeopleCopy } from "./people-copy";
 import { personState, quietActive, noSellActiveFor, ensureState } from "./noise";
 import { applyMoneyReceived } from "./requests";
+import { takeOverStmt } from "./handoff";
 import { iso } from "./slots";
 import {
   appointmentRow, bookingChip, bubble, callLangText, clock, consoleFrame, dayName, emptyState, firstName, forWhomText, last4, ledger, listDetail,
@@ -44,6 +45,11 @@ const seesPayments = (m: Member) => can(m, "see_money") === "yes" || can(m, "rec
 // The safety panel's buttons and "Remove their data" are owner-only: they change how the bot treats a person (the bot switches
 // row) or delete data (Privacy, in Settings). Both are the business_settings row of the permission table.
 const ownerControls = (m: Member) => can(m, "business_settings") === "yes";
+// Ticket 36: "Take over this chat" asks the Inbox's rights (src/inbox.ts rights()): reply_chat, and read_chat for this chat (a chat with an
+// open safety item only for someone who may read safety messages). Booking for them afterwards is the Inbox's, with move_booking.
+const canTakeOver = (m: Member, target: Target, safety: boolean) => can(m, "reply_chat") === "yes" && can(m, "read_chat", { ...target, safety }) === "yes";
+const hasSafetyItem = async (env: Env, id: number) =>
+  (await env.DB.prepare("SELECT 1 FROM attention WHERE target = ?1 AND resolved_at IS NULL AND kind IN ('CRISIS', 'EMERGENCY')").bind(`conv:${id}`).first()) !== null;
 
 // A booking the practitioner has (or had) with this customer: holds and expired holds don't count, as nobody booked.
 const OWN_BOOKING = `(EXISTS (SELECT 1 FROM intros i WHERE i.conversation_id = c.id AND i.practitioner_id = ?3 AND i.state NOT IN ('HELD','EXPIRED'))
@@ -348,6 +354,12 @@ async function personPage(c: ConsoleCtx, id: number, opts: PageOpts = {}) {
 <p>${p.speaks(langName(person.locale, loc))} · ${p.firstContact(dayName(person.createdAt, loc))}</p><p>${ad}</p>
 ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person.mode === "BLOCKED" ? statusChip(p.chipBlocked, "danger") : ""}</div>`;
 
+  // Take over this chat (ticket 36): only while the bot has it (not blocked, not already with the team), for someone who may reply.
+  const takeOver =
+    person.mode === "BOT" && canTakeOver(m, target, await hasSafetyItem(c.env, id))
+      ? html`<div class="card"><p class="effect">${p.takeOverEffect}</p><div class="acts">${post(p.takeOver, `${base}/take-over`, await token(c, `people-takeover:${id}`), "primary")}</div></div>`
+      : "";
+
   // The next booking (a practitioner: the next one with them).
   const nb = await nextBooking(c.env, id, m, nowMs);
   const next = nb
@@ -467,7 +479,7 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
   }
   if (owner) more.push(confirmWith({ label: p.removeData, effect: p.removeDataEffect, confirm: p.removeDataYes, action: `${base}/remove-data`, csrf: await token(c, `people-remove:${id}`), fields: reasonField(p, "remove-reason", draft.form === "remove" ? draft.reason : "") }));
 
-  const detail = html`${head}${section(p.secNext, next)}${section(p.secPackage, packHtml)}${payHtml}<div id="chat">${section(p.secChat, chatHtml)}</div>${section(p.secSafety, safetyHtml)}${
+  const detail = html`${head}${takeOver}${section(p.secNext, next)}${section(p.secPackage, packHtml)}${payHtml}<div id="chat">${section(p.secChat, chatHtml)}</div>${section(p.secSafety, safetyHtml)}${
     more.length ? section(p.secMore, html`<div class="acts">${more}</div>`) : ""
   }`;
   const list = listHtml({ m, p, rows: await listPeople(c.env, m, q, f, nowMs), q, f, openId: id, nowMs });
@@ -492,7 +504,7 @@ people.get("/:id", async (c) => {
 
 // ---------- the POSTs ----------
 type Form = Record<string, string | undefined>;
-type Done = { to: string } | { page: PageOpts };
+type Done = { to: string } | { page: PageOpts } | { url: string };
 
 // Every POST: the person must exist and be visible to this member, the role must be allowed (the same can() the button used), and the
 // form's own token must match. A refused POST changes nothing. A failed write re-shows the page with "That didn't save" and the form filled in.
@@ -508,6 +520,7 @@ function action(scope: string, allowed: (m: Member, c: ConsoleCtx, id: number, t
     try {
       const done = await run(c, id, f, found.p);
       if ("to" in done) return c.redirect(`/app/people/${id}?m=${done.to}`, 303);
+      if ("url" in done) return c.redirect(done.url, 303);
       return personPage(c, id, done.page);
     } catch {
       return personPage(c, id, { flash: consoleCopy(m.locale).notSaved, draft: draftOf?.(f), status: 500 });
@@ -535,6 +548,22 @@ people.post(
       return { page: { reveal: true } };
     },
     (f) => ({ form: "reveal", reason: String(f.reason ?? "") }),
+  ),
+);
+
+// Take over this chat (ticket 36): BOT -> HUMAN as "Talk to a person" does (src/handoff.ts takeOverStmt), with nothing sent to the customer
+// and no item; the member is given the chat, the audit row says who, and the Inbox opens on it (reply box, "Book or move for them").
+// Hand back (or Done) in the Inbox returns it to the bot. Already with the team or blocked: nothing changes.
+people.post(
+  "/:id/take-over",
+  action(
+    "people-takeover",
+    async (m, c, id, target) => canTakeOver(m, target, await hasSafetyItem(c.env, id)),
+    async (c, id) => {
+      const m = c.get("member");
+      const [res] = await c.env.DB.batch([takeOverStmt(c.env.DB, id, Date.now(), m.id), auditStmt(c, "INBOX_TAKE_OVER", `conv:${id}`, "BOT -> HUMAN")]);
+      return res.meta.changes ? { url: `/app/inbox/${id}?m=takenover` } : { to: "gone" };
+    },
   ),
 );
 

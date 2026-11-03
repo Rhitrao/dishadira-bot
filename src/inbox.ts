@@ -98,7 +98,7 @@ function why(ch: Chat, ic: InboxCopy): string {
   if (k.includes("MEDIA_FROM_CUSTOMER")) return ic.whyPayment;
   if (k.includes("HUMAN_REQUEST")) return ic.whyPerson;
   if (k.includes("FREE_TEXT")) return ic.whyQuestion;
-  return ic.whyPerson;
+  return ch.mode === "HUMAN" && !k.length ? ic.whyTakenOver : ic.whyPerson; // no item at all: the team took it over (ticket 36)
 }
 const replyLine = (ch: Chat, locale: string, nowMs: number) => {
   const ic = inboxCopy(locale);
@@ -150,7 +150,7 @@ details.done .panel .btn{width:100%;margin-top:12px}
 type Flash = { text: string } | null;
 const FLASH: Record<string, keyof InboxCopy> = {
   sent: "flashSent", followup: "flashFollowUp", skipped: "flashSkipped", dup: "flashDup", blocked: "flashBlocked", window: "flashWindow",
-  notapproved: "flashNotApproved", assigned: "flashAssigned", handedback: "flashHandedBack", done: "flashDone", gone: "flashGone",
+  notapproved: "flashNotApproved", assigned: "flashAssigned", handedback: "flashHandedBack", done: "flashDone", gone: "flashGone", takenover: "flashTakenOver",
 };
 const flashFor = (code: string | undefined, locale: string): Flash => (code && FLASH[code] ? { text: inboxCopy(locale)[FLASH[code]] as string } : null);
 
