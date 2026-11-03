@@ -159,6 +159,7 @@ The same Today on both screens: urgent cards first, then the day in time order. 
 - **The reply window in plain words.** Inside 24 hours: "Reply by 6:40 pm." After that: "WhatsApp only allows a follow-up message now", with the approved follow-up ready to send.
 - **Thread:** messages labelled Customer, Bot, Assistant and the team member's name, with a reply box at the bottom.
 - **Actions:** **Book or move for them** (opens a real slot picker), **Hand back to the bot** and **Done**, as three separate buttons. **Assign to me** shows others who is replying, so two people don't answer at once. Done asks for a one-line closing note.
+- **Taken over (ticket 36):** a chat the team took from the bot with **Take over this chat** (People) shows "Taken over by the team" and has the same reply box, Book or move, Hand back and Done.
 
 ### Calendar: when am I booked or free?
 
@@ -172,6 +173,7 @@ The same Today on both screens: urgent cards first, then the day in time order. 
 - **Search** by name or the last 4 digits. Filters: Waiting, Upcoming, Has a package, Blocked.
 - **Person page, top to bottom:**
   - Name, last 4 digits, language, first contact date and the ad they came from.
+  - **Take over this chat** (ticket 36), while the bot has the chat (not blocked, not already with the team), for anyone who may reply in the Inbox (owner and staff; a chat with an open safety item: owner only). One POST button with its own token; it moves the chat to the team exactly as "Talk to a person" does (HUMAN mode from now, the open booking step closed, the chat given to that member), sends the customer nothing, raises no item and no email, writes `INBOX_TAKE_OVER` to the audit log, and opens the chat in the Inbox. The bot then stays quiet (typed messages get the one "with our team" note; taps still work), follow-ups skip the chat, and Hand back returns it. With no team reply in 24 hours it goes back to the bot quietly (no "sorry we couldn't reply"). /admin has the same button on the person page (`ADMIN_TAKE_OVER`) and a **Hand back to the bot** button while the chat is with the team.
   - The next booking.
   - Package: "6 of 10 left", with a ledger of bought, used, returned and refunded sessions.
   - Payments.

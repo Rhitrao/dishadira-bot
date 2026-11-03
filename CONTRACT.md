@@ -1,5 +1,5 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-11-01 (v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-11-03 (v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
   read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
@@ -33,6 +33,8 @@ Razorpay (Payment Links) is the one provider, behind that interface. Only one pr
 States
 Conversation: BOT | HUMAN | BLOCKED. Typed text goes through the gatekeeper (docs/AGENT.md §3.2) before any AI call; "Talk to a person" -> HUMAN
   (buttons still work in HUMAN; free text waits for Rohit; resolving the attention item returns the chat to BOT).
+  v9: the same HUMAN mode also from the team's "Take over this chat" (owner/staff with the Inbox's rights; audited; nothing sent to the
+  customer, no item; Hand back or Done returns it to BOT), and from a second miss in a row at the time step (as "Talk to a person").
 Intro (₹99): HELD -> PAID -> CALLED_SESSION | CALLED_NOT_FIT | MISSED | RUDE; HELD -> EXPIRED;
   MISSED -> RESCHEDULED (once) -> ...; PAID -> CANCELLED_BY_US.
 Session: OFFERED -> HELD -> CONFIRMED -> COMPLETED | NO_SHOW; HELD -> EXPIRED; CONFIRMED -> CANCELLED (single, paid per session)
