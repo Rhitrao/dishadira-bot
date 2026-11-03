@@ -3,7 +3,7 @@ import { z } from "zod";
 import { config } from "./config";
 import { answerWithAI } from "./answer";
 import { firstQuestion, recentMessages } from "./ai";
-import { copyFor, LANGUAGE_BUTTONS, type Copy } from "./copy";
+import { copyFor, langOf, LANGUAGE_BUTTONS, type Copy } from "./copy";
 import type { Env } from "./env";
 import { bookingChoice } from "./booking";
 import { bookingsChoice } from "./mybookings";
@@ -18,8 +18,8 @@ import { rescheduleChoice } from "./outcomes";
 import { botAudit, runCrisis, runEmergency } from "./safety";
 import { openOfferId, sessionChoice } from "./session";
 import { raiseAttention, sendMessage, type Out, type SendResult } from "./send";
-import { iso, istDay } from "./slots";
-import { clearStep, noteReprompt, openStep, repromptHelpOut, repromptOut, sendStep, stepWithLine, typedChoice } from "./steps";
+import { formatIstLang, iso, istDay } from "./slots";
+import { clearStep, noteReprompt, openStep, repromptHelpOut, repromptOut, sendStep, stepWithLine, typedChoice, typedTime, type OpenStep, type TypedTime } from "./steps";
 import { takeHandback } from "./watch";
 
 // The tests (and the rest of the code) read these from here.
@@ -401,6 +401,11 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       return;
 
     case "CALL_REQUEST":
+      // At the time step, "call me now" or "call me at 4" answers the step (ticket 36): the typed-time path below.
+      if ((await openStep(db, conv.id))?.step === "time") {
+        await classified("TO_CLASSIFIER");
+        return;
+      }
       // One message: we don't take calls on this number, the ₹99 call is where she calls you, and the menu buttons under it. No number.
       await clearStep(db, conv.id);
       await reply(menuOut(cp, false, cp.callRequest), "callreq");
@@ -479,10 +484,16 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     if (text !== null && said.trim() === "") return; // an empty or blank text: nothing to answer, nothing for the queue
     if (await handback()) return;
     // A typed answer to the open step ("yes", "haan", "1", "tomorrow", "4 pm") is the tap it means (I8), before any AI.
+    // At the time step a typed time ("2pm to 4", "after 4", "shaam 5") is the earliest free time it names (ticket 36), and a bare number is a time.
     const step = text !== null ? await openStep(db, conv!.id) : null;
-    const meant = step ? typedChoice(step, said) : null;
+    const atTime = step?.step === "time" ? await typedTime(db, step, said) : null;
+    const meant = atTime?.kind === "pick" ? atTime.id : step && !atTime ? typedChoice(step, said) : null;
     if (meant) {
       await tapped(meant);
+      return;
+    }
+    if (step && atTime) {
+      await timeMiss(step, atTime);
       return;
     }
     // The assistant (when AI_REPLIES is on) labels and answers the question. Otherwise, or when it cannot answer in the middle of a booking, the path below.
@@ -522,6 +533,10 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       // (Timings: the re-prompt's hint already says the hours on the day and time steps.)
       const info = topic && topic !== "timings" && !ACTION_TOPICS.includes(topic) ? topicText(cp, topic) : null;
       const withAnswer = info ? stepWithLine(open, info) : null;
+      if (!withAnswer && open.step === "time") {
+        await timeMiss(open, null, viaAI); // ticket 36: once, then the team
+        return;
+      }
       const res = await reply(withAnswer ?? repromptOut(cp, open, viaAI), "reprompt");
       if (res !== "BURST" && !withAnswer) {
         const n = await noteReprompt(db, conv!.id);
@@ -545,6 +560,26 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     if (await sentRecently(db, conv!.id, "ack", config.router.noMatchEveryMinutes)) return;
     const noSell = await noSellActive(db, conv!.id);
     await reply(menuOut(cp, noSell, noSell ? cp.aiFallbackNoSell : cp.ack, true), "ack");
+  }
+
+  // ---- the time step, when what they typed can't be booked (ticket 36) ----
+  // The first miss: one short line above the same time list (it's now / outside the hours / nothing free then / otherwise the re-prompt).
+  // The second miss in a row (config.booking.timeMissesToTeam): no list again; the chat goes to the team by the "Talk to a person" path
+  // (HUMAN mode, the item, the email) with the usual "a person will reply" message. A tap or a new step starts the count again.
+  async function timeMiss(open: OpenStep, said: TypedTime | null, viaAI = false): Promise<void> {
+    if (open.reprompts + 1 >= config.booking.timeMissesToTeam) {
+      if (await burst("time-team", "text")) return;
+      await requestHuman(env, conv!.id, Date.now(), "time");
+      await reply({ type: "text", text: cp.handoffAck }, "handoff");
+      return;
+    }
+    const line =
+      said?.kind === "now" ? cp.timeNow
+      : said?.kind === "outside" ? cp.timeOutside
+      : said?.kind === "none" ? cp.timeNoneThen(formatIstLang(said.startUtc, langOf(conv!.locale)).day)
+      : null;
+    const res = await reply((line && stepWithLine(open, line)) || repromptOut(cp, open, viaAI), "reprompt");
+    if (res !== "BURST") await noteReprompt(db, conv!.id);
   }
 
   // ---- a button or list tap, or a template quick reply ----

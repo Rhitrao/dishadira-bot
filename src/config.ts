@@ -53,6 +53,7 @@ export const config = {
     eveningFrom: "16:00", // the time list has an Afternoon section before this and an Evening section from it
     stepOpenHours: 24, // a booking step stays "open" (a typed message re-sends it) this long; a payment step lasts as long as its hold
     repromptHelpAfter: 3, // after this many re-prompts in a row, "Talk to a person" is offered too
+    timeMissesToTeam: 2, // ticket 36: at the time step, this many misses in a row (a typed time that doesn't fit, or text that isn't a time) hand the chat to the team
   },
   // What customers (and Amma) see for each internal service code. Change a label here and it changes everywhere.
   serviceNames: {
@@ -270,6 +271,31 @@ export const config = {
         ["saturday", "sat", "shanivar", "शनिवार", "शनि"],
       ],
       maxWords: 5,
+      // Ticket 36: a time typed at the time step ("2pm to 4", "after 4", "shaam 5", "evening", "call me now"), src/steps.ts typedTime().
+      // Every word of the message must be a number, am/pm, one of these, or the list's own day ("today"); anything else is not read as a time.
+      time: {
+        maxWords: 12,
+        now: ["now", "abhi", "turant", "immediately", "asap", "अभी", "तुरंत"],
+        morning: ["morning", "subah", "subha", "सुबह"],
+        afternoon: ["afternoon", "noon", "dopahar", "dopehar", "dupahar", "दोपहर"],
+        evening: ["evening", "shaam", "sham", "शाम"],
+        night: ["night", "tonight", "raat", "रात"],
+        after: ["after", "baad", "बाद", "onwards", "later"],
+        before: ["before", "pehle", "pahle", "पहले"],
+        until: ["till", "until", "upto", "tak", "तक"],
+        range: ["to", "and", "from", "between", "se", "beech", "bich", "से", "बीच"],
+        filler: [
+          "at", "around", "about", "by", "on", "the", "a", "is", "it", "its", "ok", "okay", "fine", "good", "please", "pls", "plz", "can", "could", "you", "u", "r",
+          "are", "will", "would", "i", "me", "my", "we", "want", "need", "like", "prefer", "book", "slot", "time", "free", "available", "call", "calls", "us", "do",
+          "for", "ji", "sir", "mam", "madam", "maam", "yes", "haan", "baje", "bje", "o", "clock", "oclock", "right", "just", "only", "sharp", "then", "so", "any",
+          "ke", "ki", "ko", "kar", "karo", "karna", "kijiye", "dena", "hai", "h", "ho", "mujhe", "muje", "mere", "liye", "pe", "par",
+          "बजे", "के", "की", "को", "कॉल", "करो", "करें", "कीजिए", "है", "हैं", "मुझे", "समय", "टाइम", "पर", "जी",
+        ],
+        // Parts of the day, India time (the afternoon ends where the time list's Evening section starts, config.booking.eveningFrom).
+        morningFrom: "05:00",
+        noon: "12:00",
+        nightFrom: "21:00",
+      },
     },
     topics: {
       medical: [
