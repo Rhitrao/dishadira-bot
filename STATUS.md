@@ -1,7 +1,7 @@
 # STATUS
 Updated: 2026-11-03 (Ticket 36: the team can take over a chat, and typed times at the time step)
 
-## Ticket 36 (PR: see below, no migration, CONTRACT v9)
+## Ticket 36 (PR https://github.com/Rhitrao/dishadira-bot/pull/57, no migration, CONTRACT v9)
 Why: a real case from the new ad on 3 Nov (general terms only): a customer at the time step typed times instead of tapping (a range, a morning time, "now", "call me at"), got the same re-prompt four times and never booked, and the team had no way to step in because the Inbox shows only chats already with the team.
 - **Take over this chat** (src/handoff.ts `takeOverStmt`): on the /app person page (owner and staff, the Inbox's rights: reply_chat + read_chat; a chat with an open safety item owner only) and on **/admin/conv/<id>** (what Rohit uses on live while CONSOLE_V2 is "false"). One POST button (Origin + its own form token), shown only while the bot has the chat and the number isn't blocked. BOT -> HUMAN with human_since now, the open booking step closed; nothing is sent to the customer; no item and no email; audited `INBOX_TAKE_OVER` (with the member, who is also given the chat) or `ADMIN_TAKE_OVER`. /app then opens the chat in the Inbox ("Taken over by the team"; reply box inside the 24-hour window; Book or move for them; Hand back; Done). /admin shows its existing reply box and a new **Hand back to the bot** (`ADMIN_HAND_BACK`, closes the chat's waiting items). In HUMAN mode the bot stays quiet as before (one "with our team" note to a typed message; taps still work); follow-ups skip it (they need BOT mode); with no team reply in 24 hours it goes back to the bot **quietly** (no "Sorry we couldn't reply", no email: the customer never asked).
 - **Typed times at the time step** (src/steps.ts `parseTypedTime`/`typedTime`, src/whatsapp.ts `timeMiss`; words in `config.router.stepWords.time`): "2", "2pm", "2:30", "14:00", "2pm to 4", "between 3 and 5", "3 se 5 tak", "after 4", "4 ke baad", "4 baje", "shaam 5", "दोपहर 3 बजे", "evening", "afternoon". Only a message made entirely of times and those words (and the list's own day) is read as a time, so "price for 2 sessions" or "Sunday please" are not. In range: the earliest free time (from the database) is taken as that row's tap (same hold, link and guards; the pay message names the time). Before the AI, as ticket 31's typed answers. At the time step a bare number is a time ("2" = 2 pm), not the n-th row. Hours, days and slot length all from config.
@@ -102,7 +102,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 33 Instagram and Messenger FAQs and short links (no migration; PR https://github.com/Rhitrao/dishadira-bot/pull/54)
 - [ ] 34 Instagram and Messenger: timed-out sends, our own echoes, rude and sexual messages (migration 0014; PR https://github.com/Rhitrao/dishadira-bot/pull/55)
 - [ ] 35 Instagram/Messenger conversations continue, every comment gets a DM, follow-ups on all channels (migration 0015; PR https://github.com/Rhitrao/dishadira-bot/pull/56)
-- [ ] 36 The team can take over a chat; typed times at the time step (no migration, CONTRACT v9; PR: PR_PLACEHOLDER)
+- [ ] 36 The team can take over a chat; typed times at the time step (no migration, CONTRACT v9; PR https://github.com/Rhitrao/dishadira-bot/pull/57)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
