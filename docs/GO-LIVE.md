@@ -216,3 +216,32 @@ From this release the live bot runs the new console: `/app` is the daily tool fo
 - [ ] **Settings → Bot**: the switches show the same state as before on `/admin`.
 
 **5. Rollback, if anything is wrong.** In `wrangler.toml`, under `[env.live.vars]`, set `CONSOLE_V2 = "false"` and run **Actions → Deploy → live**. `/admin` and `/amma` work exactly as before, emails link to them again, and nothing needs undoing (the new tables and columns are only added to). Photo ids stay on the rows, are viewable from `/admin/conv/<id>`, and are wiped with the text as before.
+
+### 18. Phone alerts when a customer books and pays (ticket 45)
+A notification on your phone (and Amma's) from the home-screen app when a customer pays for a ₹99 call, a ₹799 session or a package, or books a session from a package. You get every booking at once; Amma gets only her own customers' bookings, and those between 9 pm and 8 am wait until 8 am. Staff get none. The alert never shows a name or number. No outside service: the bot sends them itself, so it needs its own key pair, which only you create. Nothing here was done by Claude.
+
+**1. Make the key pair (once).** It must not run in a Claude chat or in GitHub Actions (this repository is public, so Actions logs are public too).
+- [ ] GitHub → this repository → **Code** → **Codespaces** → **Create codespace on main**. A terminal opens in the browser.
+- [ ] In that terminal type `npm run vapid-keys` and press Enter (it needs nothing installed first). It prints two lines: `VAPID_PUBLIC_KEY=…` and `VAPID_PRIVATE_KEY=…`. Keep this tab open for step 2.
+- [ ] (On any computer with Node.js the same `npm run vapid-keys` works.)
+
+**2. Add them as two secrets of the live Worker.** Cloudflare → **Workers & Pages** → `dishadira-bot-live` → **Settings** → **Variables and Secrets** → **Add** → Type **Secret**:
+- [ ] Name `VAPID_PUBLIC_KEY`, value: everything after `VAPID_PUBLIC_KEY=` → **Save**.
+- [ ] Name `VAPID_PRIVATE_KEY`, value: everything after `VAPID_PRIVATE_KEY=` → **Save**.
+- [ ] (Same thing from a terminal: `npx wrangler secret put VAPID_PUBLIC_KEY --env live`, then `npx wrangler secret put VAPID_PRIVATE_KEY --env live`, pasting each value when asked.)
+- [ ] Close the codespace and delete it (GitHub → your avatar → **Your codespaces** → ⋯ → **Delete**). Never paste the private key into a chat, an email, a ticket or a screenshot. If it ever leaks, make a new pair, replace both secrets, and everyone taps **Turn on** again.
+- [ ] Optional, for trying it on the test bot first: the same two secrets on `dishadira-bot-test` (a different pair is fine).
+
+**3. Merge and deploy.** Merge PR #62 and PR #63 first, then this ticket's PR. GitHub → **Actions** → **Deploy** → **Run workflow** → **live**. It applies migration 0019 (the devices and the alert queue). Until the two secrets are there, Settings says "Alerts aren't set up for this copy of the bot yet" and nothing is sent.
+
+**4. Turn it on, on your phone.**
+- [ ] The app must be on the home screen (§17 step 4: Chrome ⋮ → **Add to Home screen**; iPhone Safari: **Share → Add to Home Screen**). **iPhone: alerts need iOS 16.4 or later and work only in the app opened from the home-screen icon**, not in a Safari tab. Android: Chrome.
+- [ ] Open the app from the home-screen icon → **Settings** → **Alerts on this phone** → **Turn on**. The phone asks whether to allow notifications: **Allow**.
+- [ ] Tap **Send a test alert**. Within a few seconds the phone shows "Test alert". Tap it: the console opens.
+- [ ] If the button says notifications are blocked: phone **Settings** → **Notifications** (iPhone: find "Disha Dira"; Android: Chrome → Site settings → Notifications → bot.disha-dira.com) → allow, then open the app again.
+
+**5. The same on Amma's phone.** Open the app from her home-screen icon, signed in as her → **Settings** (she now has a Settings tab with only this) → **Alerts on this phone** → **Turn on** → **Allow** → **Send a test alert**.
+
+**6. Check with a real booking.** Book and pay a ₹99 call from your own WhatsApp (as in §17 step 4): within about two minutes both phones show "New booking · ₹99 call · Tomorrow, 3:00 pm" (the time of the call). The daily summary has one line, "Phone alerts to the team (last 24 hours): N sent, M not delivered".
+
+**To stop it on one phone:** Settings → Alerts on this phone → **Turn off** (or **Remove** next to a device in the list, for a lost phone). **For everyone:** delete the two secrets and deploy again.

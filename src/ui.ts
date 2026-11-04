@@ -83,16 +83,17 @@ export const SCREENS: Record<TabId, { href: string; label: keyof ConsoleCopy; qu
   settings: { href: "/app/settings", label: "tabSettings", question: "qSettings" },
 };
 
-// Which screens each role has (the PRD's permission table): a practitioner has three tabs, staff four, the owner all six.
-// Practitioners speak on calls, so they have no Inbox; nobody but the owner sees money or settings.
+// Which screens each role has (the PRD's permission table): a practitioner has four tabs, staff four, the owner all six.
+// Practitioners speak on calls, so they have no Inbox; nobody but the owner sees money or the business's settings. A practitioner's
+// Settings holds only "Alerts on this phone" (ticket 45).
 const ROLE_TABS: Record<ConsoleRole, TabId[]> = {
   OWNER: ["today", "inbox", "calendar", "people", "payments", "settings"],
-  PRACTITIONER: ["today", "calendar", "people"],
+  PRACTITIONER: ["today", "calendar", "people", "settings"],
   STAFF: ["today", "inbox", "calendar", "people"],
 };
 export const tabsFor = (role: ConsoleRole): TabId[] => ROLE_TABS[role];
 export const rolesFor = (tab: TabId): ConsoleRole[] => CONSOLE_ROLES.filter((r) => ROLE_TABS[r].includes(tab));
-// On a phone the bottom bar holds these four (when the role has them); the rest go under More.
+// On a phone the bottom bar holds these four (when the role has them); the rest go under More. A role with four tabs or fewer has them all.
 const PHONE_TABS: TabId[] = ["today", "inbox", "calendar", "people"];
 
 const text = (c: ConsoleCopy, key: keyof ConsoleCopy) => c[key] as string;
@@ -447,9 +448,10 @@ export const section = (title: string, body: unknown, count?: number) =>
   html`<section><h2 class="sec"><span>${title}</span>${count ? html`<span class="n">${count}</span>` : ""}</h2>${body}</section>`;
 
 // The screen's title is its question, with who can see it underneath. `eyebrow`: a quiet line above it (Today's greeting and date).
-export function screenHead(tab: TabId, locale?: string | null, o: { eyebrow?: string } = {}) {
+// `roles`: who sees what this screen shows, when that isn't everyone with the tab (the business's Settings: the owner alone).
+export function screenHead(tab: TabId, locale?: string | null, o: { eyebrow?: string; roles?: ConsoleRole[] } = {}) {
   const c = consoleCopy(locale);
-  const who = rolesFor(tab).map((r) => roleName(r, locale)).join(", ");
+  const who = (o.roles ?? rolesFor(tab)).map((r) => roleName(r, locale)).join(", ");
   return html`<header class="screen">${o.eyebrow ? html`<p class="eyebrow">${o.eyebrow}</p>` : ""}<h1>${text(c, SCREENS[tab].question)}</h1><p class="visible">${c.visibleTo(who)}</p></header>`;
 }
 
@@ -497,8 +499,8 @@ export function consoleFrame(o: FrameOpts) {
   const on = (t: TabId) => (t === o.active ? " on" : "");
 
   const railTabs = tabs.map((t) => html`<li><a class="tab${on(t)}" href="${SCREENS[t].href}"${current(t)}>${icon(t)}<span>${label(t)}</span>${badge(t)}</a></li>`);
-  const phoneTabs = tabs.filter((t) => PHONE_TABS.includes(t));
-  const moreTabs = tabs.filter((t) => !PHONE_TABS.includes(t));
+  const phoneTabs = tabs.length <= 4 ? tabs : tabs.filter((t) => PHONE_TABS.includes(t));
+  const moreTabs = tabs.filter((t) => !phoneTabs.includes(t));
   const moreOn = o.active !== null && moreTabs.includes(o.active);
   const bar = html`${phoneTabs.map((t) => html`<a class="tab${on(t)}" href="${SCREENS[t].href}"${current(t)}><span class="ic">${icon(t)}</span><span>${label(t)}</span>${badge(t)}</a>`)}${
     moreTabs.length

@@ -110,7 +110,7 @@ Three roles cover a solo practice and a small team. Each member has exactly one 
 
 ## Information architecture
 
-The console has six screens. Everyone lands on Today, and a role sees only the tabs it can use, so a practitioner's console has three tabs, not six.
+The console has six screens. Everyone lands on Today, and a role sees only the tabs it can use, so a practitioner's console has four tabs, not six (Today, Calendar, People, and a Settings that holds only "Alerts on this phone", ticket 45).
 
 *(Drawing in the doc: screen map · 6 screens and who sees them.)*
 

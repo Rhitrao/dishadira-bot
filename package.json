@@ -6,7 +6,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --testTimeout=20000",
-    "dryrun": "wrangler deploy --dry-run --outdir dist"
+    "dryrun": "wrangler deploy --dry-run --outdir dist",
+    "vapid-keys": "node scripts/vapid-keys.mjs"
   },
   "dependencies": {
     "hono": "4.13.12",

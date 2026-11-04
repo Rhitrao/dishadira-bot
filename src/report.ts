@@ -6,6 +6,7 @@ import type { Env } from "./env";
 import { sendAlerts, sendEmailToEach } from "./mail";
 import { formatIstParts, iso, istDay } from "./slots";
 import { afterCallLines } from "./aftercall";
+import { pushDigestLine } from "./alerts";
 import { followUpLines } from "./followup";
 import { socialLines } from "./social";
 import { switchStates } from "./switches";
@@ -230,6 +231,8 @@ export async function digestText(env: Env, nowMs = Date.now()): Promise<string> 
     "",
     "Worth a follow-up (last 24 hours, not paid yet)",
     ...(leads.length ? leads.map((l) => `- ${firstName(l.name)} · ${consoleLink(env, `/admin/conv/${l.id}`)}`) : ["- Nobody."]),
+    "",
+    await pushDigestLine(env, nowMs),
     "",
     "What's switched off",
     ...(off.length ? off.map((o) => `- ${o}`) : ["- Nothing: the bot is taking bookings and answering."]),

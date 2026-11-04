@@ -7,9 +7,10 @@ import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { can, listMembers, memberCsrf, WORKSPACE_ID, type Member } from "./auth";
 import { AFTER_SWITCHES, afterKey, afterSwitches, isAfterSwitch, setAfterSwitchStmt } from "./aftercall";
+import { ALERTS_CSP, alertRoutes, alertsFlash, alertsSection, alertsTitle } from "./alerts";
 import { ACCENTS, accentOf, chosenIds, DEFAULT_PRICES, isAccent, KEYS, loadPrices, PRICE_NAMES, pricePaise, readPrices, staffReadsChat, validPrice, type AccentName, type PriceName, type Prices } from "./business";
 import { config } from "./config";
-import { auditStmt, languageCsrf, refused, type ConsoleCtx, type ConsoleVars } from "./console";
+import { appPage, auditStmt, languageCsrf, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleLang } from "./console-copy";
 import type { Env } from "./env";
 import { HEARTBEAT_KEY, HEARTBEAT_STALE_MIN, MAIL_LAST_KEY } from "./mail";
@@ -310,6 +311,8 @@ const ACTION_WORDS: Record<string, { en: string; hi: string }> = {
   HOLIDAY_REMOVED: { en: "Removed a holiday", hi: "छुट्टी हटाई" },
   EMAILS_CHANGED: { en: "Changed who gets emails", hi: "ईमेल पाने वाले बदले" },
   STAFF_CHAT_TEXT: { en: "Changed whether staff read chats", hi: "स्टाफ़ के चैट पढ़ने की सेटिंग बदली" },
+  PUSH_SUBSCRIBED: { en: "Turned on phone alerts on a device", hi: "एक डिवाइस पर फ़ोन अलर्ट चालू किए" },
+  PUSH_UNSUBSCRIBED: { en: "Turned off phone alerts on a device", hi: "एक डिवाइस पर फ़ोन अलर्ट बंद किए" },
   DATA_EXPORTED: { en: "Downloaded payments", hi: "पेमेंट डाउनलोड किए" },
   REFUND_RETRIED: { en: "Retried a refund", hi: "रिफ़ंड फिर से भेजा" },
   member_invited: { en: "Invited a member", hi: "सदस्य को बुलाया" },
@@ -417,12 +420,16 @@ export const rupeesText = (paise: number) => `₹${(paise / 100).toLocaleString(
 // ---------- the routes ----------
 export const settings = new Hono<{ Bindings: Env; Variables: ConsoleVars }>();
 
-// Only the owner reaches anything here (GET or POST): Settings is business_settings, the audit log read_audit.
+// Only the owner reaches the rest (GET or POST): Settings is business_settings, the audit log read_audit. "Alerts on this phone" (ticket 45,
+// src/alerts.ts) is phone_alerts: the owner and the practitioner, whose Settings page is that section alone. Staff: none of it.
 settings.use("*", async (c, next) => {
-  const action = c.req.path.startsWith("/app/settings/audit") ? "read_audit" : "business_settings";
+  const p = c.req.path.replace(/\/$/, "");
+  const alerts = p.startsWith("/app/settings/alerts") || (p === "/app/settings" && c.req.method === "GET" && can(c.get("member"), "phone_alerts") === "yes");
+  const action = p.startsWith("/app/settings/audit") ? "read_audit" : alerts ? "phone_alerts" : "business_settings";
   if (can(c.get("member"), action) !== "yes") return refused(c);
   await next();
 });
+settings.route("/alerts", alertRoutes);
 
 const FLASH = ["saved", "nothingChanged", "switched", "envIsMaster"] as const;
 type Flash = (typeof FLASH)[number];
@@ -581,10 +588,13 @@ ${notes.map((x) => html`<p class="why">${x}</p>`)}<div class="acts">${act}</div>
   }</div></div>`;
 
   const system = await systemCard(c, now);
-  const body = html`${screenHead("settings", lang)}
-${section(w.secBusiness, business)}${section(w.secPrices, pricesCard)}${section(w.secTeam, team)}${section(w.secBot, switchCards)}
+  const alerts = await alertsSection(c);
+  const body = html`${screenHead("settings", lang, { roles: ["OWNER"] })}
+${section(alertsTitle(lang), alerts.html)}${section(w.secBusiness, business)}${section(w.secPrices, pricesCard)}${section(w.secTeam, team)}${section(w.secBot, switchCards)}
 ${section(w.secAfter, afterCards)}${section(w.secEmails, emails)}${section(w.secPayments, rzp)}${section(w.secPrivacy, privacy)}${section(w.secSystem, system)}`;
-  return ownerPage(c, { active: "settings", title: SETTINGS_TITLE[consoleLang(lang)], body, flash: o.flash, status: o.status, back: "/app/settings" });
+  const res = await ownerPage(c, { active: "settings", title: SETTINGS_TITLE[consoleLang(lang)], body, flash: o.flash, status: o.status, back: "/app/settings" });
+  if (alerts.scripted) res.headers.set("Content-Security-Policy", ALERTS_CSP); // this page alone loads /app/alerts.js
+  return res;
 }
 const SETTINGS_TITLE = { en: "Settings", hi: "सेटिंग्स" };
 
@@ -619,10 +629,18 @@ ${line(w.payChecks, html`${pays?.n ?? 0}${pays?.n ? html` · <a class="tap" href
 </dl></div>`;
 }
 
-settings.get("/", (c) => {
+settings.get("/", async (c) => {
+  const m = c.get("member");
   const code = c.req.query("m") as Flash | undefined;
-  const w = W(c.get("member"));
-  return settingsPage(c, { flash: code && FLASH.includes(code) ? w[code] : null });
+  const w = W(m);
+  const flash = (code && FLASH.includes(code) ? w[code] : null) ?? alertsFlash(code, m.locale);
+  if (can(m, "business_settings") === "yes") return settingsPage(c, { flash });
+  // The practitioner: only her phone alerts.
+  const alerts = await alertsSection(c);
+  const body = html`<header class="screen"><h1>${alertsTitle(m.locale)}</h1></header>${alerts.html}`;
+  const res = await appPage(c, { active: "settings", title: SETTINGS_TITLE[consoleLang(m.locale)], body, flash, back: "/app/settings" });
+  if (alerts.scripted) res.headers.set("Content-Security-Policy", ALERTS_CSP);
+  return res;
 });
 
 // ---- Business: name, accent, default language ----
@@ -793,7 +811,7 @@ settings.get("/audit", async (c) => {
       )}</div>`
     : emptyState(who || what ? w.noMatch : w.noAudit, who || what ? { label: w.everyone, href: "/app/settings/audit" } : { label: w.backToSettings, href: "/app/settings" });
   const q = new URLSearchParams({ ...(who ? { who } : {}), ...(what ? { what } : {}), before: String(page.at(-1)?.id ?? 0) });
-  const body = html`${screenHead("settings", lang)}<p><a class="crumb" href="/app/settings">← ${w.backToSettings}</a></p>
+  const body = html`${screenHead("settings", lang, { roles: ["OWNER"] })}<p><a class="crumb" href="/app/settings">← ${w.backToSettings}</a></p>
 ${section(w.auditTitle, html`<p class="note">${w.auditSub}</p>${filters}${list}${more ? html`<div class="acts"><a class="btn" href="/app/settings/audit?${q.toString()}">${w.older}</a></div>` : ""}`)}`;
   return ownerPage(c, { active: "settings", title: w.auditTitle, body, back: "/app/settings/audit" });
 });

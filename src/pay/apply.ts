@@ -11,6 +11,7 @@ import { REMINDER_AT } from "../remind";
 import { raiseAttention, sendMessage, sendOrTemplate } from "../send";
 import { formatIstLang, iso, istDay } from "../slots";
 import { sendsOn } from "../switches";
+import { queueBookingAlert } from "../alerts";
 import type { PayStatus, PaymentProvider } from "./provider";
 import { requestRefund } from "./refund";
 
@@ -180,7 +181,11 @@ async function applyPaid(env: Env, provider: PaymentProvider, pay: Payment, ev: 
     await tellPayer(env, pay.id);
     return "DUPLICATE_REFUNDED";
   }
-  return pay.purpose === "SESSION" ? bookSession(env, pay) : pay.purpose === "PACKAGE" ? bookPackage(env, pay) : bookIntro(env, provider, pay, ev.linkId !== "");
+  const booked = await (pay.purpose === "SESSION" ? bookSession(env, pay) : pay.purpose === "PACKAGE" ? bookPackage(env, pay) : bookIntro(env, provider, pay, ev.linkId !== ""));
+  // A real paid booking (never a hold, a duplicate, a late payment with no time, a mismatch): the team's phone alert (ticket 45), once per
+  // payment and member however often this runs. Failing to queue it never fails the payment.
+  if (booked === "BOOKED") await queueBookingAlert(env, pay.purpose === "INTRO" ? "CALL" : pay.purpose === "SESSION" ? "SESSION" : "PACKAGE", pay.id).catch(() => 0);
+  return booked;
 }
 
 // A package payment: the credits are added once (src/packages.ts), then one confirmation with [Book a session].

@@ -57,7 +57,9 @@ describe("config", () => {
   });
 
   it("names every required secret", () => {
-    expect(SECRET_NAMES).toHaveLength(18);
+    expect(SECRET_NAMES).toHaveLength(20); // ticket 45 added VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY
+    expect(SECRET_NAMES).toContain("VAPID_PUBLIC_KEY");
+    expect(SECRET_NAMES).toContain("VAPID_PRIVATE_KEY");
   });
 
   it("Razorpay's secrets are the payment secrets, and the provider config is complete", () => {

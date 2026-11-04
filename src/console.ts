@@ -49,7 +49,7 @@ export const TABS: { id: TabId; href: string; action: Action }[] = [
   { id: "calendar", href: "/app/calendar", action: "view_calendar" },
   { id: "people", href: "/app/people", action: "view_people" },
   { id: "payments", href: "/app/payments", action: "see_money" },
-  { id: "settings", href: "/app/settings", action: "business_settings" },
+  { id: "settings", href: "/app/settings", action: "phone_alerts" }, // the owner's has the business's settings too (business_settings)
 ];
 
 // A customer's file (ticket 38, src/media.ts) brings its own stricter headers ("no-store, private", a CSP for the file): kept as they are.

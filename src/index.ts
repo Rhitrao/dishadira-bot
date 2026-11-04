@@ -1,9 +1,10 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { Env } from "./env";
 import { admin } from "./admin";
 import { loadPrices } from "./business";
 import { amma } from "./amma";
 import { cleanAfterCall, reviewAsks, sessionReminders } from "./aftercall";
+import { pushSoon, sendPushAlerts, serveAlertsJs, serveSw } from "./alerts";
 import { cleanFollowUps, whatsappFollowUps } from "./followup";
 import { serveBrand, serveManifest } from "./brand";
 import { serveFont } from "./fonts";
@@ -40,7 +41,7 @@ app.onError((_e, c) => {
 // Every request quotes the owner's prices from Settings (src/business.ts); /health, the font files, the payment link, /fb and /ig don't need
 // them (/b/ does: its WhatsApp text says the ₹99).
 app.use("*", async (c, next) => {
-  if (!["/health", "/fb", "/ig"].includes(c.req.path) && !c.req.path.startsWith("/app/fonts/") && !c.req.path.startsWith("/app/brand/") && c.req.path !== "/app/manifest.webmanifest" && !c.req.path.startsWith("/p/")) await loadPrices(c.env);
+  if (!["/health", "/fb", "/ig"].includes(c.req.path) && !c.req.path.startsWith("/app/fonts/") && !c.req.path.startsWith("/app/brand/") && !["/app/manifest.webmanifest", "/app/sw.js", "/app/alerts.js"].includes(c.req.path) && !c.req.path.startsWith("/p/")) await loadPrices(c.env);
   await next();
 });
 
@@ -50,9 +51,18 @@ app.get("/app/fonts/:file", serveFont);
 // The brand mark, logo and home-screen icons, and the web app manifest (ticket 39, src/brand.ts); 404 unless CONSOLE_V2 is "true".
 app.get("/app/brand/:file", serveBrand);
 app.get("/app/manifest.webmanifest", serveManifest);
+// The phone alerts' service worker (scope /app/) and the Settings page's one script (ticket 45, src/alerts.ts); 404 unless CONSOLE_V2 is "true".
+app.get("/app/sw.js", serveSw);
+app.get("/app/alerts.js", serveAlertsJs);
 
 app.get("/wa/webhook", verifyWebhook);
-app.post("/wa/webhook", receiveWebhook);
+// After either webhook, a phone alert it queued (ticket 45) goes at once, in waitUntil, never delaying the reply.
+const thenPush = (handler: (c: Context<{ Bindings: Env }>) => Promise<Response>) => async (c: Context<{ Bindings: Env }>) => {
+  const res = await handler(c);
+  if (res.status === 200) pushSoon(c);
+  return res;
+};
+app.post("/wa/webhook", thenPush(receiveWebhook));
 // Instagram DMs and Messenger (ticket 32, src/social.ts): its own route and verify token, the same app secret. Public, like /wa/webhook.
 app.get("/meta/webhook", verifyMetaWebhook);
 app.post("/meta/webhook", receiveMetaWebhook);
@@ -63,7 +73,7 @@ app.get("/b", bookRedirect);
 app.get("/b/*", bookRedirect);
 app.get("/fb", pageRedirect);
 app.get("/ig", profileRedirect);
-app.post("/pay/razorpay/webhook", (c) => razorpayWebhook(c));
+app.post("/pay/razorpay/webhook", thenPush((c) => razorpayWebhook(c)));
 // Our own payment link (ticket 29): public, outside /amma, /admin and /app, so Cloudflare Access never stands in front of it.
 app.get("/p/:token", payLinkPage);
 // With CONSOLE_V2 on, the old pages send people to /app (src/switchover.ts); off, they work exactly as before.
@@ -111,7 +121,7 @@ const scheduled = async (event: { cron: string; scheduledTime?: number }, env: E
   // One failing job must not stop the others; each is safe to run again.
   for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);
   for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests, nudgeUnpaidHolds, resendSkippedPaid, sendRefundNotices, cleanSocial,
-    whatsappFollowUps, socialFollowUps, cleanFollowUps, sessionReminders, reviewAsks, cleanAfterCall]) await job(env).catch(() => 0);
+    whatsappFollowUps, socialFollowUps, cleanFollowUps, sessionReminders, reviewAsks, cleanAfterCall, sendPushAlerts]) await job(env).catch(() => 0);
   await runDailyJobs(env, event.scheduledTime ?? Date.now()).catch(() => undefined);
 };
 
