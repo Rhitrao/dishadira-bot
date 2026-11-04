@@ -10,7 +10,7 @@ import { AFTER_SWITCHES, afterKey, afterSwitches, isAfterSwitch, setAfterSwitchS
 import { ALERTS_CSP, alertRoutes, alertsFlash, alertsSection, alertsTitle } from "./alerts";
 import { ACCENTS, accentOf, chosenIds, DEFAULT_PRICES, isAccent, KEYS, loadPrices, PRICE_NAMES, pricePaise, readPrices, staffReadsChat, validPrice, type AccentName, type PriceName, type Prices } from "./business";
 import { config } from "./config";
-import { appPage, auditStmt, languageCsrf, refused, type ConsoleCtx, type ConsoleVars } from "./console";
+import { appPage, auditStmt, badgesOf, languageCsrf, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleLang } from "./console-copy";
 import type { Env } from "./env";
 import { HEARTBEAT_KEY, HEARTBEAT_STALE_MIN, MAIL_LAST_KEY } from "./mail";
@@ -366,20 +366,20 @@ const actionText = (action: string, locale: string) =>
 // ---------- the page frame for the owner's screens (Payments uses it too) ----------
 // Form fields and small layouts the shared stylesheet doesn't have yet; inline, as the CSP allows inline styles.
 export const EXTRA_CSS = `<style>
-.fld{display:block;margin:0 0 16px}.fld>span{display:block;font-weight:500;margin:0 0 4px}.fld .help{display:block;color:var(--muted);font-size:16px;margin:4px 0 0}
-.fld input[type=text],.fld select{width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px}
-.fld.bad input,.fld.bad select{border:2px solid var(--danger)}.fld .err{display:block;color:var(--danger);font-size:16px;margin:4px 0 0}
-.money{display:flex;align-items:center;gap:8px}.money b{font-size:20px}.money input{max-width:12em}
+.fld{display:block;margin:0 0 16px}.fld>span{display:block;font-weight:500;margin:0 0 4px}.fld .help{display:block;color:var(--muted);font-size:var(--fs-3);margin:4px 0 0}
+.fld input[type=text],.fld select{width:100%;min-height:var(--tap);font:inherit;font-size:var(--fs-in);color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px}
+.fld.bad input,.fld.bad select{border:2px solid var(--danger)}.fld .err{display:block;color:var(--danger);font-size:var(--fs-3);margin:4px 0 0}
+.money{display:flex;align-items:center;gap:8px}.money b{font-size:var(--fs-num)}.money input{max-width:12em}
 .pick{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px;padding:0;border:0}.pick legend{font-weight:500;margin:0 0 8px;padding:0}
-.pick label{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:8px 16px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);cursor:pointer}
+.pick label{display:inline-flex;align-items:center;gap:8px;min-height:var(--tap);padding:8px 16px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);cursor:pointer}
 .pick input{width:22px;height:22px;margin:0;accent-color:var(--accent)}
 .sw{display:inline-block;width:20px;height:20px;border-radius:50%;border:1px solid var(--line)}
-.kv{display:grid;grid-template-columns:minmax(0,1fr);gap:4px 16px;margin:0}.kv dt{color:var(--muted);font-size:16px;margin:12px 0 0}.kv dt:first-child{margin-top:0}.kv dd{margin:0;overflow-wrap:anywhere}
+.kv{display:grid;grid-template-columns:minmax(0,1fr);gap:4px 16px;margin:0}.kv dt{color:var(--muted);font-size:var(--fs-3);margin:12px 0 0}.kv dt:first-child{margin-top:0}.kv dd{margin:0;overflow-wrap:anywhere}
 .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0 0 12px}.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
-.stat .k{color:var(--muted);font-size:16px;margin:0}.stat .v{font-size:24px;font-weight:600;margin:4px 0 0;overflow-wrap:anywhere}
+.stat .k{color:var(--muted);font-size:var(--fs-3);margin:0}.stat .v{font-size:22px;font-weight:600;margin:4px 0 0;overflow-wrap:anywhere}
 .filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin:0 0 16px}.filters .fld{flex:1 1 200px;margin:0}
 .log .row{align-items:flex-start;flex-wrap:wrap}.log .row>div{min-width:0;flex:1 1 260px}.log time{color:var(--muted);white-space:nowrap}
-.note{color:var(--muted);font-size:16px}
+.note{color:var(--muted);font-size:var(--fs-3)}
 @media (min-width:900px){.kv{grid-template-columns:minmax(180px,1fr) minmax(0,2fr)}.kv dt{margin:0}.stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
 </style>`;
 
@@ -393,7 +393,7 @@ export async function ownerPage(c: ConsoleCtx, o: { active: TabId; title: string
   const res = await c.html(
     consoleFrame({
       role: m.role, locale: m.locale, active: o.active, title: o.title, business: name, member: m.displayName || m.email, flash: o.flash ?? null,
-      language: { csrf: await languageCsrf(c.get("jwt"), m), back: o.back }, accent,
+      language: { csrf: await languageCsrf(c.get("jwt"), m), back: o.back }, accent, badges: badgesOf(c),
       body: html`${raw(EXTRA_CSS)}${o.body}`,
     }),
     o.status ?? 200,

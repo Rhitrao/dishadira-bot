@@ -145,8 +145,9 @@ describe("PRD check 1: Today for a practitioner", () => {
     expect(up).toContain("Not a fit (₹99 refunded)");
     expect(up).toContain("Didn't pick up (offer a new time)");
     expect(up).toContain("Report behaviour…"); // under More, behind a confirm step
-    expect(up).toContain(`…${b.waId.slice(-4)}`);
-    expect(html).not.toContain(b.waId); // never the whole number on the page
+    // Ticket 46: her own customer's full number, formatted, with a one-tap Call (tel:).
+    expect(up).toContain(`+91 ${b.waId.slice(2, 7)} ${b.waId.slice(7)}`);
+    expect(up).toContain(`<a class="btn call primary" href="tel:+${b.waId}">`);
     expect(up).toContain("For family");
     expect(up).toContain("Call in Hindi");
     expect(up).toContain("Energy cleansing");
@@ -155,7 +156,8 @@ describe("PRD check 1: Today for a practitioner", () => {
 
     const res = await tap(PRAC, b.id, "MISSED", html);
     expect(res.status).toBe(303);
-    expect(res.headers.get("Location")).toBe(`/app#b-intro-${b.id}`);
+    expect(res.headers.get("Location")).toBe(`/app?m=saved#b-intro-${b.id}`); // ticket 46: a "Saved." flash
+    expect(await (await get(`/app?m=saved`, PRAC)).text()).toContain('<p class="flash" role="status">Saved.</p>');
     const after = await page(PRAC);
     expect(after).toContain("Didn't pick up · Saved. Undo until 2:15 pm");
     expect(formFor(after, "/app/today/undo")).toBeTruthy();
@@ -176,24 +178,43 @@ describe("PRD check 1: Today for a practitioner", () => {
     expect(formFor(done, "/app/today/undo")).toBeUndefined();
   });
 
-  it("Call shows the number only from 1 hour before to 1 hour after, and the reveal is recorded", async () => {
+  it("ticket 46: a one-tap Call (tel:) on every booking, for the owner and the booking's practitioner; staff see the last 4 and no Call", async () => {
     const now = await booking({ name: "Asha Test" });
-    const far = await booking({ i: 16, name: "Ravi Far" }); // 6:00 pm: more than an hour away
-    const html = await page(PRAC);
-    const call = formFor(html, "/app/today/call", { kind: "intro", id: String(now.id) });
-    expect(call).toBeTruthy();
-    expect(formFor(html, "/app/today/call", { id: String(far.id) })).toBeUndefined();
-    const res = await post("/app/today/call", call!, PRAC);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(`href="tel:+${now.waId}"`);
-    expect(await audits("PHONE_REVEAL")).toEqual([{ memberId: (await member(PRAC)).id, target: `intro:${now.id}`, detail: "call", reason: "call" }]);
-    // A hand-made POST for the far call is refused, for the practitioner and the owner alike.
+    const far = await booking({ i: 16, name: "Ravi Far" }); // 6:00 pm: more than an hour away, still a Call button
     for (const as of [PRAC, OWNER]) {
-      const r = await post("/app/today/call", { kind: "intro", id: String(far.id), csrf: await tokenFor(as, `call:intro:${far.id}`) }, as);
-      expect(r.status).toBe(403);
+      const html = await page(as);
+      for (const x of [now, far]) expect(html, as).toContain(`href="tel:+${x.waId}"`);
+      expect(html).toContain(`+91 ${now.waId.slice(2, 7)} ${now.waId.slice(7)}`);
+      expect(html).not.toContain("The Call button appears");
     }
-    expect(await audits("PHONE_REVEAL")).toHaveLength(1);
+    const staff = await page(STAFF);
+    expect(staff).not.toContain("tel:+");
+    expect(staff).toContain(`…${now.waId.slice(-4)}`);
+    expect(staff).not.toContain(now.waId);
+    // No reveal step any more: the old POST is gone, and nothing is recorded as a reveal.
+    expect((await post("/app/today/call", { kind: "intro", id: String(now.id), csrf: await tokenFor(PRAC, `call:intro:${now.id}`) }, PRAC)).status).toBe(404);
+    expect(await audits("PHONE_REVEAL")).toHaveLength(0);
+  });
+
+  it("ticket 46: a stats strip: today's bookings, this week's, money this week and this month (owner only), new enquiries today", async () => {
+    await booking({ name: "Asha Test" });
+    await booking({ i: 16, name: "Ravi Far" });
+    const owner = await page(OWNER);
+    const strip = owner.slice(owner.indexOf('<div class="stats'), owner.indexOf("</div>", owner.indexOf('<div class="stats')));
+    expect(strip).toContain('<div class="stats n5" role="group" aria-label="At a glance">');
+    expect(strip.replace(/<[^>]+>/g, "|")).toMatch(/\|Today\|\|2\|\|2 calls\|/);
+    expect(strip).toContain("This week");
+    expect(strip).toContain("Received this week");
+    expect(strip).toContain("Received in October");
+    expect(strip).toContain("New enquiries today");
+    expect(strip).toContain('href="/app/payments"');
+    // A practitioner and staff never see money; a practitioner's numbers are her own bookings, with no enquiries.
+    const prac = await page(PRAC);
+    expect(prac).toContain('<div class="stats n2"');
+    expect(prac).not.toContain("Received");
+    const staff = await page(STAFF);
+    expect(staff).toContain('<div class="stats n3"');
+    expect(staff).not.toContain("Received");
   });
 
   it("shows the screen in Hindi for a practitioner who chose it", async () => {
@@ -345,8 +366,9 @@ describe("role views", () => {
     expect(html).toContain("Possible medical emergency: Ravi");
     expect(html).toContain("The safety message was sent");
     expect(html).toContain(`href="/app/inbox/${mine.conv}"`);
-    expect(html.replace(/<[^>]+>/g, "")).toContain("Reply to Leela …1111"); // the last 4 digits sit in a no-wrap span (ticket 27)
-    expect(html).toContain("Asked for a person, 2 h ago. Reply by Tue, 6 Oct, 12:05 pm.");
+    expect(html.replace(/<[^>]+>/g, "")).toContain("Reply to Leela +91 98111 11111"); // ticket 46: the owner sees the full number
+    expect(html).toContain('href="tel:+919811111111"');
+    expect(html).toContain("Asked for a person, 2 h ago. Reply within 22 h."); // the time left, not a clock time
     expect(formFor(html, "/app/today/handback")).toBeTruthy();
     expect(html).toContain("Refund ₹99 to Asha");
     expect(html).toContain("Asked by Desk, just now");
@@ -356,7 +378,6 @@ describe("role views", () => {
     expect(formFor(html, "/app/today/outcome", { id: String(theirs.id) })).toBeUndefined(); // 4:00 pm, not started
     expect(formFor(html, "/app/today/outcome", { id: String(mine.id), v: "NOT_FIT" })).toBeTruthy();
     for (const b of ["Bookings are paused", "Payments are failing", "The bot hasn't run for 15 minutes"]) expect(html).toContain(b);
-    expect(html).not.toContain(mine.waId);
   });
 
   it("a practitioner sees only their own calls and their own customers' safety cards, and nothing about money", async () => {
@@ -437,8 +458,6 @@ describe("role refusals on every POST", () => {
       ["/app/today/outcome", PRAC, { kind: "intro", id: String(theirs.id), v: "NOT_FIT" }, `outcome:intro:${theirs.id}:NOT_FIT`], // someone else's call
       ["/app/today/undo", STAFF, { outcome: String(oid) }, `undo:${oid}`],
       ["/app/today/undo", PRAC2, { outcome: String(oid) }, `undo:${oid}`],
-      ["/app/today/call", STAFF, { kind: "intro", id: String(mine.id) }, `call:intro:${mine.id}`],
-      ["/app/today/call", PRAC, { kind: "intro", id: String(theirs.id) }, `call:intro:${theirs.id}`],
       ["/app/today/handback", PRAC, { conv: String(human) }, `handback:${human}`],
       ["/app/today/decide", STAFF, { request: String(ask.id), decision: "APPROVED" }, `decide:${ask.id}:APPROVED`],
       ["/app/today/decide", PRAC, { request: String(ask.id), decision: "DECLINED" }, `decide:${ask.id}:DECLINED`],

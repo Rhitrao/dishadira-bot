@@ -161,7 +161,8 @@ describe("/app Calendar (after the switch-over)", () => {
     expect(await h.count("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'HOLIDAY_ADDED' AND reason = 'family function'")).toBe(1);
     const week = await text(`/app/calendar?view=week&d=${SAT}&hd=${SAT}&m=holiday`);
     expect(week).toContain("Sat, 7 Nov is marked as a holiday. The bot won't offer it.");
-    expect(week).toMatch(/Sat, 7 Nov<\/a> <span class="chip plain">Holiday<\/span>/);
+    expect(week).toMatch(/Sat, 7 Nov<\/a><span class="chip waiting">Holiday<\/span>/); // the agenda (ticket 46)
+    expect(week).toMatch(/<a class="tg-dh holi" href="\/app\/calendar\?view=day&d=2026-11-07" aria-label="Sat, 7 Nov, Nothing booked, Holiday">/); // the grid
     expect(week).toContain("Holiday: no new bookings on this day.");
     expect(week).toContain("family function"); // the owner sees the note
     const day = plain(await text(`/app/calendar?view=day&d=${SAT}`));

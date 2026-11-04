@@ -162,7 +162,7 @@ async function freeTimes(env: Env, nowMs: number): Promise<{ ymd: string; slots:
 
 // ---------- the screen ----------
 const CSS = html`<style>.pick fieldset{border:0;margin:0 0 16px;padding:0;min-width:0}.pick legend{font-weight:600;padding:0;margin:0 0 8px}
-.opts{display:flex;flex-wrap:wrap;gap:8px}.opts label{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:8px 16px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);cursor:pointer}
+.opts{display:flex;flex-wrap:wrap;gap:8px}.opts label{display:inline-flex;align-items:center;gap:8px;min-height:var(--tap);padding:8px 16px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);cursor:pointer}
 .opts input{width:20px;height:20px;margin:0;accent-color:var(--accent);flex:none}.opts label:has(input:checked){border-color:var(--accent);background:var(--accent-tint)}.pick .btn{width:100%}</style>`;
 const token = (c: ConsoleCtx, action: string, convId: number) => memberCsrf(c.get("jwt"), c.get("member"), `slink-${action}:${convId}`);
 // The audit row, written after the hold or the message (both their own writes, so not changes()-guarded).

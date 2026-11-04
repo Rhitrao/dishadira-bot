@@ -133,13 +133,13 @@ async function teamPage(c: ConsoleCtx, flash: string | null, status: 200 | 400 =
 <div class="acts"><button class="btn primary" type="submit">${T.send}</button></div></form></div>`;
   const cc = consoleCopy(me.locale);
   const body = html`${raw(EXTRA_CSS)}<style>${raw(TEAM_CSS)}</style><a class="crumb" href="/app/settings">← ${T.backToSettings}</a>
-<header class="screen"><h1>${T.title}</h1><p class="visible">${cc.visibleTo(role("OWNER"))}</p></header><p class="muted lead">${T.sub}</p>
+<header class="screen"><h1>${T.title}</h1></header><p class="muted lead">${T.sub}</p>
 ${ready ?? ""}${section(T.title, cards, members.length)}${section(T.inviteTitle, invite)}`;
   return appPage(c, { active: "settings", title: T.title, body, flash, status, back: "/app/settings/team" });
 }
 const TEAM_CSS = `.lead{margin:0 0 8px}.card .fld{max-width:560px}.rolef .fld{max-width:360px}.mail{overflow-wrap:anywhere}
 .rolef{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 12px;margin:16px 0 0}.rolef .fld{flex:1 1 200px;margin:0}.rolef .btn{flex:0 0 auto}
-.card .pick label{flex:1 1 160px}.ready input{width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px}`;
+.card .pick label{flex:1 1 160px}.ready input{width:100%;min-height:var(--tap);font:inherit;font-size:var(--fs-in);color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px}`;
 
 // Only the owner reaches anything here (GET or POST).
 team.use("*", async (c, next) => {

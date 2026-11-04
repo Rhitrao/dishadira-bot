@@ -141,7 +141,8 @@ describe("the list", () => {
     expect(html).toContain(en.whyPayment);
     expect(html).toContain(en.whySafety);
     expect(html).toContain(en.waited(en.hours(1, 30)));
-    expect(html).toContain(en.replyBy(en.at("Tue, 6 Oct", "3:25 pm"))); // last wrote 5 minutes ago: 24 hours from then, tomorrow
+    expect(html).toContain(CONSOLE_COPY.en.replyWithin("23 h")); // ticket 46: last wrote 5 minutes ago: the time left, not a clock time
+    expect(html).not.toContain("Reply by");
     // No internal codes on screen.
     for (const code of ["HUMAN", "MEDIA_FROM_CUSTOMER", "EMERGENCY", "HUMAN_REQUEST"]) expect(html).not.toContain(code);
   });
@@ -234,11 +235,13 @@ describe("PRD check 6: the claim", () => {
 });
 
 describe("PRD check 7: the reply window", () => {
-  it("inside 24 hours: a reply box and 'Reply by'", async () => {
+  it("inside 24 hours: a reply box and 'Reply within …'", async () => {
     const id = await chat({ lastMin: 60 });
     const html = await page(`/app/inbox/${id}`, STAFF);
     expect(html).toContain('<textarea id="reply-text"');
-    expect(html).toContain(en.replyBy(en.at("Tue, 6 Oct", "2:30 pm"))); // last message 2:30 pm today
+    expect(html).toContain(CONSOLE_COPY.en.replyWithin("23 h")); // last message an hour ago
+    const late = await chat({ lastMin: 24 * 60 - 25 });
+    expect(await page(`/app/inbox/${late}`, STAFF)).toContain(CONSOLE_COPY.en.replyWithin("25 min"));
   });
 
   it("after 24 hours the reply box is replaced by the approved follow-up, ready to send", async () => {
@@ -511,6 +514,19 @@ describe("roles: every POST refuses a role that can't do it, and the buttons agr
     const b = await chat();
     await claim(b, await idOf(STAFF), 1);
     expect(await page("/app/inbox", STAFF)).toMatch(/<span class="badge"><span class="vh">1 waiting: <\/span>1<\/span>/);
+    // Ticket 46: the same badge on every screen, not just the Inbox and Today.
+    for (const path of ["/app", "/app/calendar", "/app/people"]) expect(await page(path, STAFF), path).toMatch(/<span class="badge"><span class="vh">1 waiting: <\/span>1<\/span>/);
+    expect(await page("/app/settings", OWNER)).toMatch(/<span class="badge"><span class="vh">1 waiting: <\/span>1<\/span>/);
+  });
+
+  it("ticket 46: the owner sees the full number as a tel: link; staff the last 4", async () => {
+    const id = await chat({ name: "Number Person" });
+    const wa = (await db.prepare("SELECT wa_id AS w FROM conversations WHERE id = ?1").bind(id).first<{ w: string }>())!.w;
+    const owner = await page(`/app/inbox/${id}`, OWNER);
+    expect(owner).toContain(`<a class="tel" href="tel:+${wa}">`);
+    const staff = await page(`/app/inbox/${id}`, STAFF);
+    expect(staff).not.toContain(wa);
+    expect(staff).toContain(`…${wa.slice(-4)}`);
   });
 });
 

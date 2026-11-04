@@ -117,7 +117,9 @@ export const PERMISSIONS = {
   set_hours: { OWNER: "yes", PRACTITIONER: "own", STAFF: "no" }, // Set working hours and block time off
   mark_outcome: { OWNER: "yes", PRACTITIONER: "own", STAFF: "no" }, // Mark a call outcome, offer a session
   reply_chat: { OWNER: "yes", PRACTITIONER: "no", STAFF: "yes" }, // Reply to a handed-over chat
-  reveal_phone: { OWNER: "yes", PRACTITIONER: "own-call-window", STAFF: "no" }, // See a customer's full phone number (always logged)
+  // See a customer's full phone number. Ticket 46 (the owner's decision of 4 Nov 2026, CONTRACT v15): shown, as a tel: link, to the owner
+  // and to a practitioner for her own customers, with no reveal step; staff keep the last 4 digits.
+  reveal_phone: { OWNER: "yes", PRACTITIONER: "own", STAFF: "no" },
   read_chat: { OWNER: "yes", PRACTITIONER: "own", STAFF: "not-safety" }, // Read a customer's chat
   move_booking: { OWNER: "yes", PRACTITIONER: "own", STAFF: "yes" }, // Move or cancel a booking
   record_payment: { OWNER: "yes", PRACTITIONER: "no", STAFF: "ask" }, // Record money received outside Razorpay
@@ -155,6 +157,9 @@ export function can(member: Member | null | undefined, action: Action, target?: 
   const end = target?.callEndMs ?? start;
   return own && start != null && end != null && now >= start - HOUR && now <= end + HOUR ? "yes" : "no";
 }
+
+// Ticket 46: whether this member sees the full number of a customer of `practitionerId` (null: nobody's in particular).
+export const seesNumber = (member: Member | null | undefined, practitionerId: number | null | undefined) => can(member, "reveal_phone", { practitionerId }) === "yes";
 
 // Whether the member may do this to anything at all (their own items included): for tabs and screens, never for a change.
 export function canAny(member: Member | null | undefined, action: Action): boolean {

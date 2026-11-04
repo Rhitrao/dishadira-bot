@@ -66,15 +66,21 @@ describe("week and day views", () => {
     expect(body).toContain("When am I booked or free?");
     for (const d of ["Mon, 26 Oct", "Tue, 27 Oct", "Wed, 28 Oct", "Thu, 29 Oct", "Fri, 30 Oct", "Sat, 31 Oct", "Sun, 1 Nov"]) expect(body).toContain(d);
     expect(body.indexOf("Ravi")).toBeLessThan(body.indexOf("Meera"));
+    // Ticket 46: the grid's blocks keep the last 4; the agenda has the full number as a tel: link for the owner (staff: last 4 only).
     expect(body).toContain("…1234");
-    expect(body).not.toContain("919800001234");
+    expect(body).toContain("+91 98000 01234");
+    expect(body).toContain('href="tel:+919800001234"');
+    const staff = await page("/app/calendar", STAFF);
+    expect(staff).toContain("…1234");
+    expect(staff).not.toContain("919800001234");
+    expect(staff).not.toContain("98000 01234");
     expect(body).toContain(`href="/app/people/${early}"`);
     expect(body).toContain(`href="/app/people/${late}"`);
     expect(body).toContain("15-minute call");
-    expect(body).toContain("Confirmed");
+    expect(body).not.toContain("Confirmed"); // ticket 46: a booking's status shows only when it isn't confirmed
     expect(plain(body)).toContain("Free: 2:00 pm – 2:30 pm · 2:45 pm – 4:00 pm · 4:15 pm – 7:00 pm"); // Thursday
     expect(body).toContain("Calls are Monday to Saturday, 2 pm to 7 pm (India time).");
-    expect(body).toContain("Changing working hours comes in a later release.");
+    expect(body).not.toContain("later release"); // ticket 46: no developer's notes on the page
     expect(body).toContain('href="/app/calendar?view=week&d=2026-10-19"'); // previous week
     expect(body).toContain('href="/app/calendar?view=week&d=2026-11-02"'); // next week
     expect(body).toContain('href="/app/calendar?view=day&d=2026-10-29"'); // each day opens its Day view
@@ -112,8 +118,10 @@ describe("week and day views", () => {
 
   it("Sunday says plainly that it isn't a working day; Saturday is one (ticket 30)", async () => {
     const week = await page("/app/calendar");
-    expect(week).toMatch(/Sun, 1 Nov<\/b><span>Not a working day/);
-    expect(week).not.toMatch(/Sat, 31 Oct<\/b><span>Not a working day/);
+    expect(week).toMatch(/Sun, 1 Nov<\/b><span>Closed/);
+    expect(week).not.toMatch(/Sat, 31 Oct<\/b><span>Closed/);
+    expect(week).toMatch(/<a class="tg-dh slim" href="\/app\/calendar\?view=day&d=2026-11-01" aria-label="Sun, 1 Nov, Closed">/); // a slim column in the grid
+    expect(week).not.toContain("Not a working day"); // not in every closed cell
     const sun = await page("/app/calendar?view=day&d=2026-11-01");
     expect(sun).toContain("Not a working day");
     expect(sun).not.toContain("Free:");
@@ -176,12 +184,20 @@ describe("the month view (ticket 39)", () => {
     expect(cell(body, "2026-10-06")?.[2]).toBe("Tue, 6 Oct, Nothing booked");
     expect(cell(body, "2026-10-28")?.[1]).toContain("today");
     expect(body).toMatch(/d=2026-10-28" aria-label="[^"]*" aria-current="date"/);
-    expect(cell(body, "2026-10-31")?.[1]).toContain("hol");
+    expect(cell(body, "2026-10-31")?.[1]).toContain("holi");
     expect(cell(body, "2026-10-31")?.[2]).toBe("Sat, 31 Oct, Nothing booked, Holiday");
-    expect(cell(body, "2026-10-25")?.[2]).toBe("Sun, 25 Oct, Nothing booked, Not a working day");
-    expect(plain(body)).toContain("2 calls1 session"); // the wide screen's lines
-    expect(body).not.toContain("919800001234");
-    expect(body).not.toContain("Ravi"); // counts, not names
+    expect(cell(body, "2026-10-25")?.[1]).toContain("closed");
+    expect(cell(body, "2026-10-25")?.[2]).toBe("Sun, 25 Oct, Nothing booked, Closed");
+    expect(body).not.toContain("Not a working day"); // closed days are muted, not labelled
+    // Ticket 46: up to three bookings per day as chips (time, first name, kind), then "+N more"; a bar for how full the day is.
+    const thu = body.slice(body.indexOf('d=2026-10-29" aria-label'), body.indexOf("</td>", body.indexOf('d=2026-10-29" aria-label')));
+    expect(plain(thu)).toContain("2:30 Ravi · Call4:00 Asha · Call5:00 Meera · Session");
+    expect(thu).toContain('<span class="mc session">');
+    expect(thu).toMatch(/class="mbar" style="--b:\d+%"/);
+    expect(thu).not.toContain("more");
+    const fri = body.slice(body.indexOf('d=2026-10-30" aria-label'), body.indexOf("</td>", body.indexOf('d=2026-10-30" aria-label')));
+    expect(fri).toContain('<span class="mc call held">'); // a hold, drawn dashed
+    expect(cell(body, "2026-10-06")?.[0]).not.toContain("mbar");
   });
 
   it("‹ › go a month at a time, Today comes back, and the views keep the day", async () => {
@@ -230,6 +246,51 @@ describe("the month view (ticket 39)", () => {
   });
 });
 
+describe("the week grid and the list (ticket 46)", () => {
+  it("the week grid: a gutter of hours, one column per day, blocks placed by start and sized by length, kind and status shown", async () => {
+    const p = await id(PRAC);
+    const ravi = await call({ name: "Ravi Test", wa: "919800001234", ist: "2026-10-29T14:30", prac: p });
+    await session({ name: "Meera Test", wa: "919800004321", ist: "2026-10-29T16:00", prac: p });
+    await call({ name: "Hema Hold", wa: "919800002222", ist: "2026-10-30T15:00", prac: p, state: "HELD", holdMin: 15 });
+    const body = await page("/app/calendar");
+    expect(body).toContain('<div class="tg" style="--cols:52px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 40px;--hh:54px">');
+    for (const hr of ["2 pm", "3 pm", "6 pm"]) expect(body).toContain(`px">${hr}</span>`);
+    expect(body).not.toContain('px">7 pm</span>'); // closing is the grid's foot
+    // 2:30 pm is 30 minutes after opening at 1.8 px a minute; a 15-minute call is 25 px tall, a 60-minute session 106 px.
+    expect(body).toMatch(new RegExp(`<a class="ev2 call" href="/app/people/${ravi}" style="top:54.0px;height:25.0px;left:calc\\(0.00% \\+ 3px\\);width:calc\\(100.00% - 6px\\)" title="2:30 pm – 2:45 pm · Ravi …1234`));
+    expect(body).toMatch(/<a class="ev2 session" href="[^"]+" style="top:216.0px;height:106.0px;/);
+    expect(body).toMatch(/<a class="ev2 call held" [^>]*title="3:00 pm – 3:15 pm · Hema …2222[^"]*Held"/);
+    // Compact day headers with a count, today's marked.
+    expect(body).toMatch(/<a class="tg-dh today" href="\/app\/calendar\?view=day&d=2026-10-28" aria-label="Wed, 28 Oct, Nothing booked, [^"]+" aria-current="date"><span class="dw">Wed<\/span><span class="dl"><span class="dd">28<\/span><\/span>/);
+    expect(body).toMatch(/<span class="dw">Thu<\/span><span class="dl"><span class="dd">29<\/span><span class="dn">2<\/span><\/span>/);
+  });
+
+  it("List: the next 30 days of bookings grouped by day, with a one-tap Call, ‹ › 30 days at a time", async () => {
+    const p = await id(PRAC);
+    await call({ name: "Ravi Test", wa: "919800001234", ist: "2026-10-29T14:30", prac: p });
+    await call({ name: "Late Test", wa: "919800009999", ist: "2026-11-30T14:30", prac: p }); // beyond the 30 days
+    const body = await page("/app/calendar?view=list");
+    expect(body).toContain('aria-current="page">List</a>');
+    expect(body).toContain('<p class="range">28 Oct – 26 Nov</p>');
+    expect(body).toContain("Thu, 29 Oct</a>");
+    expect(body).toContain("Ravi");
+    expect(body).not.toContain("Late");
+    expect(body).not.toContain("Fri, 30 Oct</a>"); // a day with nothing booked is left out
+    expect(body).toContain('<a class="btn call secondary" href="tel:+919800001234">');
+    expect(body).toContain('href="/app/calendar?view=list&d=2026-11-27" aria-label="Next 30 days"');
+    expect(body).toContain('href="/app/calendar?view=list&d=2026-09-28" aria-label="Earlier 30 days"');
+    const later = await page("/app/calendar?view=list&d=2026-11-27");
+    expect(later).toContain("Late");
+    const none = await page("/app/calendar?view=list&d=2027-03-01");
+    expect(none).toContain("Nothing booked in these 30 days.");
+    // A practitioner sees her own customers' numbers; staff the last 4.
+    expect(await page("/app/calendar?view=list", PRAC)).toContain('href="tel:+919800001234"');
+    const staff = await page("/app/calendar?view=list", STAFF);
+    expect(staff).not.toContain("tel:+91980000");
+    expect(staff).not.toContain("btn call");
+  });
+});
+
 describe("the day view's timeline (ticket 39)", () => {
   it("opening to closing: the bookings in time order with the free gaps between them, and how long each gap is", async () => {
     const p = await id(PRAC);
@@ -248,7 +309,11 @@ describe("the day view's timeline (ticket 39)", () => {
   it("today: the time already gone is a quiet line, with a Now marker", async () => {
     vi.setSystemTime(Date.parse("2026-10-28T09:20:00Z")); // 2:50 pm
     await call({ name: "Ravi Test", wa: "919800001234", ist: "2026-10-28T15:30", prac: await id(PRAC) });
-    const body = plain(await page("/app/calendar?view=day&d=2026-10-28"));
+    const page28 = await page("/app/calendar?view=day&d=2026-10-28");
+    // The grid: a Now line at 2:50 pm, 50 minutes past opening (2.4 px a minute), and the time gone shaded.
+    expect(page28).toContain('<div class="tg-now" style="top:120.0px"><span>2:50 pm</span></div>');
+    expect(page28).toContain('<div class="tg-past" style="height:120.0px">');
+    const body = plain(page28.slice(page28.indexOf('<div class="tl">')));
     expect(body).toContain("2:00 pm – 3:00 pmEarlier, not booked");
     expect(body.indexOf("Now · 2:50 pm")).toBeGreaterThan(body.indexOf("Earlier, not booked"));
     expect(body.indexOf("Now · 2:50 pm")).toBeLessThan(body.indexOf("Ravi"));
@@ -292,6 +357,6 @@ describe("who sees what", () => {
     const body = await page("/app/calendar", PRAC);
     expect(body).toContain('<html lang="hi">');
     expect(body).toContain("हफ़्ता");
-    expect(body).toContain("काम का दिन नहीं");
+    expect(body).toContain("बंद"); // Sunday, closed
   });
 });

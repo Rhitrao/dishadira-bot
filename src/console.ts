@@ -4,13 +4,13 @@
 // Every page, refusals and the invite included, is drawn on the design system in src/ui.ts (consoleFrame, or plainFrame with no tabs).
 import { Hono, type Context } from "hono";
 import { html } from "hono/html";
-import { activeMember, csrf, memberCsrf, seedMembers, sha256Hex, touchMember, verifiedEmail, WORKSPACE_ID, type Action, type Member, type Role } from "./auth";
+import { activeMember, canAny, csrf, memberCsrf, seedMembers, sha256Hex, touchMember, verifiedEmail, WORKSPACE_ID, type Action, type Member, type Role } from "./auth";
 import { accentOf, type AccentName } from "./business";
 import { calendar } from "./calendar";
 import { consoleCopy } from "./console-copy";
 import type { Env } from "./env";
 import { iso } from "./slots";
-import { inbox } from "./inbox";
+import { inbox, unassignedCount } from "./inbox";
 import { payments } from "./payments";
 import { people } from "./people";
 import { sessionLink } from "./sessionlink";
@@ -20,7 +20,7 @@ import { today } from "./today";
 import { CONSOLE_CSP, consoleFrame, emptyState, plainFrame, type TabId } from "./ui";
 
 // accent and business (the workspace name): Settings → Business, read once per request
-export type ConsoleVars = { jwt: string; email: string; member: Member; accent: AccentName; business: string };
+export type ConsoleVars = { jwt: string; email: string; member: Member; accent: AccentName; business: string; inboxBadge: number };
 export type ConsoleCtx = Context<{ Bindings: Env; Variables: ConsoleVars }>;
 
 // Invite and hand-over words from ticket 19 (the invite page is seen before the person is a member, so it is in English).
@@ -66,11 +66,14 @@ export async function appPage(c: ConsoleCtx, o: { active: TabId | null; title: s
   return c.html(
     consoleFrame({
       role: m.role, locale: m.locale, active: o.active, title: o.title, body: o.body, business: c.get("business") ?? "", member: m.displayName || undefined,
-      flash: o.flash ?? null, language: { csrf: await languageCsrf(c.get("jwt"), m), back: o.back ?? "/app" }, accent: c.get("accent"),
+      flash: o.flash ?? null, language: { csrf: await languageCsrf(c.get("jwt"), m), back: o.back ?? "/app" }, accent: c.get("accent"), badges: badgesOf(c),
     }),
     o.status ?? 200,
   );
 }
+
+// The tab badges every screen shows (ticket 46): the Inbox's, for whoever replies to chats; read once per request in the middleware.
+export const badgesOf = (c: ConsoleCtx) => (c.get("inboxBadge") ? { inbox: c.get("inboxBadge") } : undefined);
 
 // Someone signed in whose email isn't an active member: no tabs, nothing about the business, English and Hindi.
 export const noAccess = async (c: Context) => {
@@ -115,6 +118,7 @@ consoleApp.use("*", async (c, next) => {
     c.set("accent", await accentOf(c.env.DB).catch((): AccentName => "teal"));
     const ws = await c.env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>().catch(() => null);
     c.set("business", ws?.name ?? "");
+    c.set("inboxBadge", canAny(m, "reply_chat") ? await unassignedCount(c.env, Date.now()).catch(() => 0) : 0);
     await touchMember(c.env, m).catch(() => undefined);
   }
   await next();
