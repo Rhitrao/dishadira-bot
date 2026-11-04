@@ -1,6 +1,7 @@
-// The console's two typefaces, self-hosted so the CSP needs only `font-src 'self'`: Jost (Latin) and Noto Sans Devanagari (Hindi),
-// both SIL Open Font License 1.1 (fonts/OFL-*.txt, NOTICE). Only the Latin and Devanagari subsets, weights 400, 500 and 600, plus Jost 500
-// italic for the screen titles (the PRD sets them in italics), from the @fontsource packages (v5.3.0). The files are bundled into the Worker
+// The console's typefaces, self-hosted so the CSP needs only `font-src 'self'`: Jost (Latin) and Noto Sans Devanagari (Hindi) for the
+// interface, and Cormorant Garamond (Latin, 500 and 600) for the brand and the screen titles (ticket 39), all SIL Open Font License 1.1
+// (fonts/OFL-*.txt, NOTICE). Only the Latin and Devanagari subsets, weights 400, 500 and 600, plus Jost 500 italic, from the
+// @fontsource packages (v5.3.0). The files are bundled into the Worker
 // as Data modules (wrangler.toml [[rules]]).
 // The URLs never change for the same bytes, so they are cached for a year: a changed file must get a new name.
 import type { Context } from "hono";
@@ -11,6 +12,8 @@ import jost500i from "../fonts/jost-latin-500-italic.woff2";
 import deva400 from "../fonts/noto-sans-devanagari-400.woff2";
 import deva500 from "../fonts/noto-sans-devanagari-500.woff2";
 import deva600 from "../fonts/noto-sans-devanagari-600.woff2";
+import serif500 from "../fonts/cormorant-garamond-latin-500.woff2";
+import serif600 from "../fonts/cormorant-garamond-latin-600.woff2";
 
 export const FONT_PATH = "/app/fonts/";
 
@@ -22,6 +25,8 @@ const FILES: Record<string, ArrayBuffer> = {
   "noto-sans-devanagari-400.woff2": deva400,
   "noto-sans-devanagari-500.woff2": deva500,
   "noto-sans-devanagari-600.woff2": deva600,
+  "cormorant-garamond-latin-500.woff2": serif500,
+  "cormorant-garamond-latin-600.woff2": serif600,
 };
 
 // The same character ranges the subsets were cut to, so a browser downloads Devanagari only for a page that has Hindi (or ₹) on it.
@@ -34,9 +39,10 @@ const face = (family: string, file: string, weight: number, range: string, style
 export const FONT_FACES = [400, 500, 600]
   .flatMap((w) => [face("Jost", `jost-latin-${w}.woff2`, w, LATIN), face("Noto Sans Devanagari", `noto-sans-devanagari-${w}.woff2`, w, DEVANAGARI)])
   .concat(face("Jost", "jost-latin-500-italic.woff2", 500, LATIN, "italic"))
+  .concat([500, 600].map((w) => face("Cormorant Garamond", `cormorant-garamond-latin-${w}.woff2`, w, LATIN)))
   .join("\n");
 
-// GET /app/fonts/<file>: only the seven files above; anything else is a plain 404. Off (404) unless CONSOLE_V2 is "true", like every /app route.
+// GET /app/fonts/<file>: only the nine files above; anything else is a plain 404. Off (404) unless CONSOLE_V2 is "true", like every /app route.
 export function serveFont(c: Context): Response {
   const on = (c.env as { CONSOLE_V2?: string } | undefined)?.CONSOLE_V2 === "true";
   const body = on ? FILES[c.req.param("file") ?? ""] : undefined;

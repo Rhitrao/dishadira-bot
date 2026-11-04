@@ -1,42 +1,54 @@
-// The console's design system: a calm ledger. Warm paper, dark ink, one accent colour, generous space and large type (docs/CONSOLE-PRD.md,
-// "Design system"). Server-rendered HTML only, no scripts. The /app console uses consoleFrame() and the components below, with CONSOLE_CSP
-// (today's strict CSP plus `font-src 'self'` for the self-hosted fonts in src/fonts.ts). All its words come from src/console-copy.ts.
+// The console's design system: "sunrise calm", from the Disha Dira logo (ticket 39). Cream paper with a soft sunrise glow, deep-teal
+// actions, bronze serif titles, a thin gold rule used sparingly, generous space and large type (docs/CONSOLE-PRD.md, "Design system").
+// Server-rendered HTML only, no scripts. The /app console uses consoleFrame() and the components below, with CONSOLE_CSP (today's strict
+// CSP plus `font-src 'self'` for the self-hosted fonts in src/fonts.ts and `img-src 'self'` / `manifest-src 'self'` for the brand files in
+// src/brand.ts). All its words come from src/console-copy.ts.
 // The old /admin and /amma pages keep their own shell further down (page(), CONSOLE_CSS) until they are removed; nothing under /app uses it.
 // Colour is never the only signal: every status has a word. Times are always the business's time (Bengaluru).
 import { html, raw } from "hono/html";
+import { BRAND_PATH, HEAD_LINKS } from "./brand";
 import { accentCss, hasOwnName, type AccentName } from "./business";
+import { config } from "./config";
 import { consoleCopy, consoleLang, type ConsoleCopy } from "./console-copy";
 import { FONT_FACES } from "./fonts";
 import { formatIstLang, formatIstParts, istDay } from "./slots";
 
 // ---------- Tokens ----------
-// One source for the stylesheet and for the contrast test (test/ui.test.ts checks every pair in CONTRAST_PAIRS is at least 4.5:1).
+// Sampled from the logo: sun gold #F2C84B, teal water #2A9A9C, deep teal #1D556C, bronze wordmark #9A7232, slate #557878, cream #FAF9EE,
+// mint #D3E9DA. Text colours are those darkened (or, in dark mode, lightened) until they pass AA; gold, sun and water are decoration only,
+// never text on cream. One source for the stylesheet and for the contrast test (test/ui.test.ts checks every pair in CONTRAST_PAIRS is at
+// least 4.5:1, and ink at least 12:1 on paper).
 export const TOKENS = {
   light: {
-    paper: "#FBFAF7", surface: "#FFFFFF", sunk: "#F3F1EA", line: "#E2DED3",
-    ink: "#14302F", muted: "#5B6B69",
-    accent: "#1B6F73", "on-accent": "#FFFFFF", "accent-tint": "#E6F0EF",
-    attention: "#A15C00", "attention-tint": "#FCF4E6",
-    danger: "#B3261E", "on-danger": "#FFFFFF", "danger-tint": "#FBEAE8",
-    done: "#2E7D4F", "done-tint": "#EEF6F0",
+    paper: "#FAF9EE", surface: "#FFFEF9", sunk: "#F3F0E1", line: "#E3DCC6",
+    ink: "#14343F", muted: "#4E6C6D", bronze: "#87622A",
+    accent: "#1D556C", "on-accent": "#FFFFFF", "accent-tint": "#E2EEEA",
+    waiting: "#7A5607", "waiting-tint": "#FBF0D0",
+    attention: "#A04B2B", "attention-tint": "#F9E6DB",
+    danger: "#A5322D", "on-danger": "#FFFFFF", "danger-tint": "#F8E3DF",
+    done: "#1D6857", "done-tint": "#DCEEE3",
+    gold: "#F2C84B", sun: "#F8E878", water: "#2A9A9C",
   },
   dark: {
-    paper: "#121615", surface: "#1A201F", sunk: "#202826", line: "#2C3533",
-    ink: "#E8EEEC", muted: "#9FB0AD",
-    accent: "#5CC2BE", "on-accent": "#0E1A19", "accent-tint": "#16302F",
-    attention: "#F0B35A", "attention-tint": "#2E2414",
-    danger: "#FF8A80", "on-danger": "#121615", "danger-tint": "#33191A",
-    done: "#7FD3A0", "done-tint": "#15291E",
+    paper: "#0E1B20", surface: "#14262D", sunk: "#1A3038", line: "#2A454E",
+    ink: "#F2EFE1", muted: "#A9BFBB", bronze: "#E4C483",
+    accent: "#80D0C7", "on-accent": "#0B1C21", "accent-tint": "#163A3F",
+    waiting: "#F0C75A", "waiting-tint": "#332C13",
+    attention: "#F4AA88", "attention-tint": "#3A2419",
+    danger: "#FF9D92", "on-danger": "#0E1B20", "danger-tint": "#3D1D1E",
+    done: "#88D9BE", "done-tint": "#123229",
+    gold: "#F2C84B", sun: "#F8E878", water: "#34ACA4",
   },
 } as const;
 export type TokenName = keyof (typeof TOKENS)["light"];
 
 // Every text colour (first) on every background (second) the stylesheet puts it on.
 export const CONTRAST_PAIRS: [TokenName, TokenName][] = [
-  ["ink", "paper"], ["ink", "surface"], ["ink", "sunk"], ["ink", "accent-tint"], ["ink", "attention-tint"], ["ink", "danger-tint"], ["ink", "done-tint"],
-  ["muted", "paper"], ["muted", "surface"], ["muted", "sunk"], ["muted", "accent-tint"], ["muted", "danger-tint"], ["muted", "attention-tint"],
-  ["accent", "paper"], ["accent", "surface"], ["accent", "accent-tint"], ["on-accent", "accent"],
-  ["attention", "surface"], ["attention", "attention-tint"],
+  ["ink", "paper"], ["ink", "surface"], ["ink", "sunk"], ["ink", "accent-tint"], ["ink", "waiting-tint"], ["ink", "attention-tint"], ["ink", "danger-tint"], ["ink", "done-tint"],
+  ["muted", "paper"], ["muted", "surface"], ["muted", "sunk"], ["muted", "accent-tint"], ["muted", "danger-tint"], ["muted", "attention-tint"], ["muted", "waiting-tint"], ["muted", "done-tint"],
+  ["bronze", "paper"], ["bronze", "surface"], ["bronze", "sunk"],
+  ["accent", "paper"], ["accent", "surface"], ["accent", "sunk"], ["accent", "accent-tint"], ["on-accent", "accent"],
+  ["waiting", "surface"], ["waiting", "waiting-tint"], ["attention", "surface"], ["attention", "attention-tint"],
   ["danger", "surface"], ["danger", "paper"], ["danger", "danger-tint"], ["on-danger", "danger"],
   ["done", "surface"], ["done", "done-tint"],
   ["paper", "ink"],
@@ -50,9 +62,10 @@ export const CONSOLE_ROLES: ConsoleRole[] = ["OWNER", "PRACTITIONER", "STAFF"];
 export type TabId = "today" | "inbox" | "calendar" | "people" | "payments" | "settings";
 
 const ICON: Record<TabId | "more", string> = {
-  today: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  // Today: the sun rising over the horizon, as in the logo.
+  today: '<path d="M2.5 17.5h19M6.5 17.5a5.5 5.5 0 0 1 11 0"/><path d="M12 5.5V8M5.2 9.2l1.7 1.7M18.8 9.2l-1.7 1.7M2.8 13.6h2.2M19 13.6h2.2M7.5 21h9"/>',
   inbox: '<path d="M3 13l2.4-7.2A2.5 2.5 0 0 1 7.8 4h8.4a2.5 2.5 0 0 1 2.4 1.8L21 13v4.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/>',
-  calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1.3"/>',
   people: '<circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 5.2a3.5 3.5 0 0 1 0 6.6M18 14.8c1.8.7 3 2.4 3.5 5.2"/>',
   payments: '<path d="M7 4.5h10M7 9h10M7 4.5h3.5a4.5 4.5 0 0 1 0 9H7l8 6.5"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
@@ -95,16 +108,22 @@ export const clock = (utc: string, locale?: string | null) => formatIstLang(utc,
 export const dayName = (utc: string, locale?: string | null) => formatIstLang(utc, consoleLang(locale)).day;
 
 // ---------- The stylesheet ----------
+// Sizes: body 19 px, nothing under 16 px, screen titles 26 px in the UI face (the serif titles are drawn larger, 34 px, because Cormorant's
+// letters are small for their size), times and amounts 20 px semibold; tap targets at least 48 by 48 px with 8 px between them.
 export const APP_CSS = `
-:root{${vars(TOKENS.light)};--r:16px;--r-sm:12px}
-@media (prefers-color-scheme:dark){:root{${vars(TOKENS.dark)}}}
+:root{${vars(TOKENS.light)};--r:20px;--r-sm:14px;--glow:rgba(248,232,120,.42);--glow2:rgba(211,233,218,.55);--shade:rgba(20,52,63,.10);
+--serif:"Cormorant Garamond","Noto Sans Devanagari",Georgia,serif;--sans:Jost,"Noto Sans Devanagari",system-ui,sans-serif}
+@media (prefers-color-scheme:dark){:root{${vars(TOKENS.dark)};--glow:rgba(242,200,75,.12);--glow2:rgba(52,172,164,.10);--shade:rgba(0,0,0,.32)}}
 *{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%;color-scheme:light dark}
-body{margin:0;background:var(--paper);color:var(--ink);font:400 19px/1.45 Jost,"Noto Sans Devanagari",system-ui,sans-serif;font-variant-numeric:tabular-nums lining-nums}
+html{-webkit-text-size-adjust:100%;color-scheme:light dark;background:var(--paper)}
+body{margin:0;min-height:100vh;color:var(--ink);font:400 19px/1.45 Jost,"Noto Sans Devanagari",system-ui,sans-serif;font-variant-numeric:tabular-nums lining-nums;
+background:radial-gradient(110% 380px at 50% -140px,var(--glow),transparent 72%) no-repeat,radial-gradient(90% 300px at 100% 100%,var(--glow2),transparent 70%) fixed no-repeat,var(--paper)}
 [lang=hi] body{line-height:1.6}
 a{color:var(--accent);text-underline-offset:3px;text-decoration-thickness:1px}
 p{margin:8px 0}
+img{max-width:100%}
 :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+::selection{background:var(--waiting-tint);color:var(--ink)}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .skip{position:absolute;left:-9999px;top:8px}
 .skip:focus{left:16px;z-index:30;background:var(--surface);color:var(--ink);padding:12px 16px;border-radius:var(--r-sm)}
@@ -112,44 +131,59 @@ p{margin:8px 0}
 .nw{white-space:nowrap}
 .crumb,a.tap{display:inline-flex;align-items:center;min-height:48px;font-weight:500}
 .num{font-size:20px;font-weight:600}
-.main{padding:8px 16px calc(104px + env(safe-area-inset-bottom));min-width:0}
+.main{padding:4px 16px calc(112px + env(safe-area-inset-bottom));min-width:0}
 .content{max-width:1200px;margin:0 auto}
-.topline{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px}
-.brand{font-weight:600;font-size:19px;letter-spacing:.02em;margin:0}
-.brand::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--accent);margin-right:10px;vertical-align:1px}
-.screen{margin:8px 0 24px}
-.screen h1{font-size:26px;line-height:1.25;font-weight:500;font-style:italic;letter-spacing:-.005em;margin:0}
-[lang=hi] .screen h1{font-style:normal}
-.screen .visible{color:var(--muted);font-size:16px;margin:4px 0 0}
-h2.sec{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:16px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:32px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.topline{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;margin:0 0 4px}
+.brand{display:inline-flex;align-items:center;gap:12px;min-height:48px;color:var(--bronze);text-decoration:none;margin:0}
+.brand .mark{width:40px;height:40px;flex:none;filter:drop-shadow(0 2px 6px var(--glow))}
+.brand .bw{display:flex;flex-direction:column;min-width:0}
+.brand .bn{font-family:var(--serif);font-size:26px;font-weight:600;line-height:1.05;letter-spacing:.01em}
+.brand .bt{font-size:16px;font-weight:500;letter-spacing:.12em;white-space:nowrap;text-transform:uppercase;color:var(--muted);line-height:1.3}
+[lang=hi] .brand .bt{letter-spacing:.04em}
+.screen{margin:12px 0 28px}
+.screen .eyebrow{display:flex;align-items:center;gap:10px;margin:0 0 6px;color:var(--muted);font-size:16px;font-weight:500;letter-spacing:.06em}
+.screen .eyebrow::before{content:"";width:12px;height:12px;border-radius:50%;flex:none;background:radial-gradient(circle at 50% 50%,var(--sun),var(--gold));box-shadow:0 0 0 4px var(--glow)}
+.screen h1{font-family:"Cormorant Garamond","Noto Sans Devanagari",Georgia,serif;font-size:34px;line-height:1.12;font-weight:600;color:var(--bronze);letter-spacing:0;margin:0;text-wrap:balance}
+[lang=hi] .screen h1{font-family:Jost,"Noto Sans Devanagari",sans-serif;font-size:26px;font-weight:600;line-height:1.35}
+.screen h1::after{content:"";display:block;width:64px;height:2px;margin:14px 0 0;border-radius:2px;background:linear-gradient(90deg,var(--gold),transparent)}
+.screen .visible{color:var(--muted);font-size:16px;margin:12px 0 0}
+h2.sec{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:16px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:36px 0 14px}
+h2.sec>span:first-child{display:inline-flex;align-items:center;gap:12px}
 [lang=hi] h2.sec{letter-spacing:0}
-h2.sec .n{color:var(--ink);letter-spacing:0;font-weight:600}
+h2.sec .n:empty{display:none}
+h2.sec .n{display:inline-flex;align-items:center;justify-content:center;min-width:32px;padding:0 10px;border-radius:999px;background:var(--sunk);color:var(--ink);letter-spacing:0;font-weight:600}
 .screen+section>h2.sec,.screen+.ld h2.sec{margin-top:8px}
 form{margin:0}
-.btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;min-width:48px;padding:10px 20px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--surface);color:var(--ink);font-family:inherit;font-size:18px;font-weight:500;line-height:1.25;text-align:center;text-decoration:none;cursor:pointer}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;min-width:48px;padding:10px 20px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--surface);color:var(--ink);font-family:inherit;font-size:18px;font-weight:500;line-height:1.25;text-align:center;text-decoration:none;cursor:pointer;transition:background-color .15s,border-color .15s,box-shadow .15s}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);box-shadow:0 1px 0 rgba(255,255,255,.12) inset,0 6px 16px -8px var(--shade)}
+.btn.primary:hover{filter:brightness(1.08)}
 .btn.danger{background:var(--danger);border-color:var(--danger);color:var(--on-danger)}
 .btn.quiet{background:transparent;border-color:transparent;color:var(--accent);padding:10px 12px}
+.btn.quiet:hover{background:var(--accent-tint)}
 .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;align-items:center}
 .acts>.btn,.acts>form,.acts>details{flex:1 1 100%}
 .acts>form>.btn,.acts>details>summary{width:100%}
 .acts>.link{display:inline-flex;align-items:center;min-height:48px;padding:0 4px;font-weight:500}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;margin:0 0 12px}
-.card.danger{border-left:4px solid var(--danger)}
-.card.attention{border-left:4px solid var(--attention)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;margin:0 0 12px;box-shadow:0 1px 2px var(--shade),0 10px 28px -22px var(--shade)}
+.card.danger{box-shadow:inset 4px 0 0 var(--danger),0 1px 2px var(--shade)}
+.card.attention{box-shadow:inset 4px 0 0 var(--attention),0 1px 2px var(--shade)}
+.card.waiting{box-shadow:inset 4px 0 0 var(--gold),0 1px 2px var(--shade)}
 .card h3{font-size:20px;line-height:1.3;font-weight:600;margin:0}
 .card .why{color:var(--muted);margin:4px 0 0}
 .card .chip{margin-top:8px}
 .chip{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:1px 12px;font-size:16px;font-weight:500;line-height:1.5;background:var(--sunk);color:var(--muted);white-space:nowrap}
 .chip::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
 .chip.accent{background:var(--accent-tint);color:var(--accent)}
+.chip.waiting{background:var(--waiting-tint);color:var(--waiting)}
+.chip.waiting::before{background:var(--gold)}
 .chip.attention{background:var(--attention-tint);color:var(--attention)}
 .chip.danger{background:var(--danger-tint);color:var(--danger)}
 .chip.done{background:var(--done-tint);color:var(--done)}
-.ledger{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:0 20px;margin:0 0 12px}
-.appt{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px 16px;padding:16px 0;border-top:1px solid var(--line)}
+.ledger{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:0 20px;margin:0 0 12px;box-shadow:0 1px 2px var(--shade)}
+.appt{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px 16px;padding:18px 0;border-top:1px solid var(--line)}
 .appt:first-child{border-top:0}
-.appt .time{font-size:20px;font-weight:600;line-height:1.3;padding-right:12px;border-right:1px solid var(--line);white-space:nowrap}
+.appt .time{font-size:20px;font-weight:600;line-height:1.3;padding-right:14px;border-right:2px solid var(--gold);white-space:nowrap;color:var(--accent)}
 .appt .who{font-size:20px;font-weight:600;line-height:1.3;margin:0}
 .appt .who .d{color:var(--muted);font-weight:400}
 .appt .meta{color:var(--muted);margin:2px 0 0}
@@ -157,8 +191,22 @@ form{margin:0}
 .appt .side .btn{flex:1 1 auto}
 .appt .extra{grid-column:1/-1}
 .appt .extra:empty{display:none}
-.rows{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:0 0 12px}
-.row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;padding:12px 20px;border-top:1px solid var(--line);color:var(--ink);text-decoration:none}
+.hero{position:relative;overflow:hidden;background:radial-gradient(120% 140% at 100% 0%,var(--glow),transparent 60%),var(--surface);border:1px solid var(--line);border-radius:24px;padding:4px 22px 8px;margin:0 0 16px;box-shadow:0 1px 2px var(--shade),0 18px 40px -28px var(--shade)}
+.hero::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,var(--gold),var(--water))}
+.hero .when{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:18px 0 0;font-size:16px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+[lang=hi] .hero .when{letter-spacing:0}
+.hero .when .in{letter-spacing:0;text-transform:none;font-weight:500;color:var(--muted)}
+.hero .appt{grid-template-columns:minmax(0,1fr);gap:8px;padding:8px 0 14px;border:0}
+.hero .appt .time{font-size:34px;line-height:1.1;border:0;padding:0}
+.hero .appt .who{font-size:26px}
+.hero .appt .side>*{flex:1 1 100%}
+.hero .appt .side>.chip{flex:0 0 auto}
+.hero .appt .side .btn{width:100%;min-height:56px;font-size:20px}
+.hero .appt .side .btn.primary{font-weight:600}
+.hero .later{color:var(--muted);margin:0 0 10px}
+.rows{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:0 0 12px;box-shadow:0 1px 2px var(--shade)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;padding:12px 20px;border-top:1px solid var(--line);color:var(--ink);text-decoration:none;transition:background-color .15s}
+a.row:hover{background:var(--sunk)}
 .row:first-child{border-top:0}
 .row{flex-wrap:wrap}
 .row>div:first-child{flex:1 1 220px;min-width:0}
@@ -166,17 +214,18 @@ span.d{white-space:nowrap}
 .row .t{font-weight:600;margin:0}
 .row .s{color:var(--muted);margin:0}
 .row.on{background:var(--accent-tint);box-shadow:inset 4px 0 0 var(--accent)}
-.thread{display:flex;flex-direction:column;gap:12px;margin:0 0 12px}
-.bubble{max-width:min(85%,560px);border-radius:var(--r);padding:12px 16px;background:var(--surface);border:1px solid var(--line);overflow-wrap:anywhere}
+.av{display:inline-flex;align-items:center;justify-content:center;flex:none;width:56px;height:56px;border-radius:50%;font-family:var(--serif);font-size:30px;font-weight:600;color:var(--bronze);background:radial-gradient(circle at 50% 30%,var(--waiting-tint),var(--sunk));box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--gold)}
+.thread{display:flex;flex-direction:column;gap:12px;margin:0 0 12px;padding:16px;border-radius:var(--r);background:var(--sunk);border:1px solid var(--line)}
+.bubble{max-width:min(86%,560px);border-radius:18px;padding:12px 16px;background:var(--surface);border:1px solid var(--line);overflow-wrap:anywhere;box-shadow:0 1px 1px var(--shade)}
 .bubble p{margin:0}
 .bubble .by{font-size:16px;font-weight:500;color:var(--muted);margin:0 0 4px}
 .bubble .kind{font-size:16px;color:var(--muted);margin:8px 0 0}
 .bubble .view{margin:8px 0 0}
-.bubble.customer{align-self:flex-start;border-bottom-left-radius:4px}
-.bubble.bot,.bubble.assistant{align-self:flex-end;background:var(--sunk);border-color:var(--sunk);border-bottom-right-radius:4px}
-.bubble.team{align-self:flex-end;background:var(--accent-tint);border-color:var(--accent-tint);border-bottom-right-radius:4px}
-.bubble.safety{align-self:flex-end;background:var(--danger-tint);border-color:var(--danger);border-bottom-right-radius:4px}
-.bubble.quiet{background:transparent;border:1px dashed var(--line)}
+.bubble.customer{align-self:flex-start;border-bottom-left-radius:6px}
+.bubble.bot,.bubble.assistant{align-self:flex-end;background:var(--paper);border-bottom-right-radius:6px}
+.bubble.team{align-self:flex-end;background:var(--accent-tint);border-color:var(--accent-tint);border-bottom-right-radius:6px}
+.bubble.safety{align-self:flex-end;background:var(--danger-tint);border-color:var(--danger);border-bottom-right-radius:6px}
+.bubble.quiet{background:transparent;border:1px dashed var(--muted);box-shadow:none}
 .bubble.quiet>p:not(.by){color:var(--muted)}
 .wiped{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:16px;margin:4px 0;text-align:center}
 .wiped::before,.wiped::after{content:"";flex:1 1 24px;border-top:1px solid var(--line)}
@@ -188,7 +237,8 @@ details.confirm>summary::-webkit-details-marker{display:none}
 details.confirm .panel{margin-top:8px;background:var(--danger-tint);border-radius:var(--r-sm);padding:16px}
 details.confirm .effect{margin:0 0 12px}
 details.confirm .panel .btn{width:100%}
-.empty{border:1px dashed var(--muted);border-radius:var(--r);padding:20px;margin:0 0 12px;color:var(--muted)}
+.empty{position:relative;border:1px dashed var(--line);background:var(--surface);border-radius:var(--r);padding:24px 20px 20px;margin:0 0 12px;color:var(--muted)}
+.empty::before{content:"";display:block;width:36px;height:18px;margin:0 0 14px;border-radius:36px 36px 0 0;background:linear-gradient(180deg,var(--sun),var(--gold));box-shadow:0 6px 0 -4px var(--water)}
 .empty p{margin:0}
 .empty p+p{margin-top:12px}
 .empty a{display:inline-flex;align-items:center;min-height:48px;font-weight:500}
@@ -196,73 +246,106 @@ details.confirm .panel .btn{width:100%}
 .banner.danger{background:var(--danger-tint);border-color:var(--danger)}
 .banner p{margin:0;font-weight:600}
 .banner .btn{flex:0 0 auto}
-.flash{background:var(--ink);color:var(--paper);border-radius:var(--r-sm);padding:12px 16px;margin:0 0 16px;font-weight:500}
+.flash{background:var(--ink);color:var(--paper);border-radius:var(--r-sm);padding:14px 18px;margin:0 0 16px;font-weight:500;box-shadow:0 10px 24px -16px var(--shade)}
 .ld-back{display:inline-flex;align-items:center;min-height:48px;font-weight:500;margin:0 0 8px}
 .ld.open .ld-list,.ld:not(.open) .ld-detail{display:none}
 .badge{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 6px;border-radius:999px;background:var(--danger);color:var(--on-danger);font-size:16px;font-weight:600;line-height:1}
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;justify-content:space-around;gap:4px;background:var(--surface);border-top:1px solid var(--line);padding:4px 8px calc(4px + env(safe-area-inset-bottom))}
+.seg{display:flex;flex-wrap:wrap;gap:4px;margin:0;padding:4px;border-radius:999px;background:var(--sunk);border:1px solid var(--line);width:max-content;max-width:100%}
+.seg a{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 18px;border-radius:999px;color:var(--ink);text-decoration:none;font-weight:500}
+.seg a.on{background:var(--surface);color:var(--accent);font-weight:600;box-shadow:0 1px 2px var(--shade),0 0 0 1px var(--line)}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.pills a{display:inline-flex;align-items:center;min-height:48px;padding:0 18px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:500}
+.pills a.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.pills .n{margin-left:8px;color:inherit;opacity:.85}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;justify-content:space-around;gap:4px;background:var(--surface);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom));box-shadow:0 -10px 30px -24px var(--shade)}
 .tabbar>a,.tabbar>details{flex:1 1 0;max-width:120px;min-width:0}
 .tabbar a.tab,.tabbar summary{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:60px;padding:4px 2px;border-radius:var(--r-sm);color:var(--muted);text-decoration:none;font-size:16px;font-weight:500;line-height:1.2;position:relative;list-style:none;cursor:pointer}
 .tabbar summary::-webkit-details-marker{display:none}
-.tabbar .ic{display:inline-flex;align-items:center;justify-content:center;width:56px;height:30px;border-radius:999px}
-.tabbar .on{color:var(--accent)}
-.tabbar .on .ic{background:var(--accent-tint)}
+.tabbar .ic{display:inline-flex;align-items:center;justify-content:center;width:60px;height:32px;border-radius:999px;transition:background-color .2s}
+.tabbar .on{color:var(--accent);font-weight:600}
+.tabbar .on .ic{background:var(--accent-tint);box-shadow:inset 0 -2px 0 var(--gold)}
 .tabbar .badge{position:absolute;top:2px;left:calc(50% + 8px)}
 .tabbar details{position:relative}
-.tabbar .sheet{position:absolute;right:0;bottom:calc(100% + 12px);width:240px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:8px;box-shadow:0 12px 32px rgba(20,48,47,.16)}
+.tabbar .sheet{position:absolute;right:0;bottom:calc(100% + 12px);width:240px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:8px;box-shadow:0 16px 40px var(--shade)}
 .tabbar .sheet a{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 12px;border-radius:var(--r-sm);color:var(--ink);text-decoration:none;font-weight:500}
 .tabbar .sheet a.on{background:var(--accent-tint);color:var(--accent)}
 .rail{display:none}
 .rail ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
-.rail a.tab{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 12px;border-radius:var(--r-sm);color:var(--ink);text-decoration:none;font-weight:500}
+.rail a.tab{display:flex;align-items:center;gap:14px;min-height:52px;padding:0 14px;border-radius:var(--r-sm);color:var(--ink);text-decoration:none;font-weight:500;transition:background-color .15s}
+.rail a.tab:hover{background:var(--sunk)}
 .rail a.tab svg{color:var(--muted)}
-.rail a.tab.on{background:var(--accent-tint);color:var(--accent)}
+.rail a.tab.on{background:var(--surface);color:var(--accent);font-weight:600;box-shadow:0 1px 2px var(--shade),inset 3px 0 0 var(--gold)}
 .rail a.tab.on svg{color:var(--accent)}
 .rail a.tab .badge{margin-left:auto}
 .find{display:flex;gap:8px}
 .rail .find{flex-direction:column}
-.find input{flex:1;min-width:0;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px}
+.find input,.field-input{flex:1;min-width:0;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 14px}
 .find input::placeholder{color:var(--muted);opacity:1}
-.me{color:var(--muted);font-size:16px;margin:0;padding:0 12px}
+input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.me{color:var(--muted);font-size:16px;margin:0;padding:0 14px}
 .me b{display:block;color:var(--ink);font-weight:500}
-.main.plain{padding:24px 16px 48px}
-.plain .content{max-width:640px}
-.plain .brand{margin:0 0 32px}
-.plain .acts>form,.plain .acts>.btn{flex:0 0 auto}
+.main.plain{display:flex;align-items:flex-start;justify-content:center;padding:32px 16px 48px}
+.plain .content{width:100%;max-width:560px}
+.plain .logo{display:block;width:180px;height:auto;margin:0 auto 20px}
+.plain .sheetc{background:var(--surface);border:1px solid var(--line);border-radius:28px;padding:28px 22px;box-shadow:0 1px 2px var(--shade),0 24px 60px -36px var(--shade)}
+.plain .screen{text-align:center;margin-top:0}
+.plain .screen h1::after{margin-left:auto;margin-right:auto}
+.plain .acts>form,.plain .acts>.btn{flex:1 1 100%}
+.plain .empty{border:0;background:transparent;padding:0;text-align:center}
+.plain .empty::before{margin:0 auto 14px}
+@media (prefers-reduced-motion:no-preference){
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.screen,.content>section,.content>.ld,.content>.ibx,.content>.hero,.content>.calbar,.plain .sheetc{animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+.content>section:nth-of-type(2){animation-delay:.06s}.content>section:nth-of-type(3){animation-delay:.12s}.content>section:nth-of-type(n+4){animation-delay:.18s}
+.screen .eyebrow::before{animation:glow 3.2s ease-in-out 1 both}
+@keyframes glow{from{box-shadow:0 0 0 0 var(--glow)}to{box-shadow:0 0 0 4px var(--glow)}}
+}
 @media (min-width:900px){
 .tabbar,.topline{display:none}
-.shell{display:grid;grid-template-columns:272px minmax(0,1fr);min-height:100vh}
-.rail{display:flex;flex-direction:column;gap:20px;position:sticky;top:0;height:100vh;overflow-y:auto;padding:24px 16px;border-right:1px solid var(--line)}
-.rail .brand{padding:8px 12px 0;font-size:20px}
-.rail .foot{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+.shell{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh}
+.rail{display:flex;flex-direction:column;gap:22px;position:sticky;top:0;height:100vh;overflow-y:auto;padding:28px 18px;border-right:1px solid var(--line);background:linear-gradient(180deg,var(--glow),transparent 220px),var(--sunk)}
+.rail .brand{padding:0 8px 18px;border-bottom:1px solid var(--line)}
+.rail .brand .mark{width:52px;height:52px}
+.rail .brand .bn{font-size:28px}
+.rail .foot{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:16px;border-top:1px solid var(--line)}
 .rail .foot .btn{justify-content:flex-start}
-.main{padding:40px 48px 64px}
-.main.plain{padding:64px 48px}
+.main{padding:44px 56px 72px}
+.main.plain{padding:72px 48px}
+.plain .sheetc{padding:40px 44px}
 .screen{margin-top:0}
+.screen h1{font-size:40px}
+[lang=hi] .screen h1{font-size:28px}
 .acts>.btn,.acts>form,.acts>details{flex:0 0 auto}
 .acts>details[open]{flex:1 1 100%}
-.appt{grid-template-columns:5.2em minmax(0,1fr) auto;align-items:center}
+.appt{grid-template-columns:5.4em minmax(0,1fr) auto;align-items:center}
 .appt .side{grid-column:auto;justify-content:flex-end}
 .appt .side .btn{flex:0 0 auto}
-.ld{display:grid;grid-template-columns:minmax(300px,2fr) minmax(0,3fr);gap:24px;align-items:start}
+.hero{padding:4px 32px 12px}
+.hero .appt{grid-template-columns:auto minmax(0,1fr) auto;gap:8px 28px;align-items:center}
+.hero .appt .time{font-size:40px;padding-right:28px;border-right:2px solid var(--gold)}
+.hero .appt .side>*{flex:0 0 auto}
+.hero .appt .side .btn{min-width:200px}
+.ld{display:grid;grid-template-columns:minmax(320px,2fr) minmax(0,3fr);gap:28px;align-items:start}
 .ld.open .ld-list,.ld:not(.open) .ld-detail{display:block}
 .ld-detail{position:sticky;top:24px}
 .ld-back{display:none}
 }
 `;
 
-// The strict CSP of today's pages plus the self-hosted fonts. Every /app response uses this.
-export const CONSOLE_CSP = "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; form-action 'self'; frame-ancestors 'none'";
+// The strict CSP of today's pages plus the self-hosted fonts and the brand's own images and manifest. Every /app response uses this.
+export const CONSOLE_CSP = "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'";
 
 // ---------- Components ----------
-export type ChipTone = "plain" | "accent" | "attention" | "danger" | "done";
+// The chip tones: paid and confirmed teal-mint (done), waiting on the customer gold (waiting), needs the team warm terracotta (attention),
+// failures and safety muted red (danger), and the accent and plain ones.
+export type ChipTone = "plain" | "accent" | "waiting" | "attention" | "danger" | "done";
 
 // A word plus a colour: the word always carries the meaning.
 export const statusChip = (word: string, tone: ChipTone = "plain") => html`<span class="chip ${tone}">${word}</span>`;
 
 // Fixed lists per object: a booking (intro call or session) is Held, Confirmed, Done, Missed or Cancelled.
 const BOOKING_STATUS: Record<string, [keyof ConsoleCopy, ChipTone]> = {
-  HELD: ["bookingHeld", "attention"],
+  HELD: ["bookingHeld", "waiting"],
   PAID: ["bookingConfirmed", "done"], RESCHEDULED: ["bookingConfirmed", "done"], CONFIRMED: ["bookingConfirmed", "done"], CREDIT_BOOKED: ["bookingConfirmed", "done"],
   CALLED_SESSION: ["bookingDone", "plain"], CALLED_NOT_FIT: ["bookingDone", "plain"], RUDE: ["bookingDone", "plain"], COMPLETED: ["bookingDone", "plain"], NOT_FIT: ["bookingDone", "plain"],
   MISSED: ["bookingMissed", "attention"], NO_SHOW: ["bookingMissed", "attention"],
@@ -270,9 +353,9 @@ const BOOKING_STATUS: Record<string, [keyof ConsoleCopy, ChipTone]> = {
 };
 // A payment is Paid, Waiting, Failed, Refund on its way, Refunded, or Check with Razorpay.
 const PAYMENT_STATUS: Record<string, [keyof ConsoleCopy, ChipTone]> = {
-  CREATING: ["payWaiting", "attention"], PENDING: ["payWaiting", "attention"],
+  CREATING: ["payWaiting", "waiting"], PENDING: ["payWaiting", "waiting"],
   PAID: ["payPaid", "done"], FAILED: ["payFailed", "danger"], UNKNOWN: ["payCheck", "danger"],
-  REFUND_PENDING: ["payRefunding", "attention"], REFUNDED: ["payRefunded", "plain"], REFUND_FAILED: ["payCheck", "danger"],
+  REFUND_PENDING: ["payRefunding", "waiting"], REFUNDED: ["payRefunded", "plain"], REFUND_FAILED: ["payCheck", "danger"],
 };
 const statusFrom = (map: Record<string, [keyof ConsoleCopy, ChipTone]>, state: string, locale?: string | null) => {
   const s = map[state];
@@ -296,7 +379,7 @@ export function button(a: Action) {
 export const keep4 = (s: string) => s.split(/(…\d{4})/).map((p, i) => (i % 2 ? html`<span class="nw">${p}</span>` : html`${p}`));
 
 // Task card: what to do, why and how long it has waited, one primary button, at most one secondary link.
-export function taskCard(o: { title: string; why: string; tone?: "danger" | "attention" | "plain"; chip?: unknown; primary: Action; secondary?: { label: string; href: string } }) {
+export function taskCard(o: { title: string; why: string; tone?: "danger" | "attention" | "waiting" | "plain"; chip?: unknown; primary: Action; secondary?: { label: string; href: string } }) {
   return html`<article class="card ${o.tone ?? "plain"}"><h3>${keep4(o.title)}</h3><p class="why">${keep4(o.why)}</p>${o.chip ?? ""}
 <div class="acts">${button({ ...o.primary, kind: o.primary.kind ?? "primary" })}${o.secondary ? html`<a class="link" href="${o.secondary.href}">${o.secondary.label}</a>` : ""}</div></article>`;
 }
@@ -324,6 +407,12 @@ export const callLangText = (lang: string | null | undefined, locale?: string | 
 export const listRow = (o: { href: string; title: string; sub?: string; end?: unknown; on?: boolean }) =>
   html`<a class="row${o.on ? " on" : ""}" href="${o.href}"${o.on ? raw(' aria-current="true"') : ""}><div><p class="t">${o.title}</p>${o.sub ? html`<p class="s">${o.sub}</p>` : ""}</div>${o.end ?? ""}</a>`;
 export const rows = (items: unknown) => html`<div class="rows">${items}</div>`;
+
+// A person's initial in a gold-ringed circle (the person page and the Inbox thread): decoration, so hidden from screen readers.
+export const avatar = (name: string | null | undefined) => {
+  const ch = [...(name?.trim() ?? "")][0]?.toUpperCase() ?? "";
+  return html`<span class="av" aria-hidden="true">${/\p{L}/u.test(ch) ? ch : "·"}</span>`;
+};
 
 // Conversation bubble: every message labelled. Assistant answers show the question type in small text.
 // Staff never see a safety message's text: pass hideSafety and the bubble says only that an owner is needed.
@@ -356,11 +445,11 @@ export const banner = (o: { text: string; fix: { label: string; href: string }; 
 export const section = (title: string, body: unknown, count?: number) =>
   html`<section><h2 class="sec"><span>${title}</span>${count ? html`<span class="n">${count}</span>` : ""}</h2>${body}</section>`;
 
-// The screen's title is its question, with who can see it underneath.
-export function screenHead(tab: TabId, locale?: string | null) {
+// The screen's title is its question, with who can see it underneath. `eyebrow`: a quiet line above it (Today's greeting and date).
+export function screenHead(tab: TabId, locale?: string | null, o: { eyebrow?: string } = {}) {
   const c = consoleCopy(locale);
   const who = rolesFor(tab).map((r) => roleName(r, locale)).join(", ");
-  return html`<header class="screen"><h1>${text(c, SCREENS[tab].question)}</h1><p class="visible">${c.visibleTo(who)}</p></header>`;
+  return html`<header class="screen">${o.eyebrow ? html`<p class="eyebrow">${o.eyebrow}</p>` : ""}<h1>${text(c, SCREENS[tab].question)}</h1><p class="visible">${c.visibleTo(who)}</p></header>`;
 }
 
 // List and detail: from 900 px the list sits on the left and the open item on the right, so you never lose your place.
@@ -389,11 +478,18 @@ export type FrameOpts = {
   accent?: AccentName; // the workspace's accent colour from Settings (src/business.ts); teal, the default, adds nothing
 };
 
+const head = (lang: string, title: string, accent: AccentName) =>
+  html`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${title}</title>${raw(HEAD_LINKS)}<style>${raw(FONT_FACES)}${raw(APP_CSS)}</style>${raw(accentCss(accent))}</head>`;
+// The sun-and-path mark beside the name (decoration: the name is the link's text).
+const markImg = (size: number) => raw(`<img class="mark" src="${BRAND_PATH}mark-112.webp" alt="" width="${size}" height="${size}">`);
+
 export function consoleFrame(o: FrameOpts) {
   const lang = consoleLang(o.locale);
   const c = consoleCopy(lang);
   const tabs = tabsFor(o.role);
-  const business = hasOwnName(o.business) ? o.business : c.brandNeutral; // the seeded default name is never shown
+  const own = hasOwnName(o.business);
+  const business = own ? o.business : c.brandNeutral; // the seeded default name is never shown
   const label = (t: TabId) => text(c, SCREENS[t].label);
   const badge = (t: TabId) => (o.badges?.[t] ? html`<span class="badge"><span class="vh">${c.waitingCount(o.badges[t] ?? 0)}: </span>${o.badges[t]}</span>` : "");
   const current = (t: TabId) => (t === o.active ? raw(' aria-current="page"') : "");
@@ -418,25 +514,27 @@ export function consoleFrame(o: FrameOpts) {
   const search = tabs.includes("people")
     ? html`<form class="find" method="get" action="${SCREENS.people.href}" role="search"><label class="vh" for="find-q">${c.searchLabel}</label><input id="find-q" type="search" name="q" value="${o.query ?? ""}" placeholder="${c.searchPlaceholder}" autocomplete="off"><button class="btn" type="submit">${c.searchButton}</button></form>`
     : "";
+  // The tagline ("Healing Center") belongs with the business's own name, never with the neutral label.
+  const tagline = own ? html`<span class="bt">${config.brand.tagline}</span>` : "";
 
-  return html`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${o.title} · ${business}</title><style>${raw(FONT_FACES)}${raw(APP_CSS)}</style>${raw(accentCss(o.accent ?? "teal"))}</head><body>
+  return html`${head(lang, `${o.title} · ${business}`, o.accent ?? "teal")}<body>
 <a class="skip" href="#main">${c.skipToContent}</a>
 <div class="shell">
-<nav class="rail" aria-label="${c.navLabel}"><p class="brand">${business}</p>${search}<ul>${railTabs}</ul><div class="foot">${o.member ? html`<p class="me"><b>${o.member}</b>${roleName(o.role, lang)}</p>` : html`<p class="me">${roleName(o.role, lang)}</p>`}${switcher}</div></nav>
-<main class="main" id="main"><div class="content"><div class="topline"><p class="brand">${business}</p>${switcher}</div>${o.flash ? html`<p class="flash" role="status">${o.flash}</p>` : ""}${o.banners ?? ""}${o.body}</div></main>
+<nav class="rail" aria-label="${c.navLabel}"><a class="brand" href="/app">${markImg(52)}<span class="bw"><span class="bn">${business}</span>${tagline}</span></a>${search}<ul>${railTabs}</ul><div class="foot">${o.member ? html`<p class="me"><b>${o.member}</b>${roleName(o.role, lang)}</p>` : html`<p class="me">${roleName(o.role, lang)}</p>`}${switcher}</div></nav>
+<main class="main" id="main"><div class="content"><div class="topline"><a class="brand" href="/app">${markImg(40)}<span class="bw"><span class="bn">${business}</span></span></a>${switcher}</div>${o.flash ? html`<p class="flash" role="status">${o.flash}</p>` : ""}${o.banners ?? ""}${o.body}</div></main>
 </div>
 <nav class="tabbar" aria-label="${c.navLabel}">${bar}</nav>
 </body></html>`;
 }
 
 // A page with no tabs, on the same look: "No access" before sign-in, an invite to accept, "The console has moved". `body` is escaped html.
+// The full logo sits above a single soft card.
 export function plainFrame(o: { locale?: string | null; title: string; body: unknown; accent?: AccentName }) {
   const lang = consoleLang(o.locale);
   const c = consoleCopy(lang);
-  return html`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>${o.title} · ${c.brandNeutral}</title><style>${raw(FONT_FACES)}${raw(APP_CSS)}</style>${raw(accentCss(o.accent ?? "teal"))}</head><body>
-<main class="main plain" id="main"><div class="content"><p class="brand">${c.brandNeutral}</p>${o.body}</div></main>
+  const alt = `${config.brand.name} ${config.brand.tagline}`;
+  return html`${head(lang, `${o.title} · ${c.brandNeutral}`, o.accent ?? "teal")}<body>
+<main class="main plain" id="main"><div class="content"><img class="logo" src="${BRAND_PATH}logo-328.webp" alt="${alt}" width="328" height="300"><div class="sheetc">${o.body}</div></div></main>
 </body></html>`;
 }
 

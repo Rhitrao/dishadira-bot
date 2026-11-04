@@ -26,7 +26,7 @@ import { buildExport, EXPORT_LIMITS, exportDays, exportFileName } from "./export
 import { maySeeMedia, viewButton, viewMedia } from "./media";
 import { iso } from "./slots";
 import {
-  appointmentRow, bookingChip, bubble, callLangText, clock, consoleFrame, dayName, emptyState, firstName, forWhomText, last4, ledger, listDetail,
+  appointmentRow, avatar, bookingChip, bubble, callLangText, clock, consoleFrame, dayName, emptyState, firstName, forWhomText, last4, ledger, listDetail,
   listRow, paymentChip, rows, screenHead, section, statusChip, thread, type From,
 } from "./ui";
 import { retentionMinutes, wipePersonStmts } from "./wipe";
@@ -110,10 +110,12 @@ const service = (s: string, locale: string) => serviceName(s, locale === "hi" ? 
 const PEOPLE_CSS = `
 .filters{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
 .filters a{display:inline-flex;align-items:center;min-height:48px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:500}
-.filters a.on{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.filters a.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.person{display:flex;align-items:flex-start;gap:16px}.person>div{min-width:0;flex:1}
 .people-find{margin:0 0 12px}
-.person h2{font-size:26px;line-height:1.25;font-weight:600;margin:0}
-.person h2 .d{color:var(--muted);font-weight:400}
+.person h2{font-family:var(--serif);font-size:32px;line-height:1.15;font-weight:600;color:var(--bronze);margin:2px 0 0}
+[lang=hi] .person h2{font-family:var(--sans);font-size:26px}
+.person h2 .d{font-family:var(--sans);font-size:20px;color:var(--muted);font-weight:400}
 .person p{margin:4px 0 0;color:var(--muted)}
 .person .chip{margin:12px 8px 0 0}
 .panel label{display:block;margin:0 0 8px;font-weight:500}
@@ -203,7 +205,7 @@ function listHtml(o: { m: Member; p: PeopleCopy; rows: ListRow[]; q: string; f: 
       ? emptyState(p.nobodyMatches, { label: p.seeEveryone, href: "/app/people" })
       : emptyState(isPractitioner(m) ? p.nobodyYours : p.nobodyYet, { label: p.openToday, href: "/app" });
   // Ticket 37: the owner's chat export (src/export.ts), the same file as /admin/export.
-  const exp = m.role === "OWNER" ? html`<p class="muted"><a href="/app/people/export?days=${EXPORT_LIMITS.defaultDays}">${p.exportChats}</a></p>` : "";
+  const exp = m.role === "OWNER" ? html`<p class="muted"><a class="tap" href="/app/people/export?days=${EXPORT_LIMITS.defaultDays}">${p.exportChats}</a></p>` : "";
   return html`${find}${filters}${o.rows.length ? rows(items) : empty}${o.rows.length === LIST_LIMIT ? html`<p class="muted">${p.showingRecent(LIST_LIMIT)}</p>` : ""}${exp}`;
 }
 
@@ -368,9 +370,9 @@ async function personPage(c: ConsoleCtx, id: number, opts: PageOpts = {}) {
 
   // Header: name, last 4 digits, language, first contact, the ad.
   const ad = person.adHeadline ? p.cameFromAd(person.adHeadline) : person.sourceAd ? p.cameFromAdNoName : p.notFromAd;
-  const head = html`<div class="card person"><h2>${person.name?.trim() || p.noName} <span class="d">${last4(person.waId)}</span></h2>
+  const head = html`<div class="card person">${avatar(person.name)}<div><h2>${person.name?.trim() || p.noName} <span class="d">${last4(person.waId)}</span></h2>
 <p>${p.speaks(langName(person.locale, loc))} · ${p.firstContact(dayName(person.createdAt, loc))}</p><p>${ad}</p>
-${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person.mode === "BLOCKED" ? statusChip(p.chipBlocked, "danger") : ""}</div>`;
+${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person.mode === "BLOCKED" ? statusChip(p.chipBlocked, "danger") : ""}</div></div>`;
 
   // Take over this chat (ticket 36): only while the bot has it (not blocked, not already with the team), for someone who may reply.
   const takeOver =

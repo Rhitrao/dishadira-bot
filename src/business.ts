@@ -128,7 +128,7 @@ export async function chatTextHidden(db: D1Database, role: string): Promise<bool
 // ---- the console's accent colour ----
 // A small fixed set, each checked for contrast in light and dark (test/settings.test.ts), so no choice makes text unreadable.
 export const ACCENTS = {
-  teal: { light: "#1B6F73", lightTint: "#E6F0EF", dark: "#5CC2BE", darkTint: "#16302F" },
+  teal: { light: "#1D556C", lightTint: "#E2EEEA", dark: "#80D0C7", darkTint: "#163A3F" }, // the brand's deep teal (ticket 39), as src/ui.ts TOKENS
   blue: { light: "#2F5F8A", lightTint: "#E8EFF6", dark: "#8EC1EC", darkTint: "#172634" },
   indigo: { light: "#3F51B5", lightTint: "#ECEEF8", dark: "#A3ACF2", darkTint: "#1E2238" },
   plum: { light: "#7B3F72", lightTint: "#F5ECF3", dark: "#E0A3D6", darkTint: "#2E1C2B" },

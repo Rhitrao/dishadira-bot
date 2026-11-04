@@ -4,6 +4,7 @@ import { admin } from "./admin";
 import { loadPrices } from "./business";
 import { amma } from "./amma";
 import { cleanFollowUps, whatsappFollowUps } from "./followup";
+import { serveBrand, serveManifest } from "./brand";
 import { serveFont } from "./fonts";
 import { consoleApp } from "./console";
 import { nudgeWaitingChats } from "./inbox";
@@ -38,13 +39,16 @@ app.onError((_e, c) => {
 // Every request quotes the owner's prices from Settings (src/business.ts); /health, the font files, the payment link, /fb and /ig don't need
 // them (/b/ does: its WhatsApp text says the ₹99).
 app.use("*", async (c, next) => {
-  if (!["/health", "/fb", "/ig"].includes(c.req.path) && !c.req.path.startsWith("/app/fonts/") && !c.req.path.startsWith("/p/")) await loadPrices(c.env);
+  if (!["/health", "/fb", "/ig"].includes(c.req.path) && !c.req.path.startsWith("/app/fonts/") && !c.req.path.startsWith("/app/brand/") && c.req.path !== "/app/manifest.webmanifest" && !c.req.path.startsWith("/p/")) await loadPrices(c.env);
   await next();
 });
 
 app.get("/health", (c) => c.json({ ok: true, version: VERSION }));
 // The console's self-hosted fonts (ticket 20); 404 unless CONSOLE_V2 is "true".
 app.get("/app/fonts/:file", serveFont);
+// The brand mark, logo and home-screen icons, and the web app manifest (ticket 39, src/brand.ts); 404 unless CONSOLE_V2 is "true".
+app.get("/app/brand/:file", serveBrand);
+app.get("/app/manifest.webmanifest", serveManifest);
 
 app.get("/wa/webhook", verifyWebhook);
 app.post("/wa/webhook", receiveWebhook);
