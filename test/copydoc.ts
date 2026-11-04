@@ -36,6 +36,7 @@ const sample: Record<string, (c: Copy, lang: Lang) => string> = {
   dupRefund: (c) => c.dupRefund("{amount}"),
   dupKeeps: (c) => c.dupKeeps("{day}", "{time}"),
   latePaidTaken: (c) => c.latePaidTaken("{amount}"),
+  reviewAsk: (c) => c.reviewAsk("{Google review link}", "{WhatsApp link}"),
 };
 
 const sections: { title: string; intro?: string; entries: Entry[] }[] = [
@@ -263,6 +264,16 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
       ["autoFollowUp1", "Automatic follow-up, 60 minutes after their last message, if they haven't booked (with the Book button; never 9 pm to 8 am)"],
       ["autoFollowUp2", "Automatic follow-up, 20 hours after their last message (with the Book button; at most 2 a week)"],
       ["autoFollowUpGentle", "The only follow-up after an illness is named, at 20 hours (no button, no price)"],
+    ],
+  },
+  {
+    title: "8c. After the call (ticket 40)",
+    intro:
+      "Each goes once, to one person, never at night (9 pm to 8 am), and never to anyone who said stop, is blocked, is with the team, or sent a safety message. Outside the 24-hour window only the approved template goes (docs/TEMPLATES.md 9 to 11); until Meta approves it, nothing is sent.",
+    entries: [
+      ["sessionReminderBody", "48 hours after the session offer, if nothing is paid or booked: one reminder, above the same list (single session, 10 or 20). Owner switch: After-call reminder"],
+      ["reviewAsk", "The morning after a paid session (from 10 am): thank-you, review and referral ask, at most once in 90 days. The review sentence is left out while no Google review link is set; the WhatsApp link opens a chat with us with \"Hi, I was referred by a friend\" filled in. Owner switch: Review & referral ask (off by default)"],
+      ["sessionLinkBody", "The team's \"Send session link\", Let them choose (with the button \"Choose a time\", then the session's day and time steps)"],
     ],
   },
 ];

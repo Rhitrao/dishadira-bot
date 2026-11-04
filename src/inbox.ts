@@ -20,6 +20,7 @@ import { FOLLOW_UP_TEXT, inboxCopy, type InboxCopy } from "./inbox-copy";
 import { sendEmailTo } from "./mail";
 import { maySeeMedia, viewButton } from "./media";
 import { moveSession } from "./mybookings";
+import { sessionLinkButton } from "./sessionlink";
 import { moveCall } from "./outcomes";
 import { noSellActiveFor, personState } from "./noise";
 import { razorpay } from "./pay/razorpay";
@@ -318,6 +319,10 @@ async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: st
   const acts: unknown[] = [];
   if (r.act && !live) acts.push(await postButton(c, m, ch.id, "assign", ic.assignToMe));
   if (r.book) acts.push(html`<a class="btn" href="/app/inbox/${ch.id}/book">${ic.bookOrMove}</a>`);
+  if (r.book) {
+    const slink = await sessionLinkButton(c.env, m, ch.id); // ticket 40: someone with a paid ₹99 call
+    if (slink) acts.push(slink);
+  }
   if (r.act && ch.mode === "HUMAN") acts.push(await postButton(c, m, ch.id, "hand-back", ic.handBack));
   if (r.act)
     acts.push(

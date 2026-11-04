@@ -79,9 +79,10 @@ export const packagesList = (cp: Copy): Out => ({
 });
 
 // What Amma's "Session" outcome sends: the same three choices after the 99 call (the single session is the one she offered, so it skips the soft gate).
-export const sessionOfferOut = (cp: Copy, sessionId: number): Out => ({
+// The reminder 48 hours later (ticket 40, src/aftercall.ts) is the same list with its own words.
+export const sessionOfferOut = (cp: Copy, sessionId: number, body = cp.sessionOfferBody): Out => ({
   type: "list",
-  body: cp.sessionOfferBody,
+  body,
   button: cp.packagesButton,
   rows: [
     { id: `sess_offer_${sessionId}`, title: cp.rowSingleTitle, description: cp.rowSingleDesc },

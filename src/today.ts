@@ -4,6 +4,7 @@
 // Server-rendered, no scripts; every change is a POST with Origin (checked in src/console.ts) + a per-form member CSRF token, and
 // every button and every POST asks the same can() (src/auth.ts), through the helpers below, so a hidden button and a refused POST agree.
 // Outcome taps use the same write as /amma (recordOutcome in src/outcomes.ts); the cron applies them after the undo window.
+import { sessionLinkButton } from "./sessionlink";
 import type { D1Result } from "@cloudflare/workers-types";
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
@@ -256,6 +257,9 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number) {
   } else if (b.oid === null && outcomesFor(b).length && now >= startMs(b) + OUTCOME_HOURS * HOUR) {
     extra = statusChip(t.noOutcomeYet, "attention");
   }
+  // A call: "Send session link (₹799)" for whoever may book for them (ticket 40, src/sessionlink.ts).
+  const slink = b.kind === "CALL" ? await sessionLinkButton(c.env, m, b.convId) : "";
+  if (slink) extra = html`${extra}<div class="acts">${slink}</div>`;
   return html`<div class="bk" id="b-${kindKey(b)}-${b.id}">${appointmentRow({
     time: clock(b.startUtc, lang),
     name: firstName(b.name, t.noName),

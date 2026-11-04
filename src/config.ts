@@ -251,6 +251,12 @@ export const config = {
     session_booked: { approved: true, language: "en", hi: { name: "session_booked_hi", approved: true, language: "hi" } },
     // The Inbox's follow-up once the 24-hour window has closed (ticket 22; not yet in the CONTRACT's template list, see STATUS "Blocked").
     follow_up: { approved: true, language: "en", hi: { name: "follow_up_hind", approved: true, language: "hi" } },
+    // Ticket 40 (CONTRACT v12), waiting for Rohit to create them in Meta (docs/TEMPLATES.md 9 to 11). Until then the bot skips the
+    // message when the 24-hour window has closed, and counts it in the digest.
+    session_reminder: { approved: false, language: "en", hi: { name: "session_reminder_hi", approved: false, language: "hi" } },
+    review_ask: { approved: false, language: "en", hi: { name: "review_ask_hi", approved: false, language: "hi" } },
+    // The team's "Send session link" with a time held, once the window has closed (ticket 40, docs/TEMPLATES.md 11). Utility.
+    session_link: { approved: false, language: "en", hi: { name: "session_link_hi", approved: false, language: "hi" } },
   },
   languages: ["en", "hi"],
   faqIds: ["what_is_this", "how_it_works", "price", "timings", "refund", "privacy"],
@@ -370,6 +376,22 @@ export const config = {
     nightFrom: "21:00", // India time: nothing from nightFrom to nightUntil; one due at night goes at nightUntil, if still within lastAfterHours
     nightUntil: "08:00",
     gentleDays: 7, // an illness named in this long: only the gentle check-in, at secondAfterHours, with no price and no booking button
+  },
+  // Ticket 40 (src/aftercall.ts): after the ₹99 call and after a paid session. One message each, never a broadcast; the owner turns each on
+  // or off in Settings (/app/settings and /admin). Night hours as config.followUp.
+  afterCall: {
+    reminderAfterHours: 48, // a session offered after the call and not taken this long after the offer: one gentle reminder
+    reminderLastHours: 96, // never later than this after the offer (one held back by the night or a pause goes when it can, until then)
+    reviewFrom: "10:00", // India time, the day after the session: the review and referral ask goes from then
+    reviewDays: 3, // ... on that day or the next two (between reviewFrom and nightFrom), never later
+    reviewEveryDays: 90, // at most one review ask per person in this long
+    // A session counts as done when /admin marks it Completed, or (true) when its time has passed and nobody marked it No-show or Not right
+    // fit by the next morning. false: only sessions marked Completed get the ask.
+    reviewUnmarked: true,
+    // The Google review link (Google Business Profile → "Ask for reviews" → copy link). Empty: the review sentence is left out.
+    googleReviewUrl: "",
+    // What a friend's first message says when they open the shared link (wa.me to config.businessNumber).
+    referralText: "Hi, I was referred by a friend",
   },
   social: {
     instagramUrl: "https://www.instagram.com/disha_dira/", // the "Visit profile" button on Instagram
