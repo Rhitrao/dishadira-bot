@@ -243,3 +243,16 @@ A notification on your phone (and Amma's) from the home-screen app when a custom
 **5. Check with a real booking.** Book and pay a ₹99 call from your own WhatsApp (as in §17 step 4): within about two minutes both phones show "New booking · ₹99 call · Tomorrow, 3:00 pm" (the time of the call). The daily summary has one line, "Phone alerts to the team (last 24 hours): N sent, M not delivered".
 
 **To stop it on one phone:** Settings → Alerts on this phone → **Turn off** (or **Remove** next to a device in the list, for a lost phone). **For everyone:** delete the two secrets and deploy again.
+
+### 19. Notes and the chat gist (ticket 47)
+**What it does.** On a customer's page (People), the owner and Amma can keep **notes** before, during and after each ₹99 call or session, and one "About this person" note. Staff never see notes. Above each chat (People and Inbox) a **Gist** card shows the facts from our own records and, when the assistant is on, a few lines the AI wrote from the chat.
+
+**Privacy notes (how the data is kept).**
+- Notes are the practice's own record. They stay when the chat text is deleted after 7 days. They are deleted when you use **People → the person → More → Remove their data** (also their name, chat text and the gist). They never go to the AI, the chat export, emails, the daily summary, phone alerts or logs; the audit log records only that a note was added, changed or deleted (its number), never what it says.
+- Notes can hold health details: write only what Amma needs for the next call, never a diagnosis.
+- The gist's AI lines are made from the stored chat text only (never photos, never notes), with names, phone numbers, emails, links and payment ids removed, and without the messages the safety rules keep from the AI. They are deleted with the chat text (7 days after the last message) and by Remove their data.
+- The gist's AI part runs only while `AI_REPLIES` is on and not paused, and while **Settings → Bot → Chat gist (AI)** is on. On live `AI_REPLIES` stays `"false"` until the privacy page is updated (14d).
+
+**Before `AI_REPLIES` is ever turned on in live**, the privacy page needs two more sentences (Rohit adds them; the exact wording is in `STATUS.md`, Ticket 47), and the 14d line "only to reply to you" must change so the page and the bot agree. If you'd rather not add them, turn **Chat gist (AI)** off first: the facts still show.
+
+**After the deploy** (applies migration 0020): open a customer in People → **Add a note** → choose the booking and Before → Save; on Today the next call shows it. After a test chat has been quiet for 5 minutes (test copy, assistant on), the Gist card shows the AI lines; **Refresh** makes them at once.

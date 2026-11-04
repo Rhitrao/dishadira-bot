@@ -646,3 +646,21 @@ Rohit, 4 Nov 2026, looking at /app live on a 1366 px Chromebook: "1. Components 
 - Behaviour, forms, CSRF, permissions (except item 7) and copy keys unchanged; Hindi for every new string (to be read by a native speaker).
 - Rules: no merge or deploy; no Cloudflare, Meta or Razorpay changes; synthetic data only; screenshots never committed.
 - Tests: the two densities' sizes; the week grid's placement and sizes, headers, slim Sunday; the month chips, "+N more", the bar, closed days; the List view; numbers for owner / practitioner (own) / staff (last 4) on Today, Calendar, Inbox, People, Payments; full-number search (staff last 4 only); no reveal route; "No name"; "Reply within"; no "Visible to"; the stats strip by role; the badge on every screen.
+
+### Ticket 47: notes for each customer (before, during, after), and a gist of the chat above the chat (CONTRACT v16)
+Owner (Rohit), 4 Nov 2026: "I need a notes option for each customer - during, before & then after the session/booking." and "I need summary of the chat above the chat history explaining in a gist the important info quickly." Builds on #62 and #64 (now on main). Migration 0020. CONTRACT v16 (v15 is reserved for Ticket 46).
+A. **Notes**
+1. Each note belongs to a person and optionally one booking (a ₹99 call or a session), with a phase: Before (prep), During (what came up), After (follow-up, next step); plus one pinned "About this person" note, edited in place.
+2. Written on the person page, on the Today card ("Add note") and from the Calendar (Open → the person page with that booking chosen). The phase is chosen from the time (before the start: Before; until the end: During; after: After) and can be changed.
+3. Shown on the person page (a "Notes" card: About on top, then by booking, newest first, and phase, with author and relative time); on Today's next booking its Before notes and the last booking's After notes; in the Inbox thread a "Notes (3)" link.
+4. The author or the owner edits or deletes (edited time shown). Audit NOTE_ADD / NOTE_EDIT / NOTE_DELETE with ids only.
+5. Who: the owner; the practitioner for her own customers; staff never. Up to 2,000 characters.
+6. Storage `notes` (0020). Not wiped with the chat text; deleted by People → Remove their data. Never in the export, the AI, emails, the digest, notifications or logs.
+B. **Gist** (above the chat on the person page and the Inbox thread)
+1. Facts, no AI: name, language, first contact, work and help area, bookings and payments in one line, package credits, next booking, open items (waiting for a person, safety, out of scope, refund), last customer message, WhatsApp window, the last After note's first line.
+2. AI lines (what they ask, concerns or preferences, anything promised, a next step) through the assistant's client (src/ai.ts), redacted, from the stored chat text only (no media, no notes), leaving out messages kept from the AI for safety ("Some messages aren't summarised for safety").
+3. Made by the 2-minute cron (new messages, quiet ≥5 minutes, ≥2 customer messages, at most every 10 minutes) or Refresh (owner, practitioner; token + Origin); the page only reads the stored gist ("Updated 12 min ago").
+4. Storage `gists` (0020), wiped with the chat text and by Remove their data; never in the export, emails or notifications. Owner switch "Chat gist (AI)" in Settings (on by default, audited); off → facts only.
+5. Who: whoever may read that chat's text. 6. A daily cap in config (200) and usage logged like the assistant's.
+- English and Hindi copy (Hindi to be read). Rules: no merge or deploy; no Cloudflare, Meta or Razorpay changes; synthetic data only.
+- Tests: notes rights, token + Origin, phase at the boundaries, the limit, audit without text, the wipe, Remove their data, the export; Today; the gist's facts; redaction and safety exclusions; cron timing, cap, switch, AI paused or killed; the page never calls the AI; wiping; rights; Refresh.

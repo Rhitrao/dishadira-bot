@@ -100,6 +100,7 @@ Three roles cover a solo practice and a small team. Each member has exactly one 
 | Prices, hours, bot switches, payment keys | Yes | No | No |
 | Invite, change roles, remove members | Yes | No | No |
 | Read the audit log | Yes | No | No |
+| Write and read notes about a customer (ticket 47) | Yes | Own customers | No |
 
 **Rules that apply to every role.**
 
@@ -145,6 +146,7 @@ Every screen follows the same order: urgent items, then the list, then the numbe
 4. **Up next.** Today's calls and sessions in time order. Each row shows the time, first name and the number (ticket 46: the full number as a tel: link for the owner and her own practitioner; staff the last 4), service, who it's for, language, and a one-tap **Call** (tel:) on every booking. Ticket 39: the next one still to do (not yet marked, until an hour after it ends) is drawn first and large ("Next · in 25 min", "Happening now", "Just finished") with a full-width Call button; the screen opens with a gentle greeting by the hour and the date ("Good afternoon, Shantha · Wed, 4 Nov") and, ticket 46, a slim strip of numbers: today's bookings, this week's, money received this week and this month (owner only), new enquiries today (owner and staff), each a link to where it comes from.
    - From the start time until 24 hours later, the row shows **How did it go?** with three buttons that say what happens next: "Book a session for them", "Not a fit (₹99 refunded)" and "Didn't pick up (offer a new time)".
    - After a tap, the row shows "Saved. Undo until 4:15 pm": a clock time 10 minutes after the tap, rather than a countdown. "Report behaviour" sits under More, away from the outcome buttons.
+   Ticket 47: each card has **Add note** (the booking chosen, the phase from the time); the next booking also shows its Before notes, the person's About note and the After notes of their booking before it, for the owner and the practitioner.
 5. **Later.** "Tomorrow: 3 calls" with a link to the calendar. If today is empty: "No calls today. Next: Thu 29 Oct, 2:00 pm." After the last call, a Loose ends card lists calls with no outcome, unpaid links and open chats, so the day closes clean.
 
 Practitioners see only their own calls and their own customers' safety cards, nothing about money, and can switch the console to Hindi. Owners get a banner only when something affects everyone: "Bookings are paused", "Payments are failing" or "The bot hasn't run for 15 minutes", each with its fix.
@@ -180,6 +182,8 @@ The same Today on both screens: urgent cards first, then the day in time order. 
   - The next booking.
   - Package: "6 of 10 left", with a ledger of bought, used, returned and refunded sessions.
   - Payments.
+  - **Notes** (ticket 47; owner, the practitioner for her own customers, never staff): the pinned "About this person" note (edited in place), "Add a note" (the text, the booking it is about, and Before / During / After chosen from the booking's time and changeable; up to 2,000 characters), then the notes grouped by booking (newest first) and phase, each with its author and time ("edited …"); Edit and Delete for the author or the owner. The Calendar's Open comes here with that booking chosen. Audited NOTE_ADD / NOTE_EDIT / NOTE_DELETE (ids only). Kept when the chat text is wiped; deleted by Remove their data; never in the export or the AI.
+  - **Gist** (ticket 47), right above the chat, for whoever may read the chat's text: facts (name, language, first contact, work and help area, bookings and payments in one line, package credits, the next booking, open items, the last message and the WhatsApp window, the last After note) and a few AI lines (what they ask, concerns, anything promised, a next step) with "Updated 12 min ago" and Refresh (owner, practitioner). Also above the Inbox thread, with a "Notes (3)" link. Owner switch in Settings → Bot, "Chat gist (AI)".
   - The chat, with the date its text will be deleted ("Text deleted on 3 Nov").
 - **Safety panel, in words:** "Not shown booking options until 29 Oct, after a crisis message", with **Allow bookings again**. Strikes and quiet periods are described the same way.
 - **More menu** (owners only): Show full number (logged, with a reason), Block, Remove their data.

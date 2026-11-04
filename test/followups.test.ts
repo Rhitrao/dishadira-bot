@@ -176,7 +176,7 @@ describe("item 3: practitioners read their own customers' chats, read-only", () 
     await chatLines(theirs.id);
     const page = await text(`/app/people/${mine.id}`, PRAC);
     for (const line of ["a question about the timing", "the bot answers the timing question", "a synthetic crisis line", "the fixed safety reply"]) expect(page).toContain(line);
-    expect(page).not.toMatch(/<textarea|action="[^"]*\/reply"/); // read-only: nothing to reply with
+    expect(page.replace(/<form method="post" action="\/app\/notes[^]*?<\/form>/g, "")).not.toMatch(/<textarea|action="[^"]*\/reply"/); // read-only: nothing to reply with (ticket 47: only the notes forms)
     const other = await h.get(`/app/people/${theirs.id}`, PRAC);
     expect(other.status).toBe(403);
     expect(await other.text()).not.toContain("a question about the timing");

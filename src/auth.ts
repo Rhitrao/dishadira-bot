@@ -133,6 +133,9 @@ export const PERMISSIONS = {
   view_people: { OWNER: "yes", PRACTITIONER: "own", STAFF: "yes" },
   // Not a row of the PRD table (ticket 45): Settings → "Alerts on this phone", for the owner and the practitioner, never staff.
   phone_alerts: { OWNER: "yes", PRACTITIONER: "yes", STAFF: "no" },
+  // Not a row of the PRD table (ticket 47): notes for each customer, which can hold health details: the owner, the practitioner for her own
+  // customers (as People), never staff.
+  notes: { OWNER: "yes", PRACTITIONER: "own", STAFF: "no" },
 } as const satisfies Record<string, Record<Role, Cell>>;
 
 export type Action = keyof typeof PERMISSIONS;

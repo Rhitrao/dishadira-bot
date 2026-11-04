@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { can, listMembers, memberCsrf, WORKSPACE_ID, type Member } from "./auth";
+import { gistSettingsCard } from "./gist";
 import { AFTER_SWITCHES, afterKey, afterSwitches, isAfterSwitch, setAfterSwitchStmt } from "./aftercall";
 import { ALERTS_CSP, alertRoutes, alertsCopy, alertsFlash, alertsSection, alertsTitle } from "./alerts";
 import { makeVapidPair, pushOn } from "./push";
@@ -617,7 +618,7 @@ ${notes.map((x) => html`<p class="why">${x}</p>`)}<div class="acts">${act}</div>
   const system = await systemCard(c, now);
   const alerts = await alertsSection(c);
   const body = html`${screenHead("settings", lang, { roles: ["OWNER"] })}
-${section(alertsTitle(lang), alerts.html)}${section(w.secBusiness, business)}${section(w.secPrices, pricesCard)}${section(w.secTeam, team)}${section(w.secBot, switchCards)}
+${section(alertsTitle(lang), alerts.html)}${section(w.secBusiness, business)}${section(w.secPrices, pricesCard)}${section(w.secTeam, team)}${section(w.secBot, html`${switchCards}${await gistSettingsCard(c)}`)}
 ${section(w.secAfter, afterCards)}${section(w.secEmails, emails)}${section(w.secPayments, rzp)}${section(w.secPrivacy, privacy)}${section(w.secSystem, system)}`;
   const res = await ownerPage(c, { active: "settings", title: SETTINGS_TITLE[consoleLang(lang)], body, flash: o.flash, status: o.status, back: "/app/settings" });
   if (alerts.scripted) res.headers.set("Content-Security-Policy", ALERTS_CSP); // this page alone loads /app/alerts.js

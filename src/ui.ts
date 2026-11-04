@@ -352,7 +352,7 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px soli
 }
 @media (min-width:900px){
 .tabbar,.topline{display:none}
-.shell{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
+.shell{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh;background:linear-gradient(90deg,var(--sunk) 0 235px,var(--line) 235px 236px,transparent 236px) no-repeat}
 .rail{display:flex;flex-direction:column;gap:16px;position:sticky;top:0;height:100vh;overflow-y:auto;padding:18px 12px;border-right:1px solid var(--line);background:linear-gradient(180deg,var(--glow),transparent 200px),var(--sunk)}
 .rail .brand{padding:0 6px 14px;border-bottom:1px solid var(--line);min-height:0}
 .rail .brand .mark{width:36px;height:36px}

@@ -74,8 +74,8 @@ describe("week and day views", () => {
     expect(staff).toContain("…1234");
     expect(staff).not.toContain("919800001234");
     expect(staff).not.toContain("98000 01234");
-    expect(body).toContain(`href="/app/people/${early}"`);
-    expect(body).toContain(`href="/app/people/${late}"`);
+    expect(body).toMatch(new RegExp(`href="/app/people/${early}\\?b=(CALL|SESSION)-\\d+#notes"`)); // ticket 47: the booking chosen for a note
+    expect(body).toMatch(new RegExp(`href="/app/people/${late}\\?b=(CALL|SESSION)-\\d+#notes"`));
     expect(body).toContain("15-minute call");
     expect(body).not.toContain("Confirmed"); // ticket 46: a booking's status shows only when it isn't confirmed
     expect(plain(body)).toContain("Free: 2:00 pm – 2:30 pm · 2:45 pm – 4:00 pm · 4:15 pm – 7:00 pm"); // Thursday
@@ -192,11 +192,11 @@ describe("the month view (ticket 39)", () => {
     // Ticket 46: up to three bookings per day as chips (time, first name, kind), then "+N more"; a bar for how full the day is.
     const thu = body.slice(body.indexOf('d=2026-10-29" aria-label'), body.indexOf("</td>", body.indexOf('d=2026-10-29" aria-label')));
     expect(plain(thu)).toContain("2:30 Ravi · Call4:00 Asha · Call5:00 Meera · Session");
-    expect(thu).toContain('<span class="mc session">');
+    expect(thu).toMatch(/<a class="mc session" href="\/app\/people\/\d+\?b=SESSION-\d+#notes"/); // ticket 47: each chip opens the person, the booking chosen
     expect(thu).toMatch(/class="mbar" style="--b:\d+%"/);
     expect(thu).not.toContain("more");
     const fri = body.slice(body.indexOf('d=2026-10-30" aria-label'), body.indexOf("</td>", body.indexOf('d=2026-10-30" aria-label')));
-    expect(fri).toContain('<span class="mc call held">'); // a hold, drawn dashed
+    expect(fri).toContain('<a class="mc call held"'); // a hold, drawn dashed
     expect(cell(body, "2026-10-06")?.[0]).not.toContain("mbar");
   });
 
@@ -257,7 +257,7 @@ describe("the week grid and the list (ticket 46)", () => {
     for (const hr of ["2 pm", "3 pm", "6 pm"]) expect(body).toContain(`px">${hr}</span>`);
     expect(body).not.toContain('px">7 pm</span>'); // closing is the grid's foot
     // 2:30 pm is 30 minutes after opening at 1.8 px a minute; a 15-minute call is 25 px tall, a 60-minute session 106 px.
-    expect(body).toMatch(new RegExp(`<a class="ev2 call" href="/app/people/${ravi}" style="top:54.0px;height:25.0px;left:calc\\(0.00% \\+ 3px\\);width:calc\\(100.00% - 6px\\)" title="2:30 pm – 2:45 pm · Ravi …1234`));
+    expect(body).toMatch(new RegExp(`<a class="ev2 call" href="/app/people/${ravi}\\?b=CALL-\\d+#notes" style="top:54.0px;height:25.0px;left:calc\\(0.00% \\+ 3px\\);width:calc\\(100.00% - 6px\\)" title="2:30 pm – 2:45 pm · Ravi …1234`));
     expect(body).toMatch(/<a class="ev2 session" href="[^"]+" style="top:216.0px;height:106.0px;/);
     expect(body).toMatch(/<a class="ev2 call held" [^>]*title="3:00 pm – 3:15 pm · Hema …2222[^"]*Held"/);
     // Compact day headers with a count, today's marked.

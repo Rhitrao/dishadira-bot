@@ -114,6 +114,7 @@ const PRD: Record<string, [Action, string, string, string]> = {
   "Read the audit log": ["read_audit", "yes", "no", "no"],
   "People screen (least access: own customers)": ["view_people", "yes", "own", "yes"],
   "Alerts on this phone (ticket 45)": ["phone_alerts", "yes", "yes", "no"],
+  "Notes for each customer (ticket 47)": ["notes", "yes", "own", "no"],
 };
 const ROLE_ORDER: Role[] = ["OWNER", "PRACTITIONER", "STAFF"];
 const m = (role: Role, id = 7, status = "active"): Member => ({ id, workspaceId: 1, email: "x@example.test", displayName: null, role, locale: "en", status });

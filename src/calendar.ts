@@ -190,7 +190,7 @@ const CAL_CSS = `
 [lang=hi] .tg-col.slim .cl{writing-mode:horizontal-tb;letter-spacing:0}
 .tg-past{position:absolute;left:0;right:0;top:0;background:color-mix(in srgb,var(--sunk) 55%,transparent);pointer-events:none}
 .tg-col.past{background-color:color-mix(in srgb,var(--sunk) 40%,transparent)}
-.ev2{position:absolute;display:flex;flex-direction:column;gap:0;overflow:hidden;padding:3px 7px 3px 9px;border-radius:7px;background:var(--accent-tint);color:var(--ink);text-decoration:none;font-size:12.5px;line-height:1.3;box-shadow:inset 3px 0 0 var(--accent),0 1px 2px var(--shade);z-index:1;transition:box-shadow .12s,transform .12s}
+.ev2{position:absolute;border:1px solid var(--surface);display:flex;flex-direction:column;gap:0;overflow:hidden;padding:3px 7px 3px 9px;border-radius:7px;background:var(--accent-tint);color:var(--ink);text-decoration:none;font-size:12.5px;line-height:1.3;box-shadow:inset 3px 0 0 var(--accent),0 1px 2px var(--shade);z-index:1;transition:box-shadow .12s,transform .12s}
 .ev2:hover{box-shadow:inset 3px 0 0 var(--accent),0 6px 16px -6px var(--shade);z-index:3}
 .ev2.session{background:var(--waiting-tint);box-shadow:inset 3px 0 0 var(--gold),0 1px 2px var(--shade)}
 .ev2.held{background:var(--surface);outline:1.5px dashed var(--waiting);outline-offset:-1.5px}
@@ -304,13 +304,16 @@ h3.sub{font-size:var(--fs-3);font-weight:600;letter-spacing:.08em;text-transform
 .md:hover{background:var(--sunk);border:0}
 .md .dn{align-self:flex-start;font-size:13px;min-width:24px;line-height:24px;margin:0 0 2px}
 .md .dots{display:none}
-.m-chips{display:flex;flex-direction:column;gap:2px;min-width:0}
-.mc{display:block;padding:1px 6px;border-radius:5px;font-size:12px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--accent-tint);color:var(--ink);box-shadow:inset 2px 0 0 var(--accent)}
+.mdw{position:relative}
+.m-chips{position:absolute;left:8px;right:8px;top:32px;z-index:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.mc{display:block;padding:1px 6px;border-radius:5px;font-size:12px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--accent-tint);color:var(--ink);text-decoration:none;box-shadow:inset 2px 0 0 var(--accent)}
+.mc:hover{filter:brightness(.96);box-shadow:inset 2px 0 0 var(--accent),0 2px 6px -2px var(--shade)}
 .mc b{font-weight:600;color:var(--accent)}
 .mc.session{background:var(--waiting-tint);box-shadow:inset 2px 0 0 var(--gold)}
 .mc.session b{color:var(--waiting)}
 .mc.held{background:transparent;outline:1px dashed var(--waiting);outline-offset:-1px}
-.m-more{display:block;font-size:12px;font-weight:600;color:var(--muted);padding:0 6px}
+.m-more{display:block;font-size:12px;font-weight:600;color:var(--muted);padding:0 6px;text-decoration:none}
+.m-more:hover{color:var(--accent)}
 .md .tag{display:block;font-size:12px;font-weight:600;color:var(--waiting)}
 .md.holi{background:color-mix(in srgb,var(--waiting-tint) 70%,transparent);border:0}
 .md.holi::after{position:absolute;top:10px;right:10px;margin:0}
@@ -360,6 +363,8 @@ function entryDetails(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, st
   if (many && e.practitionerId !== null && many.has(e.practitionerId)) details.push(many.get(e.practitionerId)!);
   return details.filter(Boolean);
 }
+// Ticket 47: a booking opens the person page with that booking chosen for a note.
+const personHref = (e: Entry) => `/app/people/${e.convId}?b=${e.kind}-${e.id}#notes`;
 const evClass = (e: Entry) => `${e.kind === "CALL" ? "call" : "session"}${e.state === "HELD" ? " held" : ""}`;
 
 // The Day view's row (the timeline): the full appointment row, with the number and a one-tap Call for whoever may see it, and Open.
@@ -374,7 +379,7 @@ function entryRow(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, string
     details: entryDetails(e, m, cc, many),
     status: bookingChip(e.state, m.locale),
     call: full ? callButton(e.waId, cc.call) : "",
-    action: { label: cc.open, href: `/app/people/${e.convId}`, kind: "secondary" },
+    action: { label: cc.open, href: personHref(e), kind: "secondary" }, // ticket 47: the booking chosen for a note
   });
 }
 
@@ -389,7 +394,7 @@ function agendaRow(e: Entry, o: DayArgs) {
   const meta = [serviceName(e.service, lang), ...entryDetails(e, m, cc, o.many)].join(" · ");
   const past = Date.parse(e.endUtc) <= o.nowMs;
   // The row opens the person; the number is text in it (a link can't hold another), with a one-tap Call beside it.
-  return html`<div class="ag ${evClass(e)}${past ? " past" : ""}"><a class="ag-a" href="/app/people/${e.convId}"><span class="ag-t">${clock(e.startUtc, lang)}</span><span class="ag-b"><span class="ag-n">${firstName(e.name, noName(m))} <span class="d">${full ? formatNumber(e.waId) : last4(e.waId)}</span></span><span class="ag-m">${meta}</span></span>${
+  return html`<div class="ag ${evClass(e)}${past ? " past" : ""}"><a class="ag-a" href="${personHref(e)}"><span class="ag-t">${clock(e.startUtc, lang)}</span><span class="ag-b"><span class="ag-n">${firstName(e.name, noName(m))} <span class="d">${full ? formatNumber(e.waId) : last4(e.waId)}</span></span><span class="ag-m">${meta}</span></span>${
     st && !st.confirmed ? statusChip(st.word, st.tone) : ""
   }</a>${full ? callButton(e.waId, cc.call) : ""}</div>`;
 }
@@ -460,15 +465,17 @@ function gridBlock(e: Entry, o: DayArgs & { open: number; px: number; lane: { la
   const kind = e.kind === "CALL" ? cc.calShortCall : cc.calShortSession;
   const details = [serviceName(e.service, lang), ...entryDetails(e, m, cc, o.many)].join(" · ");
   const title = [`${clock(e.startUtc, lang)} – ${clock(e.endUtc, lang)}`, `${name} ${last4(e.waId)}`, details, status?.word ?? ""].filter(Boolean).join(" · ");
-  const w = 100 / o.lane.of;
-  const style = `top:${top.toFixed(1)}px;height:${height.toFixed(1)}px;left:calc(${(o.lane.lane * w).toFixed(2)}% + 3px);width:calc(${w.toFixed(2)}% - 6px)`;
+  // Overlapping bookings (rare: one calendar) are drawn as Google Calendar does: the first full width, each later one indented and on top,
+  // so every block keeps enough width for its time and name (the tooltip has the rest).
+  const left = o.lane.of > 1 ? (o.lane.lane * 40) / (o.lane.of - 1) : 0;
+  const style = `top:${top.toFixed(1)}px;height:${height.toFixed(1)}px;left:calc(${left.toFixed(2)}% + 3px);width:calc(${(100 - left).toFixed(2)}% - 6px)${o.lane.lane ? `;z-index:${1 + o.lane.lane}` : ""}`;
   const past = Date.parse(e.endUtc) <= o.nowMs;
   const st1 = status ? html` <span class="st ${status.tone}">${status.word}</span>` : "";
   const body =
     height < 40
       ? html`<span class="l1"><b>${shortClock(e.startUtc, lang)}</b><span class="n">${name}</span><span class="p">${last4(e.waId)}</span>${st1}</span>`
       : html`<span class="l1"><b>${clock(e.startUtc, lang)} – ${clock(e.endUtc, lang)}</b></span><span class="l1"><span class="n">${name}</span><span class="p">${last4(e.waId)}</span>${st1}</span><span class="k">${kind} · ${serviceName(e.service, lang)}</span>`;
-  return html`<a class="ev2 ${evClass(e)}${past ? " past" : ""}" href="/app/people/${e.convId}" style="${style}" title="${title}" aria-label="${title}">${body}</a>`;
+  return html`<a class="ev2 ${evClass(e)}${past ? " past" : ""}" href="${personHref(e)}" style="${style}" title="${title}" aria-label="${title}">${body}</a>`;
 }
 
 // The grid: a gutter of hours and one column per day. A closed day with nothing on it is a slim hatched column.
@@ -585,16 +592,21 @@ function monthGrid(o: { first: string; days: string[]; entries: Entry[]; holiday
     const kinds = [calls ? cc.calCalls(calls) : "", sessions ? cc.calSessions(sessions) : ""].filter(Boolean).join(" · ");
     const aria = [dayLabelFor(ymd, lang), es.length ? `${cc.calBooked(es.length)} (${kinds})` : cc.calNothing, hol ? cc.calHoliday : closed ? cc.calClosedShort : ""].filter(Boolean).join(", ");
     const dots = es.slice(0, 8).map((e) => raw(e.kind === "CALL" ? "<i></i>" : '<i class="s"></i>'));
-    const chips = es.slice(0, 3).map(
-      (e) => html`<span class="mc ${evClass(e)}"><b>${shortClock(e.startUtc, lang)}</b> ${firstName(e.name, noName(m))} · ${e.kind === "CALL" ? cc.calShortCall : cc.calShortSession}</span>`,
-    );
+    // Each chip opens the person with that booking chosen (ticket 47); the rest of the cell opens the day (the link under them).
+    const chips = es.slice(0, 3).map((e) => {
+      const what = `${shortClock(e.startUtc, lang)} ${firstName(e.name, noName(m))} · ${e.kind === "CALL" ? cc.calShortCall : cc.calShortSession}`;
+      return html`<a class="mc ${evClass(e)}" href="${personHref(e)}" title="${clock(e.startUtc, lang)} ${firstName(e.name, noName(m))} ${last4(e.waId)}"><b>${shortClock(e.startUtc, lang)}</b> ${what.slice(what.indexOf(" ") + 1)}</a>`;
+    });
     // How full the working day is: booked minutes over the working minutes.
     const work = generateSlots(ymd, "CALL").length * config.slots.callMinutes;
     const booked = es.reduce((n, e) => n + (endMin(e) - startMin(e)), 0);
     const bar = work && booked && !hol && ymd.slice(0, 7) === month ? html`<span class="mbar" style="--b:${Math.min(100, Math.round((booked / work) * 100))}%" title="${cc.calBusyLabel(Math.min(100, Math.round((booked / work) * 100)))}"></span>` : "";
-    return html`<td><a class="${cls}" href="${link({ view: "day", d: ymd, p: o.p })}" aria-label="${aria}"${ymd === todayYmd ? raw(' aria-current="date"') : ""}><span class="dn">${Number(ymd.slice(8))}</span>${
-      es.length ? html`<span class="dots" aria-hidden="true">${dots}</span><span class="m-chips" aria-hidden="true">${chips}</span>${es.length > 3 ? html`<span class="m-more" aria-hidden="true">${cc.calMore(es.length - 3)}</span>` : ""}` : ""
-    }${hol ? html`<span class="tag" aria-hidden="true">${cc.calHoliday}</span>` : ""}${bar}</a></td>`;
+    const dayHref = link({ view: "day", d: ymd, p: o.p });
+    return html`<td><div class="mdw"><a class="${cls}" href="${dayHref}" aria-label="${aria}"${ymd === todayYmd ? raw(' aria-current="date"') : ""}><span class="dn">${Number(ymd.slice(8))}</span>${
+      es.length ? html`<span class="dots" aria-hidden="true">${dots}</span>` : ""
+    }${hol ? html`<span class="tag" aria-hidden="true">${cc.calHoliday}</span>` : ""}${bar}</a>${
+      es.length ? html`<span class="m-chips">${chips}${es.length > 3 ? html`<a class="m-more" href="${dayHref}">${cc.calMore(es.length - 3)}</a>` : ""}</span>` : ""
+    }</div></td>`;
   };
   const weeks: string[][] = [];
   for (let i = 0; i < o.days.length; i += 7) weeks.push(o.days.slice(i, i + 7));

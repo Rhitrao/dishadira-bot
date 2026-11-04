@@ -5,6 +5,7 @@
 // every button and every POST asks the same can() (src/auth.ts), through the helpers below, so a hidden button and a refused POST agree.
 // Outcome taps use the same write as /amma (recordOutcome in src/outcomes.ts); the cron applies them after the undo window.
 import { sessionLinkButton } from "./sessionlink";
+import { todayAddNote, todayNotes } from "./notes";
 import type { D1Result } from "@cloudflare/workers-types";
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
@@ -269,6 +270,7 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number, hero = false) 
   // A call: "Send session link (₹799)" for whoever may book for them (ticket 40, src/sessionlink.ts).
   const slink = b.kind === "CALL" ? await sessionLinkButton(c.env, m, b.convId) : "";
   if (slink) extra = html`${extra}<div class="acts">${slink}</div>`;
+  extra = html`${extra}${await todayAddNote(c, b)}`; // ticket 47 (src/notes.ts)
   return html`<div class="bk" id="b-${kindKey(b)}-${b.id}">${appointmentRow({
     time: clock(b.startUtc, lang),
     name: firstName(b.name, t.noName),
@@ -290,7 +292,7 @@ async function heroCard(c: ConsoleCtx, b: Booking, now: number) {
   const mins = Math.max(1, Math.round((start - now) / 60_000));
   const when = now >= end ? cc.heroAfter : now >= start ? cc.heroNow : cc.heroNext;
   const soon = now < start ? html` <span class="in">${cc.startsIn(cc.duration(Math.floor(mins / 60), mins % 60))}</span>` : "";
-  return html`<div class="hero"><p class="when">${when}${soon}</p>${await bookingRow(c, b, now, true)}</div>`;
+  return html`<div class="hero"><p class="when">${when}${soon}</p>${await bookingRow(c, b, now, true)}${await todayNotes(c, b)}</div>`;
 }
 
 // "Reply within 3 h" / "Reply within 25 min": the time left in WhatsApp's 24-hour window, in plain words (ticket 46).
