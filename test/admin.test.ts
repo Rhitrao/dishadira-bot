@@ -721,6 +721,19 @@ describe("people, a person's page, and payments (ticket 17)", () => {
     expect((await post("/admin/reveal", { conv: String(id), csrf: "wrong" })).status).toBe(403);
   });
 
+  it("inside the WhatsApp window the page offers both the reply box and the number to call (a paid call today)", async () => {
+    const id = await person(); // wrote an hour ago: the window is open
+    const wa = (await db.prepare("SELECT wa_id FROM conversations WHERE id = ?1").bind(id).first<{ wa_id: string }>())!.wa_id;
+    const pageText = await (await get(`/admin/conv/${id}`)).text();
+    expect(pageText).toContain("Reply on WhatsApp");
+    expect(pageText).toContain("Show number to call");
+    expect(pageText).not.toContain(wa);
+    const shown = await (await post("/admin/reveal", { conv: String(id), csrf: hidden(pageText.slice(pageText.indexOf('action="/admin/reveal"')), "csrf") })).text();
+    expect(shown).toContain(`href="tel:+${wa}"`);
+    expect(shown).toContain("Reply on WhatsApp");
+    expect((await auditRows()).at(-1)).toMatchObject({ actor: ROHIT, action: "ADMIN_REVEAL_NUMBER", target: `conv:${id}` });
+  });
+
   it("a reply from the person's page goes inside the window, is recorded, and counts as Rohit's reply", async () => {
     const id = await person(); // wrote an hour ago
     const pageText = await (await get(`/admin/conv/${id}`)).text();
