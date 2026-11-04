@@ -7,7 +7,7 @@ import type { Copy } from "./copy";
 import type { Env } from "./env";
 import { hasPhrase, normalize } from "./safety";
 import { sendMessage, type Out, type SendResult } from "./send";
-import { iso } from "./slots";
+import { availableSlots, iso, istDay, istMinutes } from "./slots";
 
 export type StepName = "language" | "age" | "service" | "who" | "day" | "time" | "pay" | "gate" | "bookings" | "packages";
 
@@ -128,6 +128,127 @@ export function typedChoice(open: OpenStep, text: string, nowMs = Date.now()): s
     return ymd !== undefined && hasPhrase(text, dayWords(ymd, nowMs));
   });
   return one(means.map((o) => o.id));
+}
+
+// ---- a time typed at the time step (ticket 36) ----
+// "2", "2pm", "2:30", "14:00", "2pm to 4", "between 3 and 5", "after 4", "4 baje", "shaam 5", "evening", "now", "call me now": the range of
+// the day it names (India time, minutes since midnight), "now", or null when the message is not only a time (every word must be a number,
+// am/pm, one of config.router.stepWords.time, or the list's own day). A bare hour is pm when that is before closing ("2" is 2 pm, "9" is 9 am).
+const TW = config.router.stepWords.time;
+const mins = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+const OPEN = () => mins(config.hours.start);
+const CLOSE = () => mins(config.hours.end);
+type Part = "morning" | "afternoon" | "evening" | "night";
+const PARTS: Part[] = ["morning", "afternoon", "evening", "night"];
+function partWindow(p: Part): [number, number] {
+  if (p === "morning") return [mins(TW.morningFrom), mins(TW.noon)];
+  if (p === "afternoon") return [mins(TW.noon), mins(config.booking.eveningFrom)];
+  if (p === "evening") return [mins(config.booking.eveningFrom), mins(TW.nightFrom)];
+  return [mins(TW.nightFrom), 24 * 60];
+}
+const tok = (w: string) => normalize(w);
+const inList = (list: readonly string[], t: string) => list.some((w) => tok(w) === t);
+
+// Words of the message, with "2pm" split into "2 pm", "4.30" read as "4:30", "a.m." as "am" and a dash as "to".
+function timeTokens(text: string): string[] {
+  const s = text
+    .toLowerCase()
+    .normalize("NFC")
+    .replace(/़/g, "")
+    .replace(/ँ/g, "ं")
+    .replace(/\b([ap])\.\s?m\b\.?/g, "$1m")
+    .replace(/(\d{1,2})[.:](\d{2})\b/g, "$1:$2")
+    .replace(/[-–—~]/g, " to ")
+    .replace(/(\d)(\p{L})/gu, "$1 $2")
+    .replace(/(\p{L})(\d)/gu, "$1 $2")
+    .replace(/(?<!\d):|:(?!\d)/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}\s:]/gu, " ");
+  return s.split(/\s+/).filter(Boolean);
+}
+
+type Said = { h: number; m: number; ap: "am" | "pm" | null };
+export function parseTypedTime(text: string, ownDay: readonly string[] = []): { from: number; to: number } | "now" | null {
+  const words = timeTokens(text);
+  if (!words.length || words.length > TW.maxWords) return null;
+  const own = ownDay.map(tok);
+  const times: Said[] = [];
+  let now = false, after = false, before = false, until = false, range = false, lastTime = false;
+  let part: Part | null = null;
+  for (const t of words) {
+    const n = /^(\d{1,2})(?::(\d{2}))?$/.exec(t);
+    const wasTime = lastTime;
+    lastTime = false;
+    if (n) {
+      const h = Number(n[1]);
+      const m = Number(n[2] ?? 0);
+      if (h > 23 || m > 59) return null;
+      times.push({ h, m, ap: null });
+      lastTime = true;
+    } else if (t === "am" || t === "pm") {
+      const last = times.at(-1);
+      if (!wasTime || !last || last.h > 12 || last.h === 0) return null;
+      last.ap = t;
+    } else if (inList(TW.now, t)) now = true;
+    else if (PARTS.some((p) => inList(TW[p], t))) part = PARTS.find((p) => inList(TW[p], t))!;
+    else if (inList(TW.after, t)) after = true;
+    else if (inList(TW.before, t)) before = true;
+    else if (inList(TW.until, t)) until = true;
+    else if (inList(TW.range, t)) range = true;
+    else if (!own.includes(t) && !inList(TW.filler, t)) return null; // another word: a question, another day, ... not a time
+  }
+  if (!times.length) return part ? { from: partWindow(part)[0], to: partWindow(part)[1] } : now ? "now" : null;
+  if (times.length > 2) return null;
+  const pw = part ? partWindow(part) : null;
+  // A clock time in minutes. 13:00-23:00 and am/pm as written; a bare hour by the part of the day, after the range's start, or pm when that is before closing.
+  const at = (s: Said, after?: number): number => {
+    if (s.h > 12 || s.h === 0) return s.h * 60 + s.m;
+    const am = (s.h % 12) * 60 + s.m;
+    const pm = am + 720;
+    if (s.ap) return s.ap === "am" ? am : pm;
+    if (pw) return pm >= pw[0] && pm < pw[1] ? pm : am;
+    if (after !== undefined) return am > after ? am : pm;
+    return pm < CLOSE() ? pm : am;
+  };
+  let from: number;
+  let to: number;
+  if (times.length === 2) {
+    if (!range && !until) return null; // "3 5": not clear
+    from = at(times[0]);
+    to = at(times[1], from);
+    if (to <= from) return null;
+  } else {
+    const t = at(times[0]);
+    [from, to] = after ? [t, 24 * 60] : before || until ? [0, t] : [t, t + 60]; // "at 2": from 2 to 3
+  }
+  if (pw) [from, to] = [Math.max(from, pw[0]), Math.min(to, pw[1])]; // "morning after 9 am": 9 to 12
+  return { from, to: Math.max(from, to) };
+}
+
+// At the time step: the earliest free time in the range the message names ("pick", the id of the time it means, sent on as that tap), a
+// range inside the hours with nothing free ("none"), a range outside the hours ("outside"), or "now" (also "call me", "call me at"). null:
+// the message is not a time. The free times come from the database now, so a free time the list had no row for counts too.
+export type TypedTime = { kind: "pick"; id: string } | { kind: "none"; startUtc: string } | { kind: "outside" } | { kind: "now" };
+const UTC_END = /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$/;
+export async function typedTime(db: D1Database, open: OpenStep, text: string, nowMs = Date.now()): Promise<TypedTime | null> {
+  const out = open.out;
+  if (open.step !== "time" || out.type !== "list") return null;
+  const rows = (out.sections?.flatMap((s) => s.rows) ?? out.rows ?? []).filter((r) => UTC_END.test(r.id));
+  if (!rows.length) return null;
+  const first = UTC_END.exec(rows[0].id)![1];
+  const prefix = rows[0].id.slice(0, -first.length); // time_HEALING_SELF_, sess_12_, ...: the list's own ids
+  const ymd = istDay(Date.parse(first));
+  const said = parseTypedTime(text, dayWords(ymd, nowMs));
+  const callAsk = hasPhrase(text, config.words.callRequest) && !hasPhrase(text, config.words.callRequestNot);
+  if (said === null) return callAsk ? { kind: "now" } : null;
+  if (said === "now") return { kind: "now" };
+  const from = Math.max(said.from, OPEN());
+  const to = Math.min(said.to, CLOSE());
+  if (from >= to) return { kind: "outside" };
+  // Only the ₹99 call's time list has time_ ids (src/booking.ts); every other time list is for sessions.
+  const kind = prefix.startsWith("time_") ? "CALL" : "SESSION";
+  const free = await availableSlots(db, kind, ymd, nowMs + config.booking.leadMinutes * 60_000, nowMs);
+  const hit = free.find((s) => istMinutes(s.startUtc) >= from && istMinutes(s.startUtc) < to);
+  return hit ? { kind: "pick", id: prefix + hit.startUtc } : { kind: "none", startUtc: first };
 }
 
 // The open step again with a line above it (an answer from src/router.ts), or null when it would not fit WhatsApp's 1024 characters.

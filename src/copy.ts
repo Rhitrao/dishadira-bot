@@ -222,6 +222,10 @@ export type Copy = {
   repromptHelp: string;
   callRequest: string; // "call me", "number please" (ticket 30): the body of the menu message
   repromptQuestion: string; // above the open step when the assistant could not answer a typed question
+  // Ticket 36: above the time list again, once, when a typed time can't be booked (a second miss in a row goes to the team instead).
+  timeNow: string; // "now", "call me now", "call me"
+  timeOutside: string; // a time outside the hours ("morning 9 am")
+  timeNoneThen: (day: string) => string; // a time inside the hours with nothing free
   alreadyBookedStart: (day: string, time: string) => string;
   btnKeep: string; // max 20 chars
   helpListBody: string;
@@ -470,6 +474,9 @@ const en: Copy = {
   repromptHelp: "If you would rather talk to a person from our team, tap below.",
   callRequest: `We don't take calls on this WhatsApp number. The quickest way to talk to Shantha Rao is the ${intro} ${config.slots.callMinutes}-minute call: you choose a time, and she calls you.`,
   repromptQuestion: "Thanks for asking. Shantha Rao can explain this on your call. When you're ready, choose an option below.",
+  timeNow: `Shantha Rao can't call right away: she calls you at the time you book. ${hintDaysText("en")} Please choose a free time below.`,
+  timeOutside: `Sorry, that time is outside our hours. ${hintDaysText("en")} Please choose a free time below.`,
+  timeNoneThen: (day) => `Sorry, nothing is free at that time on ${day}. Please choose another free time below, or "Another day".`,
   alreadyBookedStart: (day, time) => `You already have a call on ${day} at ${time}. Shantha Rao will call you then.`,
   btnKeep: "Keep it",
   helpListBody: "How can we help?",
@@ -705,6 +712,9 @@ const hi: Copy = {
   repromptHelp: "अगर आप हमारी टीम के किसी व्यक्ति से बात करना चाहें, तो नीचे टैप करें।",
   callRequest: `इस WhatsApp नंबर पर हम कॉल नहीं लेते। शांता राव जी से बात करने का सबसे आसान तरीका ${intro} की ${config.slots.callMinutes} मिनट की कॉल है: आप समय चुनें, और वे आपको कॉल करेंगी।`,
   repromptQuestion: "पूछने के लिए धन्यवाद। शांता राव जी कॉल पर इसे समझा सकती हैं। जब आप तैयार हों, नीचे दिए विकल्पों में से चुनें।",
+  timeNow: `शांता राव जी अभी तुरंत कॉल नहीं कर सकतीं: वे आपके बुक किए हुए समय पर आपको कॉल करती हैं। ${hintDaysText("hi")} कृपया नीचे से कोई खाली समय चुनें।`,
+  timeOutside: `माफ़ कीजिए, यह समय हमारे कॉल के समय से बाहर है। ${hintDaysText("hi")} कृपया नीचे से कोई खाली समय चुनें।`,
+  timeNoneThen: (day) => `माफ़ कीजिए, ${day} को उस समय कुछ खाली नहीं है। कृपया नीचे से कोई दूसरा खाली समय चुनें, या "दूसरा दिन"।`,
   alreadyBookedStart: (day, time) => `आपकी कॉल पहले से ${day} को ${time} बजे बुक है। शांता राव जी उसी समय कॉल करेंगी।`,
   btnKeep: "ठीक है",
   helpListBody: "हम कैसे मदद कर सकते हैं?",

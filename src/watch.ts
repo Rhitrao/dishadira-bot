@@ -65,7 +65,8 @@ export async function raiseTapReminders(env: Env, nowMs = Date.now()): Promise<n
 // A chat in HUMAN mode goes back to the bot config.handoff.autoReturnHours after the handoff, unless Rohit has sent a reply from /admin since. The
 // attention item stays open. Ticket 31 (I14): the customer is told once, honestly ("Sorry we couldn't reply in time…" with the menu): now if
 // the 24-hour window is still open, otherwise on their next message (a settings row handback:<conv>). The owner gets one email. Not during
-// the no-selling week after a crisis message (the notice offers booking; the crisis item and email already went to the owner).
+// the no-selling week after a crisis message (the notice offers booking; the crisis item and email already went to the owner), nor for a
+// chat the team took over themselves (ticket 36).
 export const HANDBACK_KEY = (convId: number) => `handback:${convId}`;
 export async function returnStaleHumans(env: Env, nowMs = Date.now()): Promise<number> {
   const { results } = await env.DB
@@ -80,6 +81,9 @@ export async function returnStaleHumans(env: Env, nowMs = Date.now()): Promise<n
     .all<{ id: number; locale: string; lastUserAt: string | null }>();
   for (const r of results) {
     if (await noSellActive(env.DB, r.id, nowMs)) continue;
+    // Ticket 36: a chat the team took over (no "Talk to a person" item) goes back quietly: the customer never asked, so nothing is owed.
+    const asked = await env.DB.prepare("SELECT 1 FROM attention WHERE kind = 'HUMAN_REQUEST' AND target = ?1 AND resolved_at IS NULL").bind(`conv:${r.id}`).first();
+    if (!asked) continue;
     await sendEmail(env, "A chat went back to the bot", `A customer asked for a person ${config.handoff.autoReturnHours} hours ago and had no reply, so the chat is back with the bot and they have been told. Open ${consoleLink(env, `/admin/conv/${r.id}`, `/app/inbox/${r.id}`)}`).catch(() => undefined);
     const inWindow = r.lastUserAt !== null && nowMs - Date.parse(r.lastUserAt) < config.windowHours * 3_600_000;
     if (inWindow) await sendMessage(env, r.id, menuOut(copyFor(r.locale), false, copyFor(r.locale).handbackNotice, true), `handback:${r.id}:${iso(nowMs)}`);

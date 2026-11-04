@@ -16,6 +16,7 @@ import { razorpay } from "./pay/razorpay";
 import { bookingsBetween, dayRange, firstName, type DayItem } from "./report";
 import { raiseAwayItems } from "./watch";
 import { sendMessage } from "./send";
+import { takeOverStmt } from "./handoff";
 import { dayLabelFor, formatIstParts, iso, istDay } from "./slots";
 import { getSetting, isSwitch, switchStates, type SwitchName } from "./switches";
 import { ago, chip, header, ist, left, mask, page, type Tone } from "./ui";
@@ -35,6 +36,7 @@ const MSG: Record<string, string> = {
   packrefunded: "Refund started for the unused sessions. The balance is now 0.",
   packmanual: "The balance is now 0. This payment is too old for Razorpay: pay it by bank or UPI, then tap \"Mark refunded by hand\".",
   packstale: "The balance changed, or there is nothing to refund. Nothing was done.", manualdone: "Marked as refunded by hand.",
+  takenover: "You have this chat now. The bot stays quiet until you hand it back. Nothing was sent to them.", handedback: "Handed back. The bot answers them again.",
 };
 
 admin.use("*", async (c, next) => {
@@ -72,7 +74,7 @@ const WORDS: Record<string, string> = {
   UNKNOWN_PAYMENT_LINK: "A payment event arrived for a link we do not know.",
   CRISIS: "A customer wrote something that may mean they are thinking of ending their life. They were sent the helpline message (Tele-MANAS 14416, 112), the chat is with a person now, and nothing is sold to them for 7 days. Please write to them yourself as soon as you can.",
   EMERGENCY: "A customer described what may be a medical emergency. They were told to call 112 or 108. Check whether they need anything from you.",
-  HUMAN_REQUEST: "A customer tapped 'Talk to a person'. The bot is quiet in this chat until you resolve this: resolving hands the chat back to the bot.",
+  HUMAN_REQUEST: "A customer tapped 'Talk to a person', or could not pick a call time twice in a row. The bot is quiet in this chat until you resolve this: resolving hands the chat back to the bot.",
   MEDIA_FROM_CUSTOMER: "A customer with a booking, a held time or a payment in progress sent a photo, voice note or file (never downloaded). It may be a payment screenshot.",
   AMMA_NO_TAP: `Amma has not tapped an outcome ${config.limits.ammaTapReminderHours} hours after a call.`,
   AMMA_AWAY_CALL: "Amma is away. This call is booked (no day-before reminder goes while she is away): offer a new time or refund.",
@@ -629,6 +631,7 @@ ${reveal ? html`<p class="callnum"><a class="btn primary" href="tel:+${conv.waId
   const body = html`${header(firstName(conv.name), `${mask(conv.waId)} · ${conv.locale === "hi" ? "Hindi" : "English"} · first message ${ist(conv.createdAt, now)}`, html`<a class="btn" href="/admin/people">All people</a>`)}
 <div class="chips">${chip(modeWord, modeTone)}${quiet ? chip("Quiet period", "amber") : ""}${noSell ? chip("No selling", "amber") : ""}${st.optedOutAt ? chip("Opted out") : ""}</div>
 <p class="small muted">${ad}. Last message from them ${conv.lastUserAt ? ago(conv.lastUserAt, now) : "never"}.</p>
+${await chatOwner(c, id, conv.mode)}
 <div class="cols"><section>${items.length ? html`<h2>Needs you <span class="count">${items.length}</span></h2>${items}` : ""}
 ${replyInItem ? "" : html`<h2>Talk to them</h2>${talk}`}
 <h2>Conversation</h2>${await thread(c.env, id, now)}
@@ -651,6 +654,41 @@ ${replyInItem ? "" : html`<h2>Talk to them</h2>${talk}`}
 }
 
 admin.get("/conv/:id", (c) => personPage(c, Number(c.req.param("id")), false));
+
+// Ticket 36: take a chat from the bot (BOT -> HUMAN, as "Talk to a person", src/handoff.ts takeOverStmt), so you can reply here without the
+// bot answering too; nothing is sent to the customer and no item is raised. "Hand back to the bot" returns it (and closes its waiting items).
+async function chatOwner(c: Ctx, id: number, mode: string) {
+  if (mode === "BOT")
+    return html`<div class="card"><p class="small muted">The bot is answering this chat. Take it over to reply yourself without the bot answering too. Nothing is sent to them now.</p>
+<div class="actions">${await form(c, "take-over", `take-over:${id}`, { conv: id }, "Take over this chat", "primary")}</div></div>`;
+  if (mode === "HUMAN")
+    return html`<div class="card"><p class="small muted">This chat is with you: the bot doesn't answer their typed messages (buttons still work). Nothing is sent to them when you hand it back.</p>
+<div class="actions">${await form(c, "hand-back", `hand-back:${id}`, { conv: id }, "Hand back to the bot")}</div></div>`;
+  return "";
+}
+
+admin.post("/take-over", async (c) => {
+  const f = await c.req.parseBody();
+  const id = Number(f.conv);
+  if (!Number.isInteger(id) || f.csrf !== (await csrf(c.get("jwt"), `take-over:${id}`))) return bad(c);
+  const res = await takeOverStmt(c.env.DB, id).run();
+  if (res.meta.changes) await audit(c, "ADMIN_TAKE_OVER", `conv:${id}`, "BOT -> HUMAN");
+  return c.redirect(`/admin/conv/${id}?m=${res.meta.changes ? "takenover" : "gone"}`, 303);
+});
+
+admin.post("/hand-back", async (c) => {
+  const f = await c.req.parseBody();
+  const id = Number(f.conv);
+  if (!Number.isInteger(id) || f.csrf !== (await csrf(c.get("jwt"), `hand-back:${id}`))) return bad(c);
+  const [res] = await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE conversations SET mode = 'BOT', human_since = NULL, claimed_by = NULL, claimed_at = NULL WHERE id = ?1 AND mode = 'HUMAN'").bind(id),
+    c.env.DB.prepare(
+      "UPDATE attention SET resolved_at = ?2 WHERE target = ?1 AND resolved_at IS NULL AND kind IN ('HUMAN_REQUEST', 'FREE_TEXT', 'MEDIA_FROM_CUSTOMER', 'OUTSIDE_WINDOW') AND EXISTS (SELECT 1 FROM conversations WHERE id = ?3 AND mode = 'BOT')",
+    ).bind(`conv:${id}`, nowIso(), id),
+  ]);
+  if (res.meta.changes) await audit(c, "ADMIN_HAND_BACK", `conv:${id}`, "HUMAN -> BOT");
+  return c.redirect(`/admin/conv/${id}?m=${res.meta.changes ? "handedback" : "gone"}`, 303);
+});
 
 // Showing a full number is a POST (CSRF-checked) and is recorded, so it never happens by a stray tap or a shared link.
 admin.post("/reveal", async (c) => {

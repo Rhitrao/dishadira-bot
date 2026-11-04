@@ -121,6 +121,9 @@ const en = {
   removeData: "Remove their data…",
   removeDataEffect: "Deletes their name and the text of every message now. Bookings, payments and the log stay, because the law needs them.",
   removeDataYes: "Remove their data",
+  // Ticket 36: the team takes a chat from the bot
+  takeOver: "Take over this chat",
+  takeOverEffect: "The bot stops answering them and the chat moves to the Inbox, where you can reply and book a call for them. Nothing is sent to them now. Hand it back to the bot when you're done.",
 
   // After a change
   flash: {
@@ -254,6 +257,8 @@ const hi: PeopleCopy = {
   removeData: "इनका डेटा हटाएँ…",
   removeDataEffect: "इनका नाम और हर संदेश का टेक्स्ट अभी मिट जाएगा। बुकिंग, पेमेंट और लॉग रहेंगे, क्योंकि क़ानून में ज़रूरी हैं।",
   removeDataYes: "इनका डेटा हटाएँ",
+  takeOver: "यह चैट आप संभालें",
+  takeOverEffect: "बॉट इन्हें जवाब देना बंद कर देगा और चैट इनबॉक्स में आ जाएगी, जहाँ से आप जवाब दे सकते हैं और इनके लिए कॉल बुक कर सकते हैं। इन्हें अभी कुछ नहीं भेजा जाएगा। काम पूरा होने पर चैट बॉट को वापस दे दें।",
 
   flash: {
     revealed: "नंबर दिखाना दर्ज कर लिया गया।",
