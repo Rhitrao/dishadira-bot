@@ -12,8 +12,6 @@ export const THREAD_ALL = 200;
 
 // `media`: 1 when the row still has the Meta id of a photo or file the customer sent (ticket 38), so it can be viewed; never the id itself.
 export type ChatRow = { dir: string; kind: string; body: string | null; wipedAt: string | null; media?: number | null };
-// The SQL column for ChatRow.media.
-export const MEDIA_SQL = "(media_id IS NOT NULL) AS media";
 // The SQL condition for the rows a thread shows: everything except an outgoing message that never had text (a reply skipped because a
 // newer message came in). Wiped rows stay, so they can be counted.
 export const SHOWN_SQL = "NOT (direction = 'OUT' AND body IS NULL AND wiped_at IS NULL)";
