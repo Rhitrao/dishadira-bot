@@ -116,16 +116,16 @@ describe("type and spacing", () => {
 describe("the page frame", () => {
   const tabHrefs = { today: "/app", inbox: "/app/inbox", calendar: "/app/calendar", people: "/app/people", payments: "/app/payments", settings: "/app/settings" };
 
-  it("shows each role exactly its tabs: owner six, staff four, practitioner three", () => {
+  it("shows each role exactly its tabs: owner six, staff four, practitioner four (her Settings: only her phone alerts, ticket 45)", () => {
     expect(tabsFor("OWNER")).toEqual(["today", "inbox", "calendar", "people", "payments", "settings"]);
     expect(tabsFor("STAFF")).toEqual(["today", "inbox", "calendar", "people"]);
-    expect(tabsFor("PRACTITIONER")).toEqual(["today", "calendar", "people"]);
+    expect(tabsFor("PRACTITIONER")).toEqual(["today", "calendar", "people", "settings"]);
     for (const role of CONSOLE_ROLES) {
       const page = frame(role);
       const links = new Set(hrefs(page).filter((h) => h.startsWith("/app") && !/^\/app\/(brand\/|manifest\.webmanifest)/.test(h))); // not the icons and manifest
       const want = tabsFor(role).map((t) => tabHrefs[t]);
       expect([...links].sort(), role).toEqual([...want].sort());
-      // The laptop rail lists every tab; the phone bar holds the first four and puts the rest under More.
+      // The laptop rail lists every tab; the phone bar holds the first four and puts the rest under More (four or fewer: all of them).
       const rail = between(page, '<nav class="rail"', "</nav>");
       for (const h of want) expect(rail, `${role} rail ${h}`).toContain(`href="${h}"`);
       const bar = between(page, '<nav class="tabbar"', "</nav>");
@@ -138,9 +138,11 @@ describe("the page frame", () => {
     for (const role of ["STAFF", "PRACTITIONER"] as const) {
       const page = frame(role);
       expect(page).not.toContain("/app/payments");
-      expect(page).not.toContain("/app/settings");
       expect(page).not.toContain(">Payments<");
     }
+    expect(frame("STAFF")).not.toContain("/app/settings");
+    // The practitioner's Settings tab holds only her phone alerts (ticket 45; test/alerts.test.ts checks the page has nothing else).
+    expect(frame("PRACTITIONER")).toContain('href="/app/settings"');
     expect(frame("PRACTITIONER")).not.toContain("/app/inbox");
   });
 

@@ -21,6 +21,9 @@ export const SECRET_NAMES = [
   "META_PAGE_ID", // that Page's id (not secret, but kept with the token so a deploy never wipes it)
   "META_IG_ID", // the id of the Instagram professional account linked to the Page
   "META_APP_SECRET", // only if Instagram / Messenger use a different Meta app from WhatsApp: that app's secret (unset: WA_APP_SECRET)
+  // The team's phone alerts (ticket 45, src/push.ts): a VAPID key pair, base64url, made with `npm run vapid-keys`. Unset: alerts are off.
+  "VAPID_PUBLIC_KEY",
+  "VAPID_PRIVATE_KEY",
 ] as const;
 
 export type SecretName = (typeof SECRET_NAMES)[number];

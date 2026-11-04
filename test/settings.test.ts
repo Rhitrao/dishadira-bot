@@ -32,7 +32,13 @@ describe("only the owner reaches Settings, the audit log and Payments", () => {
   for (const path of ["/app/settings", "/app/settings/audit", "/app/payments", "/app/payments/1", "/app/payments?month=2026-09"]) {
     it(`GET ${path}`, async () => {
       expect((await h.get(path, OWNER)).status).toBe(200);
-      for (const who of [PRAC, STAFF]) {
+      // Ticket 45: the practitioner's /app/settings is her phone alerts alone (test/alerts.test.ts); none of the business's settings.
+      const who4 = path === "/app/settings" ? [STAFF] : [PRAC, STAFF];
+      if (path === "/app/settings") {
+        const t = decode(await (await h.get(path, PRAC)).text());
+        for (const not of ["Services and prices", "Business name", "Taking bookings", "Who gets the daily summary", "Staff can read chat text", "Razorpay"]) expect(t).not.toContain(not);
+      }
+      for (const who of who4) {
         const res = await h.get(path, who);
         expect(res.status).toBe(403);
         expect(decode(await res.text())).toContain("Your role can't open this page.");

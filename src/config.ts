@@ -435,6 +435,24 @@ export const config = {
     // What a friend's first message says when they open the shared link (wa.me to config.businessNumber).
     referralText: "Hi, I was referred by a friend",
   },
+  // Ticket 45 (src/alerts.ts, src/push.ts): the team's phone alerts (Web Push) when a customer books and pays. The VAPID subject is
+  // mailto: social.contactEmail (the business's contact address). The practitioner's alerts wait out the quiet hours (India time).
+  push: {
+    quietRoles: ["PRACTITIONER"], // the owner gets every alert at once
+    quietFrom: "21:00",
+    quietUntil: "08:00", // what waited goes then; two or more as one "N new bookings overnight"
+    jwtHours: 12, // the VAPID token's lifetime (RFC 8292: at most 24 hours)
+    ttlSeconds: 43200, // how long a push service keeps an alert for a phone that is off
+    timeoutMs: 5000, // one push service request
+    maxAttempts: 3, // an alert no device took after this many runs of the 2-minute cron: given up (counted in the digest)
+    perRun: 50, // alerts claimed by one run
+    keepDays: 30, // push_outbox rows are deleted after this long
+    maxDevices: 5, // per member
+    maxEndpointChars: 1024,
+    // The push services a subscription may point at (exact host, or ".suffix"): Google FCM (Chrome, Android, Edge on Android), Mozilla,
+    // Apple (Safari and the iPhone home-screen app), Microsoft WNS (Edge on Windows). Anything else is refused.
+    hosts: ["fcm.googleapis.com", "updates.push.services.mozilla.com", "web.push.apple.com", ".notify.windows.com"],
+  },
   social: {
     instagramUrl: "https://www.instagram.com/disha_dira/", // the "Visit profile" button on Instagram
     facebookPageUrl: "https://www.facebook.com/profile.php?id=61588921902210", // "Our Page: <link>" in the Messenger follow ask (the Page's public address); empty: https://www.facebook.com/<META_PAGE_ID>

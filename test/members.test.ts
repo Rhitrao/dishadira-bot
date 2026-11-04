@@ -113,6 +113,7 @@ const PRD: Record<string, [Action, string, string, string]> = {
   "Invite, change roles, remove members": ["manage_team", "yes", "no", "no"],
   "Read the audit log": ["read_audit", "yes", "no", "no"],
   "People screen (least access: own customers)": ["view_people", "yes", "own", "yes"],
+  "Alerts on this phone (ticket 45)": ["phone_alerts", "yes", "yes", "no"],
 };
 const ROLE_ORDER: Role[] = ["OWNER", "PRACTITIONER", "STAFF"];
 const m = (role: Role, id = 7, status = "active"): Member => ({ id, workspaceId: 1, email: "x@example.test", displayName: null, role, locale: "en", status });
@@ -253,7 +254,7 @@ describe("one-time seed", () => {
 describe("tabs and screens follow the role", () => {
   const expected: Record<string, string[]> = {
     [OWNER]: ["today", "inbox", "calendar", "people", "payments", "settings"],
-    [PRAC]: ["today", "calendar", "people"],
+    [PRAC]: ["today", "calendar", "people", "settings"], // her Settings holds only her phone alerts (ticket 45)
     [STAFF]: ["today", "inbox", "calendar", "people"],
   };
   for (const who of [OWNER, PRAC, STAFF]) {
@@ -276,6 +277,7 @@ describe("tabs and screens follow the role", () => {
     await withStaff();
     expect(await (await get("/app/inbox")).text()).toContain("Visible to: Owner, Staff");
     expect(await (await get("/app/settings/team")).text()).toContain("Visible to: Owner");
+    expect(await (await get("/app/settings")).text()).toContain("Visible to: Owner</p>"); // the business's settings: the owner's alone
     expect(await (await get("/app/settings")).text()).toContain('href="/app/settings/team"');
   });
 });

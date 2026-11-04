@@ -1,5 +1,5 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-11-04 (v13: ticket 41, the owner's requests of 4 Nov 2026: calls and sessions are voice calls only, the three questions after a paid ₹99 call, out-of-scope concerns, the media reply, and safety-chat photos for the practitioner; v12: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v11: ticket 38: customer photos and files viewed on demand, never stored, and /app the live console; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-11-04 (v14: ticket 45, the owner's request of 4 Nov 2026: a phone alert (Web Push) to the owner and the practitioner when a customer books and pays; v13: ticket 41, the owner's requests of 4 Nov 2026: calls and sessions are voice calls only, the three questions after a paid ₹99 call, out-of-scope concerns, the media reply, and safety-chat photos for the practitioner; v12: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v11: ticket 38: customer photos and files viewed on demand, never stored, and /app the live console; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
   read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
@@ -31,6 +31,9 @@ vector DBs, third-party CRMs, Supabase, Next.js. Official Meta WhatsApp Cloud AP
 Reference only: github.com/ArnasDon/wacrm (MIT) for webhook verification, dedupe, template-status and handoff patterns.
 Copy small pieces only, keep its MIT notice in a NOTICE file, never vendor the app.
 Browser-only development (Claude Code web + GitHub Actions). Nothing runs on Rohit's Chromebook.
+v14 (ticket 45): Web Push (RFC 8030, VAPID RFC 8292, aes128gcm RFC 8291) is sent by the Worker itself with Web Crypto, to the team's
+  own devices only; no third-party push service or library. Secrets VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY (Rohit makes the pair with
+  `npm run vapid-keys` in a browser-only place, e.g. a GitHub Codespace; never in a chat or Actions); without them alerts are off.
 Payments go through a PaymentProvider interface: createLink, getStatus, verifyWebhook, refund.
 Razorpay (Payment Links) is the one provider, behind that interface. Only one provider may be in the code at a time.
 
@@ -72,6 +75,9 @@ Console v4 (ticket 19, docs/CONSOLE-PRD.md): workspaces, members (one role each:
   Media (ticket 38, v11): messages.media_id and media_mime: Meta's id and type of a file a customer sent, never the file or a link.
   v13 (ticket 41): intros.profession (short, as typed) and intros.help_area (a code: STRESS | SLEEP | RELATIONSHIPS | WORK | ENERGY |
   PHYSICAL | OTHER); conversations.name_given_at (a typed name is kept over the WhatsApp profile name). All three wiped with the name.
+  v14 (ticket 45): push_subs (a team member's device: its push-service endpoint, https on the known push-service hosts only, its keys, a
+  "Chrome on Android" label, dates; deleted on 404/410, Turn off or Remove) and push_outbox (one alert per booking and member: ids,
+  times, state; deleted after 30 days). Never customer data.
 
 Flow invariants
 Bot is button-led: max 3 reply buttons, lists max 10 rows, CTA URL label max 20 chars. The AI may only choose a reply and one
@@ -137,6 +143,13 @@ Behind Cloudflare Access + JWT check + CSRF/origin checks + output escaping.
 Needs-attention queue with reply box (sends within 24h window only), block/unblock, approve rude refunds,
 override offers, switches (NEW_BOOKINGS, AMMA_AWAY, SENDS, AI_REPLIES). 9pm IST email digest. Health alert email if no webhook
 or cron run seen for a set period, or any REFUND_FAILED / UNKNOWN payment.
+v14 (owner, 4 Nov 2026): a phone alert (Web Push, from the home-screen app) for a paid ₹99 call, a paid ₹799 session, a paid package and a
+  session booked from a package; never a hold, a refund, a duplicate or mismatched payment. The owner: every one, at once. The practitioner:
+  her own customers' only, and from 21:00 to 08:00 IST they wait until 08:00 (several as one summary). Staff: none. The words name the
+  kind, the amount and the time, never a name, a number or a help area (lock screens are seen by others); the payload is encrypted for
+  the device, the push service sees only ciphertext. Each device is turned on in /app Settings → Alerts on this phone (owner and
+  practitioner; token + Origin; audited). Sent and failed counts in the digest. The Settings page and /app/sw.js alone carry
+  script-src 'self' (one same-origin script, no inline script, no eval); every other console page stays script-free.
 
 Privacy and safety
 Never store or send: home address, private phone numbers, medical advice, diagnoses, cure claims, "black magic"/"evil eye" (full banned list: docs/KNOWLEDGE.md §8).

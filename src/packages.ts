@@ -9,6 +9,7 @@
 // (one transaction): the slot, the session row and the -1 ledger row are each written only if the balance is above zero and the buyer has
 // fewer than config.sessionRules.maxUpcoming upcoming sessions. Two taps, or a replay, can never use two credits or book two slots.
 import type { D1Database } from "@cloudflare/workers-types";
+import { queueBookingAlert } from "./alerts";
 import { prices } from "./business";
 import { config } from "./config";
 import { ageButtons, serviceButtons, SERVICES, whoButtons, WHO, bookingChoice, loadConv, sendDays, sendTimes, type Conv } from "./booking";
@@ -412,6 +413,7 @@ async function bookWithCredit(env: Env, conv: Conv, service: string, forWhom: Fo
     }
     return true;
   }
+  await queueBookingAlert(env, "CREDIT_SESSION", res.sessionId).catch(() => 0); // the team's phone alert (ticket 45)
   const left = await creditBalance(env.DB, conv.id);
   const en = formatIstLang(startUtc, "en");
   const hi = formatIstLang(startUtc, "hi");
