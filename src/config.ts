@@ -221,6 +221,20 @@ export const config = {
   },
   // Chat text is wiped CHAT_RETENTION_MINUTES (env) after a person's last message; this is used only if the variable is missing or not a number.
   retention: { defaultMinutes: 10080, nameDaysAfterLastBooking: 90 },
+  // Ticket 47: the team's notes for each customer (src/notes.ts) and the chat gist above the chat (src/gist.ts).
+  notes: { maxChars: 2000 },
+  gist: {
+    dailyCap: 200, // AI gists a day (India day), cron and Refresh together; past it, facts only until midnight
+    quietMinutes: 5, // the cron makes one once the chat has been quiet this long
+    everyMinutes: 10, // at most one per chat this often from the cron (counted from the last try)
+    refreshEveryMinutes: 1, // the Refresh button, per chat
+    minCustomerMessages: 2, // with stored text
+    perRun: 5, // gists per 2-minute cron run
+    maxMessages: 60, // the latest messages that go in, oldest first
+    maxCharsPerMessage: 500,
+    maxTokens: 900,
+    maxFieldChars: 200, // each line of the summary
+  },
   razorpay: {
     baseUrl: "https://api.razorpay.com/v1", // test and live are the same host: the key (rzp_test_ / rzp_live_) decides
     minLinkExpiryMinutes: 15, // Razorpay: expire_by must be at least 15 minutes ahead; holdMinutes must stay >= this

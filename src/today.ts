@@ -5,6 +5,7 @@
 // every button and every POST asks the same can() (src/auth.ts), through the helpers below, so a hidden button and a refused POST agree.
 // Outcome taps use the same write as /amma (recordOutcome in src/outcomes.ts); the cron applies them after the undo window.
 import { sessionLinkButton } from "./sessionlink";
+import { todayAddNote, todayNotes } from "./notes";
 import type { D1Result } from "@cloudflare/workers-types";
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
@@ -270,6 +271,7 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number) {
   // A call: "Send session link (₹799)" for whoever may book for them (ticket 40, src/sessionlink.ts).
   const slink = b.kind === "CALL" ? await sessionLinkButton(c.env, m, b.convId) : "";
   if (slink) extra = html`${extra}<div class="acts">${slink}</div>`;
+  extra = html`${extra}${await todayAddNote(c, b)}`; // ticket 47 (src/notes.ts)
   return html`<div class="bk" id="b-${kindKey(b)}-${b.id}">${appointmentRow({
     time: clock(b.startUtc, lang),
     name: firstName(b.name, t.noName),
@@ -296,7 +298,7 @@ async function heroCard(c: ConsoleCtx, b: Booking, now: number) {
     !callAllowed(m, b, now) && now < start - HOUR && can(m, "reveal_phone", { practitionerId: b.practitionerId, callStartMs: start, callEndMs: end, nowMs: start }) === "yes"
       ? html`<p class="later">${cc.callFrom(clock(iso(start - HOUR), m.locale))}</p>`
       : "";
-  return html`<div class="hero"><p class="when">${when}${soon}</p>${await bookingRow(c, b, now)}${later}</div>`;
+  return html`<div class="hero"><p class="when">${when}${soon}</p>${await bookingRow(c, b, now)}${later}${await todayNotes(c, b)}</div>`;
 }
 
 // ---------- the page ----------

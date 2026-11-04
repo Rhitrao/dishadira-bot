@@ -261,7 +261,7 @@ function entryRow(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, string
     service: serviceName(e.service, lang),
     details: entryDetails(e, m, cc, many),
     status: bookingChip(e.state, m.locale),
-    action: { label: cc.open, href: `/app/people/${e.convId}`, kind: "secondary" },
+    action: { label: cc.open, href: `/app/people/${e.convId}?b=${e.kind}-${e.id}#notes`, kind: "secondary" }, // ticket 47: the booking chosen for a note
   });
 }
 // The Week view's entry: one tappable block that opens the person.
@@ -269,7 +269,7 @@ function entryCompact(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, st
   const lang = consoleLang(m.locale);
   const k = [serviceName(e.service, lang), ...entryDetails(e, m, cc, many)].join(" · ");
   const short = e.kind === "CALL" ? cc.calShortCall : cc.calShortSession;
-  return html`<a class="ev ${evClass(e)}" href="/app/people/${e.convId}"><span class="t">${clock(e.startUtc, lang)}</span><span class="n">${firstName(e.name, TODAY_COPY[lang].noName)} <span class="nw">${last4(e.waId)}</span></span><span class="k">${k}</span><span class="ks" aria-hidden="true">${short}</span>${bookingChip(e.state, m.locale)}</a>`;
+  return html`<a class="ev ${evClass(e)}" href="/app/people/${e.convId}?b=${e.kind}-${e.id}#notes"><span class="t">${clock(e.startUtc, lang)}</span><span class="n">${firstName(e.name, TODAY_COPY[lang].noName)} <span class="nw">${last4(e.waId)}</span></span><span class="k">${k}</span><span class="ks" aria-hidden="true">${short}</span>${bookingChip(e.state, m.locale)}</a>`;
 }
 
 type DayArgs = { ymd: string; entries: Entry[]; busy: { startUtc: string; endUtc: string }[]; m: Member; cc: ConsoleCopy; nowMs: number; p: number | null; many: Map<number, string> | null; holiday: boolean };

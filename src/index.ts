@@ -26,6 +26,7 @@ import { bookRedirect, cleanSocial, dataDeletionPage, pageRedirect, profileRedir
 import { sendsOn } from "./switches";
 import { switchOver } from "./switchover";
 import { wipeChats } from "./wipe";
+import { makeGists } from "./gist";
 import { receiveWebhook, verifyWebhook } from "./whatsapp";
 
 export const VERSION = "0.1.0";
@@ -121,7 +122,7 @@ const scheduled = async (event: { cron: string; scheduledTime?: number }, env: E
   // One failing job must not stop the others; each is safe to run again.
   for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);
   for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests, nudgeUnpaidHolds, resendSkippedPaid, sendRefundNotices, cleanSocial,
-    whatsappFollowUps, socialFollowUps, cleanFollowUps, sessionReminders, reviewAsks, cleanAfterCall, sendPushAlerts]) await job(env).catch(() => 0);
+    whatsappFollowUps, socialFollowUps, cleanFollowUps, sessionReminders, reviewAsks, cleanAfterCall, sendPushAlerts, makeGists]) await job(env).catch(() => 0);
   await runDailyJobs(env, event.scheduledTime ?? Date.now()).catch(() => undefined);
 };
 

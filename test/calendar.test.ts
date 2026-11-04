@@ -68,8 +68,8 @@ describe("week and day views", () => {
     expect(body.indexOf("Ravi")).toBeLessThan(body.indexOf("Meera"));
     expect(body).toContain("…1234");
     expect(body).not.toContain("919800001234");
-    expect(body).toContain(`href="/app/people/${early}"`);
-    expect(body).toContain(`href="/app/people/${late}"`);
+    expect(body).toMatch(new RegExp(`href="/app/people/${early}\\?b=(CALL|SESSION)-\\d+#notes"`)); // ticket 47: the booking chosen for a note
+    expect(body).toMatch(new RegExp(`href="/app/people/${late}\\?b=(CALL|SESSION)-\\d+#notes"`));
     expect(body).toContain("15-minute call");
     expect(body).toContain("Confirmed");
     expect(plain(body)).toContain("Free: 2:00 pm – 2:30 pm · 2:45 pm – 4:00 pm · 4:15 pm – 7:00 pm"); // Thursday

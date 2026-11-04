@@ -193,34 +193,26 @@ export async function firstQuestion(db: D1Database, waMessageId: string): Promis
 export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number };
 export type AiResult = { ok: true; out: AiOutput; usage: Usage } | { ok: false; code: string };
 
-// One request, never retried. Any failure is a short code (NO_KEY, TIMEOUT, NETWORK, HTTP_<status>, BAD_JSON, TRUNCATED, REFUSED, INVALID); the caller sends the
-// fixed fallback.
-export async function callAI(apiKey: string | undefined, messages: ChatMessage[], facts: Facts): Promise<AiResult> {
+// One request to the Messages API, never retried: the one place that holds the fetch, the timeout and the error codes (the assistant below and
+// the chat gist, src/gist.ts, both go through it). Any failure is a short code (NO_KEY, TIMEOUT, NETWORK, HTTP_<status>, BAD_JSON, TRUNCATED,
+// REFUSED); the caller decides what that means. `request` is everything but the model and the token limit, which come from config.
+export type ModelBody = { content?: { type: string; name?: string; input?: unknown }[]; stop_reason?: string; usage?: Record<string, number> };
+export type ModelResult = { ok: true; body: ModelBody; usage: Usage } | { ok: false; code: string };
+export async function postToModel(apiKey: string | undefined, request: Record<string, unknown>, maxTokens: number = config.ai.maxTokens): Promise<ModelResult> {
   if (!apiKey) return { ok: false, code: "NO_KEY" };
-  if (!messages.length) return { ok: false, code: "NO_MESSAGE" };
   let res: Response;
   try {
     res = await fetch(config.ai.apiUrl, {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": config.ai.apiVersion, "content-type": "application/json" },
-      body: JSON.stringify({
-        model: config.ai.model,
-        max_tokens: config.ai.maxTokens,
-        system: [
-          { type: "text", text: `${RULES_HEADER}\n\n${KNOWLEDGE}`, cache_control: { type: "ephemeral" } },
-          { type: "text", text: factsText(facts) },
-        ],
-        messages,
-        tools: [AI_TOOL],
-        tool_choice: { type: "tool", name: AI_TOOL_NAME },
-      }),
+      body: JSON.stringify({ model: config.ai.model, max_tokens: maxTokens, ...request }),
       signal: AbortSignal.timeout(config.ai.timeoutMs),
     });
   } catch (e) {
     return { ok: false, code: (e as { name?: string }).name === "TimeoutError" || (e as { name?: string }).name === "AbortError" ? "TIMEOUT" : "NETWORK" };
   }
   if (!res.ok) return { ok: false, code: `HTTP_${res.status}` };
-  let body: { content?: { type: string; name?: string; input?: unknown }[]; stop_reason?: string; usage?: Record<string, number> };
+  let body: ModelBody;
   try {
     body = await res.json();
   } catch {
@@ -228,11 +220,28 @@ export async function callAI(apiKey: string | undefined, messages: ChatMessage[]
   }
   if (body.stop_reason === "max_tokens") return { ok: false, code: "TRUNCATED" };
   if (body.stop_reason === "refusal") return { ok: false, code: "REFUSED" };
-  const tool = body.content?.find((b) => b.type === "tool_use" && b.name === AI_TOOL_NAME);
-  const parsed = outputSchema.safeParse(tool?.input);
-  if (!parsed.success) return { ok: false, code: "INVALID" };
   const u = body.usage ?? {};
-  return { ok: true, out: parsed.data, usage: { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0 } };
+  return { ok: true, body, usage: { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0 } };
+}
+export const toolInput = (body: ModelBody, name: string): unknown => body.content?.find((b) => b.type === "tool_use" && b.name === name)?.input;
+
+// The assistant's one call. Any failure is a short code (the above, NO_MESSAGE, INVALID); the caller sends the fixed fallback.
+export async function callAI(apiKey: string | undefined, messages: ChatMessage[], facts: Facts): Promise<AiResult> {
+  if (!apiKey) return { ok: false, code: "NO_KEY" };
+  if (!messages.length) return { ok: false, code: "NO_MESSAGE" };
+  const r = await postToModel(apiKey, {
+    system: [
+      { type: "text", text: `${RULES_HEADER}\n\n${KNOWLEDGE}`, cache_control: { type: "ephemeral" } },
+      { type: "text", text: factsText(facts) },
+    ],
+    messages,
+    tools: [AI_TOOL],
+    tool_choice: { type: "tool", name: AI_TOOL_NAME },
+  });
+  if (!r.ok) return r;
+  const parsed = outputSchema.safeParse(toolInput(r.body, AI_TOOL_NAME));
+  if (!parsed.success) return { ok: false, code: "INVALID" };
+  return { ok: true, out: parsed.data, usage: r.usage };
 }
 
 export const usageUsd = (u: Usage): number => {

@@ -21,6 +21,8 @@ import { sendEmailTo } from "./mail";
 import { maySeeMedia, viewButton } from "./media";
 import { moveSession } from "./mybookings";
 import { sessionLinkButton } from "./sessionlink";
+import { notesLink } from "./notes";
+import { gistCard } from "./gist";
 import { moveCall } from "./outcomes";
 import { noSellActiveFor, personState } from "./noise";
 import { razorpay } from "./pay/razorpay";
@@ -330,7 +332,7 @@ async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: st
 <label class="field" for="done-note">${ic.doneNote}</label><input id="done-note" type="text" name="note" maxlength="200" required placeholder="${ic.donePlaceholder}" value="${o.note ?? ""}"><p class="muted">${ic.doneWhy}</p><button class="btn primary" type="submit">${ic.doneButton}</button></form></details>`,
     );
   const all = c.req.query("all") === "1";
-  return html`${head}${notes}${reply}${acts.length ? html`<div class="acts nextsteps" aria-label="${ic.secMore}">${acts}</div>` : ""}<div id="chat">${section(ic.secChat, await threadHtml(c.env, ch, m, now, all, mediaCsrf))}</div>`;
+  return html`${head}${notes}${reply}${acts.length ? html`<div class="acts nextsteps" aria-label="${ic.secMore}">${acts}</div>` : ""}${await notesLink(c, ch.id)}${await gistCard(c, ch.id, null, `/app/inbox/${ch.id}`)}<div id="chat">${section(ic.secChat, await threadHtml(c.env, ch, m, now, all, mediaCsrf))}</div>`;
 }
 
 // ---------- book or move for them ----------
