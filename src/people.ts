@@ -22,6 +22,7 @@ import { peopleCopy, type PeopleCopy } from "./people-copy";
 import { personState, quietActive, noSellActiveFor, ensureState } from "./noise";
 import { applyMoneyReceived } from "./requests";
 import { takeOverStmt } from "./handoff";
+import { buildExport, EXPORT_LIMITS, exportDays, exportFileName } from "./export";
 import { iso } from "./slots";
 import {
   appointmentRow, bookingChip, bubble, callLangText, clock, consoleFrame, dayName, emptyState, firstName, forWhomText, last4, ledger, listDetail,
@@ -200,7 +201,9 @@ function listHtml(o: { m: Member; p: PeopleCopy; rows: ListRow[]; q: string; f: 
     q || f !== "all"
       ? emptyState(p.nobodyMatches, { label: p.seeEveryone, href: "/app/people" })
       : emptyState(isPractitioner(m) ? p.nobodyYours : p.nobodyYet, { label: p.openToday, href: "/app" });
-  return html`${find}${filters}${o.rows.length ? rows(items) : empty}${o.rows.length === LIST_LIMIT ? html`<p class="muted">${p.showingRecent(LIST_LIMIT)}</p>` : ""}`;
+  // Ticket 37: the owner's chat export (src/export.ts), the same file as /admin/export.
+  const exp = m.role === "OWNER" ? html`<p class="muted"><a href="/app/people/export?days=${EXPORT_LIMITS.defaultDays}">${p.exportChats}</a></p>` : "";
+  return html`${find}${filters}${o.rows.length ? rows(items) : empty}${o.rows.length === LIST_LIMIT ? html`<p class="muted">${p.showingRecent(LIST_LIMIT)}</p>` : ""}${exp}`;
 }
 
 // ---------- the page frame ----------
@@ -233,6 +236,20 @@ people.get("/", async (c) => {
   const list = listHtml({ m, p, rows: await listPeople(c.env, m, q, f, nowMs), q, f, nowMs });
   const body = html`${screenHead("people", m.locale)}${listDetail({ list, backHref: `/app/people${qs(q, f)}`, locale: m.locale })}`;
   return c.html(await frameFor(c, { title: consoleCopy(m.locale).tabPeople, body, back: `/app/people${qs(q, f)}`, q }));
+});
+
+// Ticket 37: the chat export, owner only (src/export.ts; docs/ANALYSIS.md). Audited with the counts, never the content.
+people.get("/export", async (c) => {
+  const m = c.get("member");
+  if (m.role !== "OWNER") return refusedPage(c);
+  const days = exportDays(c.req.query("days"));
+  if (days === null) return c.text("Bad request", 400);
+  const now = Date.now();
+  const out = await buildExport(c.env, days, now);
+  await c.env.DB.prepare("INSERT INTO audit_log (actor, action, target, detail, workspace_id, member_id) VALUES (?1, 'EXPORT_CHATS', ?2, ?3, ?4, ?5)")
+    .bind(c.get("email"), `export:${days}d`, `days ${days}, chats ${out.chats}, messages ${out.messages}${out.truncated ? ", truncated" : ""}`, m.workspaceId, m.id)
+    .run();
+  return c.body(JSON.stringify(out.file, null, 1), 200, { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": `attachment; filename="${exportFileName(now)}"` });
 });
 
 // ---------- the person page ----------

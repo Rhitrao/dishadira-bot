@@ -171,6 +171,7 @@ The same Today on both screens: urgent cards first, then the day in time order. 
 ### People: who is this customer?
 
 - **Search** by name or the last 4 digits. Filters: Waiting, Upcoming, Has a package, Blocked.
+- **Export chats** (ticket 37, owner only): a link under the list to /app/people/export?days=7 (days 1 to 30), the same file as /admin/export (src/export.ts; how to use it: docs/GO-LIVE.md §16). Audited `EXPORT_CHATS` with the counts; staff and practitioners don't see the link and are refused.
 - **Person page, top to bottom:**
   - Name, last 4 digits, language, first contact date and the ad they came from.
   - **Take over this chat** (ticket 36), while the bot has the chat (not blocked, not already with the team), for anyone who may reply in the Inbox (owner and staff; a chat with an open safety item: owner only). One POST button with its own token; it moves the chat to the team exactly as "Talk to a person" does (HUMAN mode from now, the open booking step closed, the chat given to that member), sends the customer nothing, raises no item and no email, writes `INBOX_TAKE_OVER` to the audit log, and opens the chat in the Inbox. The bot then stays quiet (typed messages get the one "with our team" note; taps still work), follow-ups skip the chat, and Hand back returns it. With no team reply in 24 hours it goes back to the bot quietly (no "sorry we couldn't reply"). /admin has the same button on the person page (`ADMIN_TAKE_OVER`) and a **Hand back to the bot** button while the chat is with the team.

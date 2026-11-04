@@ -17,6 +17,7 @@ import { bookingsBetween, dayRange, firstName, type DayItem } from "./report";
 import { raiseAwayItems } from "./watch";
 import { sendMessage } from "./send";
 import { takeOverStmt } from "./handoff";
+import { buildExport, EXPORT_LIMITS, exportDays, exportFileName } from "./export";
 import { dayLabelFor, formatIstParts, iso, istDay } from "./slots";
 import { getSetting, isSwitch, switchStates, type SwitchName } from "./switches";
 import { ago, chip, header, ist, left, mask, page, type Tone } from "./ui";
@@ -761,8 +762,30 @@ admin.get("/people", async (c) => {
 <form class="search" method="get" action="/admin/people" role="search"><input type="hidden" name="f" value="${f.id}"><input type="search" name="q" value="${q}" placeholder="Name or last 4 digits" aria-label="Search people"><button type="submit">Search</button></form>
 <div class="pills">${tabs}</div>
 ${rows.length ? html`<div class="list">${list}</div>` : html`<div class="list"><p class="empty">${q ? "Nobody matches that search." : "Nobody here."}</p></div>`}
-${rows.length === 60 ? html`<p class="small muted">Showing the 60 most recent. Search to find someone older.</p>` : ""}`;
+${rows.length === 60 ? html`<p class="small muted">Showing the 60 most recent. Search to find someone older.</p>` : ""}
+${exportCard(c.env)}`;
   return c.html(page({ title: "People", tab: "people", body }));
+});
+
+// ---- Ticket 37: "Export chats", one JSON file to read or to attach to a Claude chat (src/export.ts, docs/ANALYSIS.md) ----
+// /admin is the owner's alone (ROHIT_EMAIL, the middleware above). A GET, because it only reads; the audit row has the counts, never content.
+const exportCard = (env: Env) => html`<h2>Export chats</h2><div class="card"><p class="small muted">One file of recent chats to analyse (for example in a Claude chat).
+Phone numbers show only the last 4 digits; names, emails, UPI ids and links are removed; safety chats and blocked numbers have counts only.
+Message text older than ${keepWords(env)} is already deleted, so download it weekly. Don't share the file, and delete it after use.</p>
+<form method="get" action="/admin/export"><label for="xdays"><b>Last</b></label> <select id="xdays" name="days">${[1, 3, 7, 14, 30].map(
+  (d) => html`<option value="${d}"${d === EXPORT_LIMITS.defaultDays ? raw(" selected") : ""}>${d} ${d === 1 ? "day" : "days"}</option>`,
+)}</select> <button class="primary" type="submit">Export chats</button></form></div>`;
+
+admin.get("/export", async (c) => {
+  const days = exportDays(c.req.query("days"));
+  if (days === null) return c.text(`days must be a whole number from ${EXPORT_LIMITS.minDays} to ${EXPORT_LIMITS.maxDays}`, 400);
+  const now = Date.now();
+  const out = await buildExport(c.env, days, now);
+  await audit(c, "EXPORT_CHATS", `export:${days}d`, `days ${days}, chats ${out.chats}, messages ${out.messages}${out.truncated ? ", truncated" : ""}`);
+  return c.body(JSON.stringify(out.file, null, 1), 200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Disposition": `attachment; filename="${exportFileName(now)}"`,
+  });
 });
 
 // ---- Payments: the last 30 days, problems first ----
