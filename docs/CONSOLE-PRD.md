@@ -142,7 +142,7 @@ Every screen follows the same order: urgent items, then the list, then the numbe
 1. **Safety.** A red card for each crisis or emergency message not yet handled. It shows the time, the customer, "The safety message was sent", and **Open chat**.
 2. **Waiting for a reply.** One card per handed-over chat, oldest first: "Asked for a person, 2 h ago. Reply by 6:40 pm." Buttons: **Reply** and **Hand back to the bot**.
 3. **Approvals** (owners only). Refunds, blocks and money marked by staff, each with **Approve** and **Decline**, the amount and who asked.
-4. **Up next.** Today's calls and sessions in time order. Each row shows the time, first name and last 4 digits, service, who it's for, language, and a **Call** button.
+4. **Up next.** Today's calls and sessions in time order. Each row shows the time, first name and last 4 digits, service, who it's for, language, and a **Call** button. Ticket 39: the next one still to do (not yet marked, until an hour after it ends) is drawn first and large ("Next · in 25 min", "Happening now", "Just finished") with a full-width Call button, or, before the Call button's window, the time it appears; the screen opens with a gentle greeting by the hour and the date ("Good afternoon, Shantha · Wed, 4 Nov").
    - From the start time until 24 hours later, the row shows **How did it go?** with three buttons that say what happens next: "Book a session for them", "Not a fit (₹99 refunded)" and "Didn't pick up (offer a new time)".
    - After a tap, the row shows "Saved. Undo until 4:15 pm": a clock time 10 minutes after the tap, rather than a countdown. "Report behaviour" sits under More, away from the outcome buttons.
 5. **Later.** "Tomorrow: 3 calls" with a link to the calendar. If today is empty: "No calls today. Next: Thu 29 Oct, 2:00 pm." After the last call, a Loose ends card lists calls with no outcome, unpaid links and open chats, so the day closes clean.
@@ -163,7 +163,7 @@ The same Today on both screens: urgent cards first, then the day in time order. 
 
 ### Calendar: when am I booked or free?
 
-- **Day and week views** for one practitioner, or all of them from Phase 2, showing bookings, held times and free times.
+- **Day, week and month views** for one practitioner, or all of them from Phase 2, showing bookings, held times and free times. Ticket 39: the Day view is a timeline of the working hours from opening to closing, the bookings with the free gaps between them (and the time already gone, and a Now line on today); the Week view is a list of days on a phone and seven columns on a wide screen; the Month view is a Monday-to-Sunday grid with each day's count and a dot per booking (teal a call, gold a session), holidays and today marked, past days quieter, and each day opening its Day view. Links only: `?view=day|week|month&d=YYYY-MM-DD`.
 - **Working hours** per practitioner, per weekday, defaulting to Monday to Saturday, 2 to 7 pm (owner, 29 Oct 2026). Phase 2; until then the hours stay as they are today.
 - **Time off:** "Away from Mon 2 Nov to Wed 4 Nov". The bot stops offering those times at once. The screen lists only the bookings that clash, and lets you move or refund each one. Phase 2. (Ticket 30 brought whole days off forward: "Mark a day off" on the Calendar, /admin and /amma, stored as `settings` rows `holiday:<date>`; the bookings on that day are listed with a warning.)
 - **Book for a customer** (owner and staff): pick the person, the service and a time. Payment goes by the usual link, or is marked as received outside Razorpay.
@@ -229,7 +229,7 @@ Each check is written as a test before the screen is built, and the release pass
 
 ## Design system
 
-The direction is a calm ledger: warm paper, dark ink, one accent colour, generous space and large type. It should feel like a well-kept appointment book, not an analytics dashboard.
+The direction is "sunrise calm" (ticket 39, from the Disha Dira logo: a rising golden sun over a winding path through teal water): cream paper with a soft sunrise glow, deep-teal actions, bronze serif titles, a thin gold rule used sparingly, generous space and large type. It should feel like a calm healing practice's appointment book, not an analytics dashboard.
 
 **Principles.**
 
@@ -243,18 +243,25 @@ The direction is a calm ledger: warm paper, dark ink, one accent colour, generou
 
 | Token | Light | Dark | Used for |
 | --- | --- | --- | --- |
-| Paper | #FBFAF7 | #121615 | Page background |
-| Surface | #FFFFFF | #1A201F | Cards and rows |
-| Ink | #14302F | #E8EEEC | Body text, at least 12:1 on paper |
-| Muted | #5B6B69 | #9FB0AD | Secondary text, at least 4.5:1 |
-| Accent | #1B6F73 | #5CC2BE | Primary buttons, current tab; a workspace can set its own |
-| Attention | #A15C00 | #F0B35A | Waiting on someone |
-| Danger | #B3261E | #FF8A80 | Safety items, refunds, failures |
-| Done | #2E7D4F | #7FD3A0 | Paid, confirmed |
+| Paper | #FAF9EE | #0E1B20 | Page background (cream; a soft gold glow at the top, mint at the foot) |
+| Surface | #FFFEF9 | #14262D | Cards and rows |
+| Sunk | #F3F0E1 | #1A3038 | The rail, the chat, past days |
+| Ink | #14343F | #F2EFE1 | Body text, at least 12:1 on paper |
+| Muted | #4E6C6D | #A9BFBB | Secondary text (the logo's slate), at least 4.5:1 |
+| Bronze | #87622A | #E4C483 | Serif screen titles and the brand name (the wordmark's bronze) |
+| Accent | #1D556C | #80D0C7 | Primary buttons, current tab (deep teal); a workspace can set its own |
+| Waiting | #7A5607 | #F0C75A | Waiting on the customer or the bank (gold) |
+| Attention | #A04B2B | #F4AA88 | Needs the team (warm terracotta) |
+| Danger | #A5322D | #FF9D92 | Safety items, refunds, failures (muted red) |
+| Done | #1D6857 | #88D9BE | Paid, confirmed (teal on mint) |
+| Gold, sun, water | #F2C84B, #F8E878, #2A9A9C | the same, water #34ACA4 | Decoration only (the rule, dots, the timeline); never text on cream |
+
+Each text colour has a tint for its chip (paid teal on mint, waiting gold, attention terracotta, danger red); test/ui.test.ts checks every pair at AA in both themes.
 
 **Type and spacing.**
 
-- **Typeface:** Jost, self-hosted from the Worker (the CSP adds `font-src 'self'`), with tabular figures for times and amounts. System sans is the fallback. Hindi uses Noto Sans Devanagari, also self-hosted. Every console string lives in one catalogue with English and Hindi from Phase 1.
+- **Typeface:** Jost, self-hosted from the Worker (the CSP adds `font-src 'self'`), with tabular figures for times and amounts. System sans is the fallback. Hindi uses Noto Sans Devanagari, also self-hosted. Screen titles, the brand name and a person's name use Cormorant Garamond (500/600, self-hosted, ticket 39), drawn at 34–40 px because its letters are small; Hindi titles stay in the UI face at 26–28 px.
+- **Brand files (ticket 39):** the sun-and-path mark in the top bar and the rail, the full logo on sign-in and refusal pages, the home-screen icons and a web app manifest (`/app/manifest.webmanifest`, name and colours from config.brand), served by the Worker with a year-long cache; the CSP adds `img-src 'self'` and `manifest-src 'self'` (still no scripts). One CSS-only reveal on load, off under prefers-reduced-motion. Every console string lives in one catalogue with English and Hindi from Phase 1.
 - **Sizes:** body 19 px on every screen, with nothing below 16 px; times and amounts 20 px semibold; screen titles 26 px. Line height 1.45.
 - **Spacing:** steps of 4 px (8, 12, 16, 24, 32). Tap targets are at least 48 by 48 px, with 8 px between them.
 

@@ -28,7 +28,7 @@ import { sendMessage, sendOrTemplate, templateVariant, type Out } from "./send";
 import { availableSlots, formatIstLang, generateSlots, holdSlot, isHoliday, iso, istDay, istMinutes, nextWorkingDays, PRACTITIONER_SQL, spreadTimes, type Slot, type SlotKind } from "./slots";
 import { bookingsOpen } from "./switches";
 import { collapseWiped, describe, earlierLink, keptFor, SHOWN_SQL, THREAD_ALL, THREAD_LATEST, wipedLine } from "./chat";
-import { bubble, clock, keep4, consoleFrame, dayName, firstName, forWhomText, last4, listDetail, listRow, rows, screenHead, section, statusChip, emptyState, thread, type From } from "./ui";
+import { avatar, bubble, clock, keep4, consoleFrame, dayName, firstName, forWhomText, last4, listDetail, listRow, rows, screenHead, section, statusChip, emptyState, thread, type From } from "./ui";
 
 const MIN = 60_000;
 const HOUR = 3_600_000;
@@ -112,10 +112,11 @@ const customerName = (ch: Chat, locale: string) => `${firstName(ch.name, console
 const INBOX_CSS = `
 .views{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
 .views a{display:inline-flex;align-items:center;min-height:48px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:500}
-.views a.on{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.views a.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.ph{display:flex;align-items:flex-start;gap:16px}.ph>div{min-width:0;flex:1}
 .views .n{margin-left:8px;color:inherit;opacity:.85}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}
-.ibx .chip{white-space:normal}
+.ibx .chip{white-space:normal;border-radius:14px}
 .ibx .row{display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
 .ibx .row .chips{margin:4px 0 0}
 .who-h{font-size:20px;font-weight:600;margin:0}
@@ -288,9 +289,9 @@ async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: st
   const live = claimLive(ch, now);
   // Owner and staff only reach the Inbox; a practitioner's own-customer rule doesn't apply here (no target).
   const mediaCsrf = (await maySeeMedia(c.env.DB, m, {}, ch.id)) ? await memberCsrf(c.get("jwt"), m, `people-media:${ch.id}`) : null;
-  const head = html`<article class="card${isSafety(ch) ? " danger" : ""}"><h2 class="who-h">${keep4(customerName(ch, locale))}</h2>
+  const head = html`<article class="card ph${isSafety(ch) ? " danger" : ""}">${avatar(ch.name)}<div><h2 class="who-h">${keep4(customerName(ch, locale))}</h2>
 <p class="why">${why(ch, ic)} · ${ic.waited(ago(now - Date.parse(since(ch)), ic))}</p>
-<div class="chips">${statusChip(replyLine(ch, locale, now), inWindow(ch, now) ? "plain" : "attention")}${isSafety(ch) ? statusChip(ic.whySafety, "danger") : ""}</div></article>`;
+<div class="chips">${statusChip(replyLine(ch, locale, now), inWindow(ch, now) ? "plain" : "attention")}${isSafety(ch) ? statusChip(ic.whySafety, "danger") : ""}</div></div></article>`;
   const notes: unknown[] = [];
   if (!ch.waiting) notes.push(html`<p class="card">${ic.notInInbox}</p>`);
   else if (isSafety(ch) && !r.act) notes.push(html`<p class="card danger">${ic.safetyForOwner}</p>`);
