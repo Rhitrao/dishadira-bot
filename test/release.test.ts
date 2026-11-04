@@ -38,8 +38,9 @@ describe("wrangler environments", () => {
     for (const name of ["vars", "env.live.vars"]) expect(value(section(name), "AI_REPLIES"), name).toBe("false");
     expect(["true", "false"]).toContain(value(section("env.test.vars"), "AI_REPLIES"));
   });
-  it("CONSOLE_V2 is \"false\" at the top level and in live; test may be either", () => {
-    for (const name of ["vars", "env.live.vars"]) expect(value(section(name), "CONSOLE_V2"), name).toBe("false");
+  it("CONSOLE_V2 is \"false\" at the top level, \"true\" in live (ticket 38, Rohit's switch-over of 4 Nov 2026); test may be either", () => {
+    expect(value(section("vars"), "CONSOLE_V2")).toBe("false");
+    expect(value(section("env.live.vars"), "CONSOLE_V2")).toBe("true");
     expect(["true", "false"]).toContain(value(section("env.test.vars"), "CONSOLE_V2"));
     // Exactly the three sections set it (no fourth environment, no second line that could win).
     expect(wrangler.match(/^CONSOLE_V2\s*=/gm)?.length).toBe(3);

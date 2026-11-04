@@ -1,8 +1,10 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-11-04 (v11: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-11-04 (v12: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v11: ticket 38: customer photos and files viewed on demand, never stored, and /app the live console; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
   read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
+  v11 (owner, 4 Nov 2026): the console (/app, CONSOLE_V2 "true" on live) is everyone's daily tool; /admin and /amma redirect to it and
+  come back only as the rollback (CONSOLE_V2 "false").
 Goal: turn Click-to-WhatsApp ad enquiries into paid sessions; Amma only ever speaks to people who have paid.
 Scope: one practice, one practitioner, two services (PROTECTION, HEALING), INR, Asia/Kolkata, English + Hindi.
 Journey: pick a call slot -> pay ₹99 -> Amma calls (15 min) -> Session | Not right fit | Missed | Rude ->
@@ -22,7 +24,7 @@ DIGEST_TO, and member addresses the owner has verified in Cloudflare Email Routi
 shows the one-time link, with a "Send on WhatsApp" link and a field to copy it. Static site is separate (Cloudflare Pages). Native fetch/Web Crypto. Runtime libs: hono, zod, jose.
 Vitest + wrangler in GitHub Actions. Pin versions, commit the lockfile.
 AI: Anthropic API (Claude Haiku) answers typed questions only, behind the AI_REPLIES flag, grounded only in docs/KNOWLEDGE.md.
-Not in v1: voice, broadcasts, marketing templates (v11 exception below), queues, Durable Objects, ORMs, React frameworks,
+Not in v1: voice, broadcasts, marketing templates (v12 exception below), queues, Durable Objects, ORMs, React frameworks,
 vector DBs, third-party CRMs, Supabase, Next.js. Official Meta WhatsApp Cloud API only; no WhatsApp Web automation.
 Reference only: github.com/ArnasDon/wacrm (MIT) for webhook verification, dedupe, template-status and handoff patterns.
 Copy small pieces only, keep its MIT notice in a NOTICE file, never vendor the app.
@@ -65,6 +67,7 @@ Console v4 (ticket 19, docs/CONSOLE-PRD.md): workspaces, members (one role each:
   Inbox (ticket 22): conversations.claimed_by / claimed_at ("Assign to me", lapses after 30 min) and inbox_mail_at (one 2-hour email per handoff).
   Settings (ticket 24): the owner's prices (price.*_paise; config is the default and the fallback), email recipients (mail.*),
   privacy.staff_read_chat and business.* live in the settings table; a payment is checked against the price when its link was made.
+  Media (ticket 38, v11): messages.media_id and media_mime: Meta's id and type of a file a customer sent, never the file or a link.
 
 Flow invariants
 Bot is button-led: max 3 reply buttons, lists max 10 rows, CTA URL label max 20 chars. The AI may only choose a reply and one
@@ -96,7 +99,7 @@ Automatic follow-ups (v8), on the channel the person wrote on (WhatsApp, Instagr
   20 hours, no price, no booking button. Never after a paid booking (ever), "I booked/paid", stop/opt-out, a block or an insult, a safety
   message, human takeover, while SENDS is off or paused, or while Amma is away; an Instagram/Messenger contact whose code opened a
   WhatsApp chat gets WhatsApp's only. Prices, minutes and hours from the prices and config in force.
-After the call (v11, owner's decision 4 Nov 2026; each a 1:1 message to one customer about their own call or session, never a broadcast):
+After the call (v12, owner's decision 4 Nov 2026; each a 1:1 message to one customer about their own call or session, never a broadcast):
   one session reminder 48 hours after an untaken session offer (the same options; never after a payment or booking), and one review and
   referral ask the morning after a paid session (from 10:00 IST; a Google review link from config and a wa.me link to the business number;
   at most once per person in 90 days; never after Not right fit, a refund, a complaint, rudeness or a safety message; no incentive for a
@@ -105,7 +108,7 @@ After the call (v11, owner's decision 4 Nov 2026; each a 1:1 message to one cust
   (the same guarded hold and link) or for the customer to choose; audited. These are the only marketing templates allowed:
   session_reminder and review_ask (both `approved: false` until Meta approves them; skipped and counted until then).
 Outside the 24-hour window only approved templates: call_booked, session_offer, session_confirmed, reminder,
-  payment_update, package_confirmed, session_booked, follow_up (no variables; Hindi follow_up_hi), and v11's session_reminder,
+  payment_update, package_confirmed, session_booked, follow_up (no variables; Hindi follow_up_hi), and v12's session_reminder,
   review_ask (MARKETING) and session_link (UTILITY). All others UTILITY. follow_up stays
   `approved: false` in config until Meta approves it. If a needed template isn't approved, raise attention instead of sending.
 
@@ -126,11 +129,15 @@ Privacy and safety
 Never store or send: home address, private phone numbers, medical advice, diagnoses, cure claims, "black magic"/"evil eye" (full banned list: docs/KNOWLEDGE.md §8).
 Never send to the AI: phone numbers, names, payment ids, emails, links, digit runs of 6+. First message and privacy page
   disclose the automated assistant and the AI provider.
-Never ask for health details; do not download inbound media. First message states booking-only use, that it is an
+Never ask for health details. Inbound media is never stored (v11: only Meta's media id and type, wiped with the text); the team may view
+  a file on demand: a POST (CSRF + Origin), audited VIEW_MEDIA (the chat and the kind, never content), fetched from Meta with WA_TOKEN
+  and streamed with no-store, nosniff and a script-free CSP; never cached in D1/KV/R2, never to the AI, never in the export (a name
+  like "[photo]" only). Who: the owner; staff while they may read chat text; a practitioner for their own customers; a chat that had
+  a safety message, the owner only. The bot's replies to media are unchanged. First message states booking-only use, that it is an
   automated assistant, and that messages are processed by the AI provider (docs/KNOWLEDGE.md §10).
 Safety messages (crisis, medical emergency) are sent to everyone, including blocked, quiet and HUMAN chats, and even when
   the SENDS switch is paused (never when the SENDS env flag is "false").
-Store only name, WhatsApp number, bookings, payments. Wipe message text CHAT_RETENTION_MINUTES after the person's last message (live 10080 = 7 days,
+Store only name, WhatsApp number, bookings, payments. Wipe message text (and media ids, v11) CHAT_RETENTION_MINUTES after the person's last message (live 10080 = 7 days,
   test 10) and
 personal fields 90 days after last booking; keep dedupe keys, payment, refund and audit rows.
 Secrets, real phone numbers and customer data stay out of git, PRs, logs, fixtures and coding prompts.

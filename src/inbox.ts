@@ -18,6 +18,7 @@ import { copyFor, langOf, rupees, type ForWhom } from "./copy";
 import type { Env } from "./env";
 import { FOLLOW_UP_TEXT, inboxCopy, type InboxCopy } from "./inbox-copy";
 import { sendEmailTo } from "./mail";
+import { maySeeMedia, viewButton } from "./media";
 import { moveSession } from "./mybookings";
 import { sessionLinkButton } from "./sessionlink";
 import { moveCall } from "./outcomes";
@@ -206,7 +207,7 @@ async function renderScreen(c: ConsoleCtx, o: { view: View; openId?: number; det
 }
 
 // ---------- the thread ----------
-type Line = { id: number; dir: string; waMsg: string | null; body: string | null; wipedAt: string | null; at: string; key: string | null; status: string; kind: string };
+type Line = { id: number; dir: string; waMsg: string | null; body: string | null; wipedAt: string | null; media: number; at: string; key: string | null; status: string; kind: string };
 type Sender = { from: From; memberId?: number; owner?: boolean; followUp?: boolean };
 // Who wrote an outgoing message, from its key. Inbox replies carry the member (admin-reply:inbox:<chat>:m<member>:…); older /admin replies were the owner's.
 function sender(key: string | null): Sender {
@@ -219,14 +220,15 @@ function sender(key: string | null): Sender {
   return { from: "bot" };
 }
 
-async function threadHtml(env: Env, ch: Chat, m: Member, nowMs: number, all: boolean) {
+// `mediaCsrf`: the person page's View token (ticket 38) when this member may view the customer's photos and files here, else null.
+async function threadHtml(env: Env, ch: Chat, m: Member, nowMs: number, all: boolean, mediaCsrf: string | null) {
   const locale = m.locale;
   const ic = inboxCopy(locale);
   const cc = consoleCopy(locale);
   const limit = all ? THREAD_ALL : THREAD_LATEST;
   const rowsDesc = (
     await env.DB.prepare(
-      `SELECT id, direction AS dir, wa_message_id AS waMsg, body, wiped_at AS wipedAt, created_at AS at, dedupe_key AS key, status, kind FROM messages
+      `SELECT id, direction AS dir, wa_message_id AS waMsg, body, wiped_at AS wipedAt, (media_id IS NOT NULL) AS media, created_at AS at, dedupe_key AS key, status, kind FROM messages
        WHERE conversation_id = ?1 AND ${SHOWN_SQL} ORDER BY id DESC LIMIT ?2`,
     )
       .bind(ch.id, limit + 1)
@@ -258,7 +260,9 @@ async function threadHtml(env: Env, ch: Chat, m: Member, nowMs: number, all: boo
     if (l.dir === "IN") {
       const hiddenSafety = !seeSafety && l.waMsg && safetyIn.has(l.waMsg);
       const text = hiddenSafety ? ic.safetyInHidden : allHidden ? cc.chatTextHidden : d.text;
-      return bubble({ from: "customer", text, time, locale, quiet: d.tap && !hiddenSafety && !allHidden });
+      // The View button posts to the person page's route (src/people.ts), which checks the same rights again.
+      const view = mediaCsrf && l.media && !hiddenSafety && !allHidden ? viewButton(`/app/people/${ch.id}/media/${l.id}`, mediaCsrf, locale) : undefined;
+      return bubble({ from: "customer", text, time, locale, quiet: d.tap && !hiddenSafety && !allHidden, extra: view });
     }
     const s = sender(l.key);
     const followUp = s.followUp || l.body === "template:follow_up";
@@ -282,6 +286,8 @@ async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: st
   const ic = inboxCopy(locale);
   const r = rights(m, ch);
   const live = claimLive(ch, now);
+  // Owner and staff only reach the Inbox; a practitioner's own-customer rule doesn't apply here (no target).
+  const mediaCsrf = (await maySeeMedia(c.env.DB, m, {}, ch.id)) ? await memberCsrf(c.get("jwt"), m, `people-media:${ch.id}`) : null;
   const head = html`<article class="card${isSafety(ch) ? " danger" : ""}"><h2 class="who-h">${keep4(customerName(ch, locale))}</h2>
 <p class="why">${why(ch, ic)} · ${ic.waited(ago(now - Date.parse(since(ch)), ic))}</p>
 <div class="chips">${statusChip(replyLine(ch, locale, now), inWindow(ch, now) ? "plain" : "attention")}${isSafety(ch) ? statusChip(ic.whySafety, "danger") : ""}</div></article>`;
@@ -323,7 +329,7 @@ async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: st
 <label class="field" for="done-note">${ic.doneNote}</label><input id="done-note" type="text" name="note" maxlength="200" required placeholder="${ic.donePlaceholder}" value="${o.note ?? ""}"><p class="muted">${ic.doneWhy}</p><button class="btn primary" type="submit">${ic.doneButton}</button></form></details>`,
     );
   const all = c.req.query("all") === "1";
-  return html`${head}${notes}${reply}${acts.length ? html`<div class="acts nextsteps" aria-label="${ic.secMore}">${acts}</div>` : ""}<div id="chat">${section(ic.secChat, await threadHtml(c.env, ch, m, now, all))}</div>`;
+  return html`${head}${notes}${reply}${acts.length ? html`<div class="acts nextsteps" aria-label="${ic.secMore}">${acts}</div>` : ""}<div id="chat">${section(ic.secChat, await threadHtml(c.env, ch, m, now, all, mediaCsrf))}</div>`;
 }
 
 // ---------- book or move for them ----------

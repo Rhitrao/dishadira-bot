@@ -226,6 +226,12 @@ export const config = {
   // Sender for Rohit's emails: an address on the Disha Dira domain (public website domain), verified in Cloudflare Email Service by Rohit.
   mail: { from: "bot@disha-dira.com" },
   graphVersion: "v26.0",
+  // Ticket 38: viewing a customer's photo or file on demand (src/media.ts). Nothing of the file is stored; these bound the two Graph calls.
+  media: {
+    graphTimeoutMs: 5000, // GET /{media-id}: the short-lived link (a person is waiting in the console, not Meta's webhook)
+    downloadTimeoutMs: 20000, // fetching the file itself, whole (WhatsApp files are at most 100 MB, usually well under 1 MB)
+    playerMaxBytes: 16 * 1024 * 1024, // voice notes and videos up to this size open in a player page; larger ones download
+  },
   windowHours: 24,
   // Template registry. Flip approved to true only after Meta approves the template (owner decision).
   // `hi` is the Hindi version of the same template, with its own name and its own approved flag: a Hindi customer gets it
@@ -242,7 +248,7 @@ export const config = {
     session_booked: { approved: true, language: "en", hi: { name: "session_booked_hi", approved: true, language: "hi" } },
     // The Inbox's follow-up once the 24-hour window has closed (ticket 22; not yet in the CONTRACT's template list, see STATUS "Blocked").
     follow_up: { approved: true, language: "en", hi: { name: "follow_up_hind", approved: true, language: "hi" } },
-    // Ticket 40 (CONTRACT v11), waiting for Rohit to create them in Meta (docs/TEMPLATES.md 9 to 11). Until then the bot skips the
+    // Ticket 40 (CONTRACT v12), waiting for Rohit to create them in Meta (docs/TEMPLATES.md 9 to 11). Until then the bot skips the
     // message when the 24-hour window has closed, and counts it in the digest.
     session_reminder: { approved: false, language: "en", hi: { name: "session_reminder_hi", approved: false, language: "hi" } },
     review_ask: { approved: false, language: "en", hi: { name: "review_ask_hi", approved: false, language: "hi" } },

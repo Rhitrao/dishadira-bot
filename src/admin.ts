@@ -15,6 +15,7 @@ import { approveRefund, declineRefund, requestRefund, retryFailedRefund } from "
 import { razorpay } from "./pay/razorpay";
 import { bookingsBetween, dayRange, firstName, type DayItem } from "./report";
 import { raiseAwayItems } from "./watch";
+import { viewButton, viewMedia } from "./media";
 import { sendMessage } from "./send";
 import { takeOverStmt } from "./handoff";
 import { buildExport, EXPORT_LIMITS, exportDays, exportFileName } from "./export";
@@ -47,8 +48,9 @@ admin.use("*", async (c, next) => {
   c.set("email", who.email);
   if (c.req.method === "POST" && c.req.header("Origin") !== new URL(c.req.url).origin) return c.text("Forbidden", 403, { "Cache-Control": "no-store" });
   await next();
-  c.res.headers.set("Cache-Control", "no-store");
-  c.res.headers.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'");
+  // A customer's file (ticket 38, src/media.ts) brings its own stricter headers ("no-store, private", a CSP for the file): kept as they are.
+  if (!(c.res.headers.get("Cache-Control") ?? "").includes("no-store")) c.res.headers.set("Cache-Control", "no-store");
+  if (!c.res.headers.has("Content-Security-Policy")) c.res.headers.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'");
 });
 
 const audit = (c: Ctx, action: string, target: string, detail: string) =>
@@ -516,7 +518,7 @@ const LABEL_WORDS: Record<string, string> = {
   astrology_or_prediction: "Astrology or prediction", prohibited_request: "Not something we do", loop: "Repeating", spam_or_promo: "Spam",
   flirt_or_sexual: "Flirting", abuse: "Abuse", crisis: "Crisis", medical_emergency: "Medical emergency",
 };
-type Line = { dir: string; body: string | null; wipedAt: string | null; at: string; key: string | null; status: string; kind: string };
+type Line = { id: number; dir: string; body: string | null; wipedAt: string | null; media: number; at: string; key: string | null; status: string; kind: string };
 type AiRow = { at: string; action: string; detail: string };
 
 // Who wrote an outgoing message, from its key: Rohit's replies, the assistant, the safety messages, or the bot's fixed messages.
@@ -527,10 +529,13 @@ function whoSent(key: string | null): [string, Tone] {
   return ["Bot", ""];
 }
 
-async function thread(env: Env, convId: number, now: number) {
+// Ticket 38: a photo or file the customer sent, while its Meta id is kept, gets a View button (/admin is the owner's alone).
+async function thread(c: Ctx, convId: number, now: number) {
+  const env = c.env;
+  const viewCsrf = await csrf(c.get("jwt"), `media:${convId}`);
   const rows = (
     await env.DB.prepare(
-      "SELECT direction AS dir, body, wiped_at AS wipedAt, created_at AS at, dedupe_key AS key, status, kind FROM messages WHERE conversation_id = ?1 ORDER BY id DESC LIMIT 40",
+      "SELECT id, direction AS dir, body, wiped_at AS wipedAt, (media_id IS NOT NULL) AS media, created_at AS at, dedupe_key AS key, status, kind FROM messages WHERE conversation_id = ?1 ORDER BY id DESC LIMIT 40",
     )
       .bind(convId)
       .all<Line>()
@@ -545,7 +550,10 @@ async function thread(env: Env, convId: number, now: number) {
   if (!rows.length) return html`<div class="card"><p class="empty">No messages yet.</p></div>`;
   return html`<div class="thread">${rows.map((m) => {
     const text = m.wipedAt ? html`<span class="muted">(message text removed)</span>` : m.body ?? html`<span class="muted">(${m.kind})</span>`;
-    if (m.dir === "IN") return html`<div class="bubble in"><div class="meta">${ist(m.at, now)}</div>${text}</div>`;
+    if (m.dir === "IN") {
+      const view = m.media && !m.wipedAt ? viewButton(`/admin/conv/${convId}/media/${m.id}`, viewCsrf, "en", "") : "";
+      return html`<div class="bubble in"><div class="meta">${ist(m.at, now)}</div>${text}${view}</div>`;
+    }
     const [who, tone] = whoSent(m.key);
     const label = who === "Assistant" ? near(m.at, "AI_REPLY") : undefined;
     const replaced = who === "Assistant" ? near(m.at, "AI_REJECTED") : undefined;
@@ -641,7 +649,7 @@ ${callNumber}</div>`;
 ${await chatOwner(c, id, conv.mode)}
 <div class="cols"><section>${items.length ? html`<h2>Needs you <span class="count">${items.length}</span></h2>${items}` : ""}
 ${replyInItem ? "" : html`<h2>Talk to them</h2>${talk}`}
-<h2>Conversation</h2>${await thread(c.env, id, now)}
+<h2>Conversation</h2>${await thread(c, id, now)}
 <p class="small muted">Message text is removed ${keepWords(c.env)} after their last message; who wrote what, and when, stays.</p></section><aside>
 <h2>Bookings</h2>${bookings.length ? html`<div class="list">${bookings.map((b) => {
     const [w, t] = STATE_WORDS[b.state] ?? [b.state.replaceAll("_", " ").toLowerCase(), ""];
@@ -661,6 +669,15 @@ ${replyInItem ? "" : html`<h2>Talk to them</h2>${talk}`}
 }
 
 admin.get("/conv/:id", (c) => personPage(c, Number(c.req.param("id")), false));
+
+// View a photo or file the customer sent (ticket 38, src/media.ts): the owner (the only one /admin lets in), this chat's form token, the
+// Origin check above; audited VIEW_MEDIA (the chat and the kind, never content), then streamed from Meta with no-store, never kept.
+admin.post("/conv/:id/media/:msg", async (c) => {
+  const id = Number(c.req.param("id"));
+  const f = await c.req.parseBody();
+  if (!Number.isInteger(id) || f.csrf !== (await csrf(c.get("jwt"), `media:${id}`))) return bad(c);
+  return viewMedia(c.env, id, Number(c.req.param("msg")), "en", (kind) => audit(c, "VIEW_MEDIA", `conv:${id}`, kind));
+});
 
 // Ticket 36: take a chat from the bot (BOT -> HUMAN, as "Talk to a person", src/handoff.ts takeOverStmt), so you can reply here without the
 // bot answering too; nothing is sent to the customer and no item is raised. "Hand back to the bot" returns it (and closes its waiting items).

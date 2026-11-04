@@ -1,6 +1,6 @@
 // Privacy clean-up, on the 2-minute cron. Both jobs are safe to run again and again.
 //  - Chat text: CHAT_RETENTION_MINUTES after a person's last message (live 10080 = 7 days, test 10) every message body of that conversation
-//    (what they wrote and what we sent) is blanked. The rows stay: dedupe keys, payments, bookings, credits, blocks and audit are untouched,
+//    (what they wrote and what we sent) is blanked, and the Meta id of any photo or file they sent (ticket 38) with it. The rows stay: dedupe keys, payments, bookings, credits, blocks and audit are untouched,
 //    and what the code needs later (greeted, language, age check, last acknowledgement, media notice day) lives on `conversations` / `person_state`.
 //  - Names: removed config.retention.nameDaysAfterLastBooking days after the person's last booking (or, with no booking, after their last message).
 import { config } from "./config";
@@ -17,7 +17,10 @@ export const retentionMinutes = (env: Env): number => {
 export async function wipeChats(env: Env, nowMs = Date.now()): Promise<number> {
   const cutoff = iso(nowMs - retentionMinutes(env) * 60_000);
   const res = await env.DB
-    .prepare("UPDATE messages SET body = NULL, wiped_at = ?1 WHERE body IS NOT NULL AND conversation_id IN (SELECT id FROM conversations WHERE last_user_at < ?2)")
+    .prepare(
+      `UPDATE messages SET body = NULL, media_id = NULL, media_mime = NULL, wiped_at = ?1 WHERE (body IS NOT NULL OR media_id IS NOT NULL)
+         AND conversation_id IN (SELECT id FROM conversations WHERE last_user_at < ?2)`,
+    )
     .bind(iso(nowMs), cutoff)
     .run();
   await removeOldNames(env, nowMs);
@@ -40,6 +43,6 @@ export async function removeOldNames(env: Env, nowMs = Date.now()): Promise<numb
 // as the timed wipe above (and the first-message question kept for the bot's reply). Bookings, payments, refunds, credits, blocks, dedupe
 // keys and the audit log stay, as the law requires. Returned unrun, so the caller batches them with the audit row.
 export const wipePersonStmts = (db: Env["DB"], convId: number, nowIso: string) => [
-  db.prepare("UPDATE messages SET body = NULL, wiped_at = ?2 WHERE conversation_id = ?1 AND body IS NOT NULL").bind(convId, nowIso),
+  db.prepare("UPDATE messages SET body = NULL, media_id = NULL, media_mime = NULL, wiped_at = ?2 WHERE conversation_id = ?1 AND (body IS NOT NULL OR media_id IS NOT NULL)").bind(convId, nowIso),
   db.prepare("UPDATE conversations SET display_name = NULL, first_question_msg = NULL WHERE id = ?1").bind(convId),
 ];

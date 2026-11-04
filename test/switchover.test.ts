@@ -161,6 +161,10 @@ describe("email links follow the switch", () => {
     expect(consoleLink({ CONSOLE_V2: "true", PUBLIC_URL: ORIGIN }, "/admin/conv/7")).toBe(`${ORIGIN}/app/people/7`);
     expect(consoleLink({ CONSOLE_V2: "false", PUBLIC_URL: ORIGIN }, "/admin/conv/7")).toBe(`${ORIGIN}/admin/conv/7`);
     expect(consoleLink({ PUBLIC_URL: ORIGIN }, "/admin/conv/7", "/app/inbox/7")).toBe(`${ORIGIN}/admin/conv/7`);
+    // Ticket 38: the owner's chat export keeps its day count (a bookmark of the old address still downloads).
+    expect(appPathFor("/admin/export", new URLSearchParams("days=14"))).toBe("/app/people/export?days=14");
+    expect(appPathFor("/admin/export", new URLSearchParams("days=<x>"))).toBe("/app/people/export");
+    expect(appPathFor("/admin/export")).toBe("/app/people/export");
   });
 
   it("the crisis email", async () => {

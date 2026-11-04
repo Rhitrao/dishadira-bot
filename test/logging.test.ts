@@ -145,6 +145,7 @@ describe("logging", () => {
         'src/index.ts: console.error("unhandled error", c.req.method, c.req.routePath);',
         'src/mail.ts: console.log("email failed", (e as { code?: string }).code ?? "error");',
         'src/mail.ts: console.log("email skipped: not configured");',
+        'src/media.ts: console.log("media: not shown", why);', // ticket 38: gone | slow | failed, never the media id
         'src/whatsapp.ts: console.log("wa webhook ignored: no entry");',
         'src/whatsapp.ts: console.log("wa webhook ignored: not json");',
         'src/whatsapp.ts: console.log("wa webhook skipped", reason);',

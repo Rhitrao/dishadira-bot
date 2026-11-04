@@ -24,6 +24,7 @@ import { applyMoneyReceived } from "./requests";
 import { takeOverStmt } from "./handoff";
 import { buildExport, EXPORT_LIMITS, exportDays, exportFileName } from "./export";
 import { sessionLinkButton } from "./sessionlink";
+import { maySeeMedia, viewButton, viewMedia } from "./media";
 import { iso } from "./slots";
 import {
   appointmentRow, bookingChip, bubble, callLangText, clock, consoleFrame, dayName, emptyState, firstName, forWhomText, last4, ledger, listDetail,
@@ -334,11 +335,11 @@ const whatPaid = (p: PeopleCopy, r: { purpose: string; size: number | null }) =>
 // been paid for the same booking, and no request for it is already waiting.
 const canRecord = (r: PayRow) => (r.state === "PENDING" || r.state === "FAILED") && r.linkId !== null && r.paidSiblings === 0 && !r.asked;
 
-type Line = { dir: string; kind: string; body: string | null; wipedAt: string | null; at: string; key: string | null; status: string; safety: number };
+type Line = { id: number; dir: string; kind: string; body: string | null; wipedAt: string | null; media: number; at: string; key: string | null; status: string; safety: number };
 async function chatOf(env: Env, convId: number, limit: number): Promise<{ lines: Line[]; more: boolean }> {
   // safety = 1: a crisis or emergency message from the bot, or the customer's message that set it off.
   const { results } = await env.DB.prepare(
-    `SELECT m.direction AS dir, m.kind, m.body, m.wiped_at AS wipedAt, m.created_at AS at, m.dedupe_key AS key, m.status,
+    `SELECT m.id, m.direction AS dir, m.kind, m.body, m.wiped_at AS wipedAt, (m.media_id IS NOT NULL) AS media, m.created_at AS at, m.dedupe_key AS key, m.status,
        CASE WHEN m.direction = 'OUT' AND (m.dedupe_key LIKE '%:crisis' OR m.dedupe_key LIKE '%:emergency') THEN 1
             WHEN m.direction = 'IN' AND m.wa_message_id IS NOT NULL AND EXISTS (SELECT 1 FROM messages o WHERE o.dedupe_key IN (m.wa_message_id || ':crisis', m.wa_message_id || ':emergency')) THEN 1
             ELSE 0 END AS safety
@@ -446,6 +447,8 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
         ? html`<p class="muted">${p.chatDeletedOn(keepMin >= 1440 ? dayName(deleteAt, loc) : when(p, deleteAt, loc))}. ${p.chatKept(keep)}</p>`
         : html`<p class="muted">${p.chatKept(keep)}</p>`;
     const kept = keptFor(c.env, loc);
+    // Ticket 38: a View button on a photo or file the customer sent, for whoever may see it (src/media.ts maySeeMedia).
+    const media = lines.some((l) => l.media) && (await maySeeMedia(c.env.DB, m, target, id)) ? await token(c, `people-media:${id}`) : null;
     const bubbles = collapseWiped(lines).map((it) => {
       if ("wiped" in it) return wipedLine(it.wiped, it.earlier, kept, loc);
       const l = it.line;
@@ -455,7 +458,8 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
       const text = hidden ? cc.safetyHidden : allHidden ? cc.chatTextHidden : d.text;
       const status = l.dir === "OUT" && l.status === "FAILED" ? p.notDeliveredChip : l.dir === "OUT" && l.status === "SKIPPED" ? p.notSentChip : undefined;
       const kind = [allHidden || hidden ? undefined : d.note, status].filter(Boolean).join(" · ") || undefined;
-      return bubble({ from, text, time: when(p, l.at, loc), kind, hideSafety: hidden, locale: loc, quiet: d.tap && !hidden && !allHidden, teamName: l.key?.startsWith("admin-reply:") ? cc.roleOWNER : undefined });
+      const view = media && l.dir === "IN" && l.media && !hidden && !allHidden ? viewButton(`${base}/media/${l.id}`, media, loc) : undefined;
+      return bubble({ from, text, time: when(p, l.at, loc), kind, hideSafety: hidden, locale: loc, quiet: d.tap && !hidden && !allHidden, teamName: l.key?.startsWith("admin-reply:") ? cc.roleOWNER : undefined, extra: view });
     });
     chatHtml = html`${note}${more ? earlierLink(`${base}?chat=all#chat`, loc) : ""}${lines.length ? thread(bubbles) : emptyState(p.noMessages)}`;
   }
@@ -588,6 +592,20 @@ people.post(
     },
   ),
 );
+
+// View a photo or file the customer sent (ticket 38, src/media.ts): the same rights as the button (maySeeMedia), the chat's own form token,
+// the console's Origin check; audited VIEW_MEDIA (the chat and the kind, never content) before Meta is asked, then the file is streamed
+// to the browser with no-store and never kept. Used by the Inbox's thread too (the same person, the same rights).
+people.post("/:id/media/:msg", async (c) => {
+  const id = Number(c.req.param("id"));
+  const m = c.get("member");
+  const found = await personFor(c, id);
+  if (!found) return refusedPage(c, 404);
+  if (can(m, "view_people", found.target) !== "yes" || !(await maySeeMedia(c.env.DB, m, found.target, id))) return refusedPage(c);
+  const f = (await c.req.parseBody()) as Form;
+  if (f.csrf !== (await token(c, `people-media:${id}`))) return c.text("Forbidden", 403);
+  return viewMedia(c.env, id, Number(c.req.param("msg")), m.locale, (kind) => auditNow(c, "VIEW_MEDIA", `conv:${id}`, kind, null).run());
+});
 
 // Allow bookings again: ends the "no selling" period after a crisis message (owner).
 people.post(

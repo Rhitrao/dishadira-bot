@@ -1,4 +1,4 @@
-// Ticket 40: after the call, the owner's requests of 4 Nov 2026 (CONTRACT v11). Two one-to-one messages, each to one customer about their own
+// Ticket 40: after the call, the owner's requests of 4 Nov 2026 (CONTRACT v12). Two one-to-one messages, each to one customer about their own
 // call or session, never a broadcast; both on the 2-minute cron (src/index.ts), each claimed atomically in the after_call table
 // (migrations/0017_after_call.sql: PENDING -> SENDING -> SENT | FAILED | UNKNOWN, or SKIPPED) so it goes at most once.
 //  1. The session reminder: Amma marked the ₹99 call "Session", the offer went out, and 48 hours later nothing is paid or booked: one gentle
