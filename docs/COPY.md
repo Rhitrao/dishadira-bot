@@ -247,6 +247,16 @@ With the assistant off, a typed question that names a common topic gets a fixed 
 | Automatic follow-up, 20 hours after their last message (with the Book button; at most 2 a week) | Whenever you're ready, you can book a ₹99 15-minute call with Shantha Rao. Calls are Monday to Saturday, 2 pm to 7 pm. | जब भी आप तैयार हों, शांता राव जी के साथ ₹99 की 15 मिनट की कॉल बुक कर सकते हैं। कॉल सोमवार से शनिवार, दोपहर 2 बजे से शाम 7 बजे तक होती हैं। |
 | The only follow-up after an illness is named, at 20 hours (no button, no price) | Hope you're doing okay. If you'd like to talk to Shantha Rao, just reply to this message. We're here. | उम्मीद है आप ठीक हैं। अगर आप शांता राव जी से बात करना चाहें, तो बस इस मैसेज का जवाब दें। हम आपके लिए यहाँ हैं। |
 
+## 8c. After the call (ticket 40)
+
+Each goes once, to one person, never at night (9 pm to 8 am), and never to anyone who said stop, is blocked, is with the team, or sent a safety message. Outside the 24-hour window only the approved template goes (docs/TEMPLATES.md 9 to 11); until Meta approves it, nothing is sent.
+
+| Where it appears | English | हिंदी |
+|---|---|---|
+| 48 hours after the session offer, if nothing is paid or booked: one reminder, above the same list (single session, 10 or 20). Owner switch: After-call reminder | A gentle reminder: after your call, Shantha Rao offered you a full session. If you'd like to go ahead, choose an option below: a single session, or a package of 10 or 20. If now isn't the right time, that's completely fine. | एक छोटी-सी याद: कॉल के बाद शांता राव जी ने आपको पूरा सेशन देने की बात कही थी। अगर आप आगे बढ़ना चाहें, तो नीचे एक विकल्प चुनें: एक सेशन, या 10 या 20 सेशन का पैकेज। अगर अभी सही समय नहीं है, तो कोई बात नहीं। |
+| The morning after a paid session (from 10 am): thank-you, review and referral ask, at most once in 90 days. The review sentence is left out while no Google review link is set; the WhatsApp link opens a chat with us with "Hi, I was referred by a friend" filled in. Owner switch: Review & referral ask (off by default) | Thank you for your session with Shantha Rao. ⏎  ⏎ If the session helped, would you share a short Google review? {Google review link} ⏎  ⏎ If someone you know might benefit, you can share this WhatsApp link: {WhatsApp link} ⏎  ⏎ With warm wishes, Disha Dira | शांता राव जी के साथ सेशन के लिए धन्यवाद। ⏎  ⏎ अगर सेशन से मदद मिली हो, तो क्या आप Google पर एक छोटा-सा रिव्यू लिखेंगे? {Google review link} ⏎  ⏎ अगर आपके किसी जानने वाले को इससे फ़ायदा हो सकता है, तो आप उन्हें यह WhatsApp लिंक भेज सकते हैं: {WhatsApp link} ⏎  ⏎ शुभकामनाओं के साथ, दिशा दिरा |
+| The team's "Send session link", Let them choose (with the button "Choose a time", then the session's day and time steps) | Shantha Rao would like to book a full session with you (₹799, 60 minutes, by phone). Tap below to choose a time; it is yours once it is paid. | शांता राव जी आपके साथ एक पूरा सेशन बुक करना चाहती हैं (₹799, 60 मिनट, फ़ोन पर)। समय चुनने के लिए नीचे टैप करें; भुगतान होते ही वह समय आपका हो जाएगा। |
+
 ## 9. Amma's page
 
 English only. No chat text and no health details are ever shown here.

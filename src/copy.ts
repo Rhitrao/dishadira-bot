@@ -299,6 +299,11 @@ export type Copy = {
   autoFollowUp1: string;
   autoFollowUp2: string;
   autoFollowUpGentle: string;
+  // Ticket 40 (src/aftercall.ts): one gentle reminder 48 hours after a session offer nobody took (with the same three options), and one
+  // thank-you with the review and referral ask the morning after a paid session. `reviewUrl` empty: the review sentence is left out.
+  sessionReminderBody: string;
+  reviewAsk: (reviewUrl: string, waLink: string) => string;
+  sessionLinkBody: string; // the team's "Send session link", Let them choose: [Choose a time] starts the single session's day and time steps
   answerCall: string; // I1: the fixed answers (src/router.ts)
   answerTrust: string;
   answerAbroad: string;
@@ -582,6 +587,14 @@ const en: Copy = {
   autoFollowUp1: `Just checking in: did you find what you were looking for? If you'd like to talk to Shantha Rao, the ${intro} ${config.slots.callMinutes}-minute call is the easiest way. You choose the time, and she calls you.`,
   autoFollowUp2: `Whenever you're ready, you can book a ${intro} ${config.slots.callMinutes}-minute call with Shantha Rao. ${hoursText("en", false)}`,
   autoFollowUpGentle: "Hope you're doing okay. If you'd like to talk to Shantha Rao, just reply to this message. We're here.",
+  sessionReminderBody:
+    `A gentle reminder: after your call, Shantha Rao offered you a full session. If you'd like to go ahead, choose an option below: a single session, or a package of ${p10.sessions} or ${p20.sessions}. ` +
+    "If now isn't the right time, that's completely fine.",
+  reviewAsk: (reviewUrl, waLink) =>
+    "Thank you for your session with Shantha Rao.\n\n" +
+    (reviewUrl ? `If the session helped, would you share a short Google review? ${reviewUrl}\n\n` : "") +
+    `If someone you know might benefit, you can share this WhatsApp link: ${waLink}\n\nWith warm wishes, Disha Dira`,
+  sessionLinkBody: `Shantha Rao would like to book a full session with you (${sessionPrice}, ${config.slots.sessionMinutes} minutes, by phone). Tap below to choose a time; it is yours once it is paid.`,
   answerCall:
     `The first call is ${config.slots.callMinutes} minutes, by phone, at the time you pick. Shantha Rao calls you herself, listens to what is going on, ` +
     "and explains how she works and whether a full session would suit you. The call is in the language you chat in, English or Hindi.",
@@ -820,6 +833,14 @@ const hi: Copy = {
   autoFollowUp1: `हम बस यह जानना चाहते थे: क्या आपको वह मिल गया जो आप ढूँढ रहे थे? अगर आप शांता राव जी से बात करना चाहें, तो ${intro} की ${config.slots.callMinutes} मिनट की कॉल सबसे आसान तरीका है। समय आप चुनते हैं, और वे आपको कॉल करती हैं।`,
   autoFollowUp2: `जब भी आप तैयार हों, शांता राव जी के साथ ${intro} की ${config.slots.callMinutes} मिनट की कॉल बुक कर सकते हैं। ${hoursText("hi", false)}`,
   autoFollowUpGentle: "उम्मीद है आप ठीक हैं। अगर आप शांता राव जी से बात करना चाहें, तो बस इस मैसेज का जवाब दें। हम आपके लिए यहाँ हैं।",
+  sessionReminderBody:
+    `एक छोटी-सी याद: कॉल के बाद शांता राव जी ने आपको पूरा सेशन देने की बात कही थी। अगर आप आगे बढ़ना चाहें, तो नीचे एक विकल्प चुनें: एक सेशन, या ${p10.sessions} या ${p20.sessions} सेशन का पैकेज। ` +
+    "अगर अभी सही समय नहीं है, तो कोई बात नहीं।",
+  reviewAsk: (reviewUrl, waLink) =>
+    "शांता राव जी के साथ सेशन के लिए धन्यवाद।\n\n" +
+    (reviewUrl ? `अगर सेशन से मदद मिली हो, तो क्या आप Google पर एक छोटा-सा रिव्यू लिखेंगे? ${reviewUrl}\n\n` : "") +
+    `अगर आपके किसी जानने वाले को इससे फ़ायदा हो सकता है, तो आप उन्हें यह WhatsApp लिंक भेज सकते हैं: ${waLink}\n\nशुभकामनाओं के साथ, दिशा दिरा`,
+  sessionLinkBody: `शांता राव जी आपके साथ एक पूरा सेशन बुक करना चाहती हैं (${sessionPrice}, ${config.slots.sessionMinutes} मिनट, फ़ोन पर)। समय चुनने के लिए नीचे टैप करें; भुगतान होते ही वह समय आपका हो जाएगा।`,
   answerCall:
     `पहली कॉल ${config.slots.callMinutes} मिनट की होती है, फ़ोन पर, आपके चुने हुए समय पर। शांता राव जी खुद आपको कॉल करती हैं, आपकी बात सुनती हैं, ` +
     "और बताती हैं कि वे कैसे काम करती हैं और क्या पूरा सेशन आपके लिए ठीक रहेगा। कॉल उसी भाषा में होती है जिसमें आप चैट करते हैं, अंग्रेज़ी या हिंदी।",
