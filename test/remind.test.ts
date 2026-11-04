@@ -171,8 +171,8 @@ describe("Hindi reminders (ticket 11)", () => {
     await call(await hindi(true), "2026-10-06", 0);
     await session(await hindi(true), "2026-10-06", 2); // 4:00 pm
     expect(await sendReminders(env())).toBe(2);
-    expect(sent()[0].text.body).toBe("याद दिला दें: शांता राव जी के साथ आपकी कॉल कल, मंगल, 6 अक्टूबर को दोपहर 2:00 बजे (भारतीय समय) है। कृपया फ़ोन अपने पास रखें।");
-    expect(sent()[1].text.body).toBe("याद दिला दें: शांता राव जी के साथ आपका सेशन कल, मंगल, 6 अक्टूबर को शाम 4:00 बजे (भारतीय समय) है। कृपया फ़ोन अपने पास रखें।");
+    expect(sent()[0].text.body).toBe("याद दिला दें: शांता राव जी के साथ आपकी कॉल कल, मंगल, 6 अक्टूबर को दोपहर 2:00 बजे (भारतीय समय) है। यह फ़ोन पर वॉइस कॉल (सिर्फ़ आवाज़, वीडियो नहीं) है। कृपया फ़ोन अपने पास रखें।"); // ticket 41
+    expect(sent()[1].text.body).toBe("याद दिला दें: शांता राव जी के साथ आपका सेशन कल, मंगल, 6 अक्टूबर को शाम 4:00 बजे (भारतीय समय) है। यह फ़ोन पर वॉइस कॉल (सिर्फ़ आवाज़, वीडियो नहीं) है। कृपया फ़ोन अपने पास रखें।");
   });
 
   it("outside the window: the Hindi template when its own flag is approved, with Hindi values", async () => {

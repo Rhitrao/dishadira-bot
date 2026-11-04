@@ -229,7 +229,7 @@ describe("bot flow", () => {
     await tap(c, "day_PROTECTION_FAMILY_2026-10-05");
     const rows = waSent()[3].interactive.action.sections.flatMap((x: { rows: unknown[] }) => x.rows);
     expect(rows).toHaveLength(10); // 9 times + "Another day"
-    expect(rows[0]).toEqual({ id: `time_PROTECTION_FAMILY_${call(0).startUtc}`, title: "2:00 pm", description: "15-min call" });
+    expect(rows[0]).toEqual({ id: `time_PROTECTION_FAMILY_${call(0).startUtc}`, title: "2:00 pm", description: "15-min voice call" }); // ticket 41
     expect(rows.at(-1)).toEqual({ id: "more_PROTECTION_FAMILY", title: "Another day" });
     await tap(c, rows[1].id); // 2:30 pm, the second half hour
     expect(await db.prepare("SELECT service, for_whom, call_lang FROM intros").first()).toEqual({ service: "PROTECTION", for_whom: "FAMILY", call_lang: "en" });
@@ -331,7 +331,7 @@ describe("webhook", () => {
     expect(await count("SELECT COUNT(*) AS n FROM events WHERE provider = 'razorpay'")).toBe(1);
     const texts = waSent().map((m) => m.text?.body).filter(Boolean);
     expect(texts.filter((t) => t.startsWith("Received your ₹99"))).toEqual([
-      "Received your ₹99. Shantha Rao will call you on Mon, 5 Oct at 2:00 pm (India time), on the number you are messaging from. Call in English. " +
+      "Received your ₹99. Shantha Rao will call you on Mon, 5 Oct at 2:00 pm (India time), on the number you are messaging from. It is a voice call by phone (audio only, no video), in English. " +
         "The call may come from a number you don't know, so please keep your phone nearby. This WhatsApp number is for messages only, not calls.",
     ]);
     expect(await count("SELECT COUNT(*) AS n FROM refunds")).toBe(0);

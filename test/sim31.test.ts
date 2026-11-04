@@ -377,8 +377,9 @@ describe("I4: a payment message skipped while SENDS was paused goes out when sen
     await setSetting(w.db, "SENDS", "true");
     expect(await resendSkippedPaid(w.env())).toBe(1);
     expect(w.texts()[0]).toContain("Received your ₹99");
+    expect(w.texts()[1]).toBe(allCopy.en.intentName("Test Person")); // ticket 41: then the first question, once
     expect(await resendSkippedPaid(w.env())).toBe(0);
-    expect(w.sent()).toHaveLength(1);
+    expect(w.sent()).toHaveLength(2);
   });
 
   it("the 'not right fit' refund notice", async () => {

@@ -14,7 +14,7 @@ import { requestHuman } from "./handoff";
 import { mediaOf } from "./media";
 import { menuOut } from "./menu";
 import { applyLabel, ensureState, noSellActive } from "./noise";
-import { ACTION_TOPICS, isOutOfScope, isSexualHealth, matchTopic, sentRecently, topicOut, topicText, type Topic } from "./router";
+import { ACTION_TOPICS, isOutOfScope, isSexualHealth, isVideoQuestion, matchTopic, sentRecently, topicOut, topicText, type Topic } from "./router";
 import { intentChoice, intentText, isIntentStep, raiseOutOfScope } from "./intent";
 import { rescheduleChoice } from "./outcomes";
 import { botAudit, runCrisis, runEmergency } from "./safety";
@@ -518,6 +518,14 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       return;
     }
     if (isOutOfScope(said)) await raiseOutOfScope(env, conv!.id);
+    // Ticket 41: "video call?": every call and session is a voice call by phone. The fixed line, never the assistant; above an open step.
+    if (isVideoQuestion(said) && classifyWithoutAI(said) === "TO_CLASSIFIER") {
+      const open = await openStep(db, conv!.id);
+      const withAnswer = open ? stepWithLine(open, cp.answerVideo) : null;
+      if (withAnswer) await reply(withAnswer, "reprompt");
+      else await routeTopic("video");
+      return;
+    }
     // The assistant (when AI_REPLIES is on) labels and answers the question. Otherwise, or when it cannot answer in the middle of a booking, the path below.
     let viaAI = false;
     if (decision === "TO_CLASSIFIER" && text !== null) {

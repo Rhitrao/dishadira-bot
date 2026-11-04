@@ -78,4 +78,6 @@ export async function sentRecently(db: D1Database, convId: number, suffix: strin
 // Ticket 41: outside what we offer, for the team's "consider a refund" item after a payment: a sexual-function concern, or a request to cure or
 // treat a serious illness by name (config.serious). Before a payment only the reply changes.
 export const isSexualHealth = (text: string) => hasPhrase(text, config.router.topics.sexual_health);
+// "Is it a video call?": answered in code with the fixed line, also while the assistant is on (src/whatsapp.ts).
+export const isVideoQuestion = (text: string) => hasPhrase(text, config.router.topics.video);
 export const isOutOfScope = (text: string) => isSexualHealth(text) || (hasPhrase(text, config.serious.illness) && hasPhrase(text, config.serious.cureWords));
