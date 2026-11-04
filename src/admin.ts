@@ -620,13 +620,19 @@ ${pk.state === "PAID" && pk.unused > 0 ? html`<div class="actions"><a class="btn
   const ad = conv.adHeadline ? `Came from the ad "${conv.adHeadline}"` : conv.sourceAd ? "Came from an ad" : "Did not come from an ad";
   const windowEnd = conv.lastUserAt ? Date.parse(conv.lastUserAt) + config.windowHours * 3_600_000 : 0;
   const winLeft = left(windowEnd, now);
-  // Talking to them: a reply while the 24-hour window is open; after that, the number to call (shown only on request, and the request is recorded).
+  // Talking to them: a reply while the 24-hour window is open; the number to call is always there (shown only on request, and the request
+  // is recorded), so a paid call can be made while the window is still open too.
+  const callNumber = reveal
+    ? html`<p class="callnum"><a class="btn primary" href="tel:+${conv.waId}">Call +${conv.waId}</a></p><p class="small muted">Showing the number was recorded.</p>`
+    : await form(c, "reveal", `reveal:${id}`, { conv: id }, `Show number to call ${mask(conv.waId)}`, "primary");
   const talk = winLeft
     ? html`<div class="card"><div class="head"><h3>Reply on WhatsApp</h3>${chip(`Window: ${winLeft} left`, windowEnd - now < 2 * 3_600_000 ? "red" : "amber")}</div>
-${await form(c, "say", `say:${id}`, { conv: id }, "Send reply", "primary", html`<textarea name="text" rows="3" maxlength="1000" required placeholder="Write your reply…" aria-label="Reply"></textarea>`)}</div>`
+${await form(c, "say", `say:${id}`, { conv: id }, "Send reply", "primary", html`<textarea name="text" rows="3" maxlength="1000" required placeholder="Write your reply…" aria-label="Reply"></textarea>`)}</div>
+<div class="card"><div class="head"><h3>Call them</h3></div>
+${callNumber}</div>`
     : html`<div class="card"><div class="head"><h3>Call them</h3>${chip("WhatsApp window closed")}</div>
 <p class="small muted">A free-text WhatsApp message can't go after 24 hours. Calls are by phone anyway.</p>
-${reveal ? html`<p class="callnum"><a class="btn primary" href="tel:+${conv.waId}">Call +${conv.waId}</a></p><p class="small muted">Showing the number was recorded.</p>` : await form(c, "reveal", `reveal:${id}`, { conv: id }, `Show number to call ${mask(conv.waId)}`, "primary")}</div>`;
+${callNumber}</div>`;
   const svc = (s: string) => (s === "PROTECTION" ? "Energy cleansing" : "Healing");
   const body = html`${header(firstName(conv.name), `${mask(conv.waId)} · ${conv.locale === "hi" ? "Hindi" : "English"} · first message ${ist(conv.createdAt, now)}`, html`<a class="btn" href="/admin/people">All people</a>`)}
 <div class="chips">${chip(modeWord, modeTone)}${quiet ? chip("Quiet period", "amber") : ""}${noSell ? chip("No selling", "amber") : ""}${st.optedOutAt ? chip("Opted out") : ""}</div>
