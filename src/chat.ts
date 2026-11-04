@@ -1,5 +1,5 @@
 // How a chat reads in the console (the Inbox thread and the person page): never an empty bubble. A tap shows as its label ("Tapped: Book
-// ₹99 call"), a photo or file as one line (inbound media is never downloaded), a template or a message with buttons as its text plus a
+// ₹99 call"), a photo or file as one line (never stored; while its Meta id is kept it has a View button, src/media.ts), a template or a message with buttons as its text plus a
 // short description. Messages whose text the privacy wipe removed (src/wipe.ts) collapse into one quiet line per run:
 // "12 earlier messages were deleted after 7 days, for privacy".
 import { html } from "hono/html";
@@ -10,7 +10,10 @@ import { retentionMinutes } from "./wipe";
 export const THREAD_LATEST = 20; // the thread shows this many of the latest messages, with "Show earlier messages" for the rest
 export const THREAD_ALL = 200;
 
-export type ChatRow = { dir: string; kind: string; body: string | null; wipedAt: string | null };
+// `media`: 1 when the row still has the Meta id of a photo or file the customer sent (ticket 38), so it can be viewed; never the id itself.
+export type ChatRow = { dir: string; kind: string; body: string | null; wipedAt: string | null; media?: number | null };
+// The SQL column for ChatRow.media.
+export const MEDIA_SQL = "(media_id IS NOT NULL) AS media";
 // The SQL condition for the rows a thread shows: everything except an outgoing message that never had text (a reply skipped because a
 // newer message came in). Wiped rows stay, so they can be counted.
 export const SHOWN_SQL = "NOT (direction = 'OUT' AND body IS NULL AND wiped_at IS NULL)";
@@ -21,6 +24,8 @@ const MEDIA: Record<string, keyof ConsoleCopy> = {
   image: "sentPhoto", video: "sentVideo", audio: "sentAudio", voice: "sentAudio", document: "sentFile", sticker: "sentSticker", location: "sentLocation", contacts: "sentContact",
 };
 const NOTE: Record<string, keyof ConsoleCopy> = { buttons: "withButtons", list: "withList", cta: "withLink" };
+// A photo or file that can be viewed on demand (src/media.ts): a plain word, the View button goes beside it.
+const VIEWABLE: Record<string, keyof ConsoleCopy> = { image: "mediaPhoto", document: "mediaDocument", video: "mediaVideo", audio: "mediaAudio", sticker: "mediaSticker" };
 
 // What a message that still has its text says, in the member's words. `tap`: the customer tapped a button (drawn quieter).
 export function describe(l: ChatRow, locale: string | null | undefined): { text: string; note?: string; tap?: boolean } {
@@ -28,6 +33,7 @@ export function describe(l: ChatRow, locale: string | null | undefined): { text:
   if (l.dir === "IN") {
     if (l.kind === "interactive" || l.kind === "button") return { text: l.body ? cc.tapped(l.body) : cc.tappedButton, tap: true };
     if (l.kind === "text" && l.body) return { text: l.body };
+    if (l.media && VIEWABLE[l.kind]) return { text: cc[VIEWABLE[l.kind]] as string, tap: true };
     if (MEDIA[l.kind]) return { text: cc[MEDIA[l.kind]] as string, tap: true };
     return { text: l.body || cc.sentOther, tap: !l.body };
   }
