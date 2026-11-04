@@ -65,6 +65,17 @@ const en = {
   flashBad: "This phone's alert details weren't accepted. Tap Turn on again.",
   flashTooMany: `You can have up to ${config.push.maxDevices} devices. Remove one first.`,
   flashPushOff: "Alerts aren't set up for this copy of the bot yet.",
+  // the owner's "Make alert keys" (only while the two secrets are missing)
+  makeKeys: "Make alert keys",
+  makeKeysWhy: "Makes the key pair the bot needs to send alerts. It is shown to you once and not kept anywhere: you paste it into Cloudflare.",
+  keysTitle: "Your alert keys",
+  keysOnce: "Shown this once and not kept anywhere. Copy both now. Don't paste them into a chat, an email or a screenshot.",
+  keysStep1: "Open dash.cloudflare.com → Workers & Pages → dishadira-bot-live → Settings → Variables and Secrets.",
+  keysStep2: "Add → Type: Secret → Name VAPID_PUBLIC_KEY → paste the first value → Save.",
+  keysStep3: "Add → Type: Secret → Name VAPID_PRIVATE_KEY → paste the second value → Save.",
+  keysStep4: "On GitHub: Actions → Deploy → Run workflow → live. Then come back here and tap Turn on.",
+  keysTest: "For the test bot, do the same on dishadira-bot-test (making a new pair here is fine).",
+  keysAgain: "If you lose this page before saving both, just make a new pair.",
 };
 type Words = { [K in keyof typeof en]: (typeof en)[K] extends (...a: infer A) => string ? (...a: A) => string : string };
 const hi: Words = {
@@ -104,9 +115,20 @@ const hi: Words = {
   flashBad: "इस फ़ोन की अलर्ट वाली जानकारी नहीं ली जा सकी। फिर से चालू करें दबाएँ।",
   flashTooMany: `ज़्यादा से ज़्यादा ${config.push.maxDevices} डिवाइस हो सकते हैं। पहले एक हटाएँ।`,
   flashPushOff: "बॉट की इस कॉपी में अलर्ट अभी चालू नहीं हुए हैं।",
+  makeKeys: "अलर्ट की चाबियाँ बनाएँ",
+  makeKeysWhy: "बॉट को अलर्ट भेजने के लिए चाबियों की जोड़ी बनाता है। यह आपको एक बार दिखेगी और कहीं रखी नहीं जाएगी: आप इसे Cloudflare में डालें।",
+  keysTitle: "आपकी अलर्ट की चाबियाँ",
+  keysOnce: "यह सिर्फ़ एक बार दिख रही हैं और कहीं रखी नहीं जातीं। दोनों अभी कॉपी करें। इन्हें चैट, ईमेल या स्क्रीनशॉट में न डालें।",
+  keysStep1: "dash.cloudflare.com खोलें → Workers & Pages → dishadira-bot-live → Settings → Variables and Secrets।",
+  keysStep2: "Add → Type: Secret → Name VAPID_PUBLIC_KEY → पहली वैल्यू पेस्ट करें → Save।",
+  keysStep3: "Add → Type: Secret → Name VAPID_PRIVATE_KEY → दूसरी वैल्यू पेस्ट करें → Save।",
+  keysStep4: "GitHub पर: Actions → Deploy → Run workflow → live। फिर यहाँ वापस आकर चालू करें दबाएँ।",
+  keysTest: "टेस्ट बॉट के लिए यही dishadira-bot-test पर करें (यहाँ नई जोड़ी बनाना ठीक है)।",
+  keysAgain: "अगर दोनों सेव करने से पहले यह पेज बंद हो जाए, तो बस नई जोड़ी बना लें।",
 };
 export const ALERTS_COPY: Record<"en" | "hi", Words> = { en, hi };
 const W = (locale: string | null | undefined): Words => ALERTS_COPY[consoleLang(locale)];
+export const alertsCopy = W;
 
 // ---------- quiet hours ----------
 const minutesOf = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
@@ -391,7 +413,13 @@ export async function alertsSection(c: ConsoleCtx): Promise<{ html: unknown; scr
   const w = W(m.locale);
   const keys = await vapidKeys(c.env);
   const why = m.role === "OWNER" ? w.whyOwner : w.whyPrac(clockOf(P.quietFrom, m.locale), clockOf(P.quietUntil, m.locale));
-  if (!keys) return { html: html`<div class="card" id="alerts"><p class="why">${why}</p><p><b>${w.off}</b></p></div>`, scripted: false };
+  if (!keys) {
+    // The owner may make the key pair here (src/settings.ts, POST /app/settings/alerts/keys); only while the secrets are missing.
+    const make = can(m, "business_settings") === "yes"
+      ? html`<p class="why">${w.makeKeysWhy}</p><div class="acts"><form method="post" action="/app/settings/alerts/keys">${hidden("csrf", await token(c))}<button class="btn primary" type="submit">${w.makeKeys}</button></form></div>`
+      : "";
+    return { html: html`<div class="card" id="alerts"><p class="why">${why}</p><p><b>${w.off}</b></p>${make}</div>`, scripted: false };
+  }
   const { results: subs } = await c.env.DB.prepare("SELECT id, endpoint, ua, created_at AS createdAt FROM push_subs WHERE member_id = ?1 ORDER BY id").bind(m.id).all<{ id: number; endpoint: string; ua: string; createdAt: string }>();
   const csrf = await token(c);
   const tags = (await Promise.all(subs.map((s) => endpointTag(s.endpoint)))).join(",");
@@ -432,7 +460,8 @@ alertRoutes.use("*", async (c, next) => {
   if (can(c.get("member"), "phone_alerts") !== "yes") return c.text("Forbidden", 403);
   const f = await form(c);
   if ((f.csrf ?? "") !== (await token(c))) return c.text("Forbidden", 403);
-  if (!(await pushOn(c.env))) return back(c, "alertsPushOff");
+  // "Make alert keys" (src/settings.ts) is the one form for while push is off.
+  if (!c.req.path.endsWith("/keys") && !(await pushOn(c.env))) return back(c, "alertsPushOff");
   await next();
 });
 

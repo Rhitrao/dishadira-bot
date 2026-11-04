@@ -8,7 +8,8 @@ import { html, raw } from "hono/html";
 import { can, listMembers, memberCsrf, WORKSPACE_ID, type Member } from "./auth";
 import { gistSettingsCard } from "./gist";
 import { AFTER_SWITCHES, afterKey, afterSwitches, isAfterSwitch, setAfterSwitchStmt } from "./aftercall";
-import { ALERTS_CSP, alertRoutes, alertsFlash, alertsSection, alertsTitle } from "./alerts";
+import { ALERTS_CSP, alertRoutes, alertsCopy, alertsFlash, alertsSection, alertsTitle } from "./alerts";
+import { makeVapidPair, pushOn } from "./push";
 import { ACCENTS, accentOf, chosenIds, DEFAULT_PRICES, isAccent, KEYS, loadPrices, PRICE_NAMES, pricePaise, readPrices, staffReadsChat, validPrice, type AccentName, type PriceName, type Prices } from "./business";
 import { config } from "./config";
 import { appPage, auditStmt, languageCsrf, refused, type ConsoleCtx, type ConsoleVars } from "./console";
@@ -314,6 +315,7 @@ const ACTION_WORDS: Record<string, { en: string; hi: string }> = {
   STAFF_CHAT_TEXT: { en: "Changed whether staff read chats", hi: "स्टाफ़ के चैट पढ़ने की सेटिंग बदली" },
   PUSH_SUBSCRIBED: { en: "Turned on phone alerts on a device", hi: "एक डिवाइस पर फ़ोन अलर्ट चालू किए" },
   PUSH_UNSUBSCRIBED: { en: "Turned off phone alerts on a device", hi: "एक डिवाइस पर फ़ोन अलर्ट बंद किए" },
+  MAKE_PUSH_KEYS: { en: "Made a new alert key pair (shown once, not kept)", hi: "अलर्ट की नई चाबियाँ बनाईं (एक बार दिखीं, रखी नहीं गईं)" },
   DATA_EXPORTED: { en: "Downloaded payments", hi: "पेमेंट डाउनलोड किए" },
   REFUND_RETRIED: { en: "Retried a refund", hi: "रिफ़ंड फिर से भेजा" },
   member_invited: { en: "Invited a member", hi: "सदस्य को बुलाया" },
@@ -431,6 +433,31 @@ settings.use("*", async (c, next) => {
   await next();
 });
 settings.route("/alerts", alertRoutes);
+
+// ---- "Make alert keys" (ticket 45): the owner alone, only while VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY are missing. A fresh P-256 pair made
+// here and shown once, for the owner to paste into Cloudflare as the two secrets. Never stored (D1, KV), never logged, never in the audit
+// text: the audit row says only that a pair was made. alertRoutes (above) has already checked phone_alerts and the form's token.
+settings.post("/alerts/keys", async (c) => {
+  const m = c.get("member");
+  if (can(m, "business_settings") !== "yes") return refused(c);
+  const w = alertsCopy(m.locale);
+  if (await pushOn(c.env)) return c.redirect("/app/settings#alerts", 303); // already set: nothing to make
+  const pair = await makeVapidPair();
+  await c.env.DB.prepare("INSERT INTO audit_log (actor, action, target, detail, workspace_id, member_id) VALUES (?1, 'MAKE_PUSH_KEYS', ?2, '', ?3, ?4)")
+    .bind(c.get("email"), `member:${m.id}`, m.workspaceId, m.id)
+    .run();
+  const field = (name: string, value: string) =>
+    html`<label class="fld"><span>${name}</span><textarea readonly rows="3" spellcheck="false" autocomplete="off" style="width:100%;font:16px/1.4 ui-monospace,monospace;overflow-wrap:anywhere;padding:8px 12px;border:1px solid var(--muted);border-radius:var(--r-sm);background:var(--surface);color:var(--ink)">${value}</textarea></label>`;
+  const body = html`<header class="screen"><h1>${w.keysTitle}</h1></header><div class="card" id="keys"><p><b>${w.keysOnce}</b></p>
+${field("VAPID_PUBLIC_KEY", pair.publicKey)}${field("VAPID_PRIVATE_KEY", pair.privateKey)}
+<ol><li>${w.keysStep1}</li><li>${w.keysStep2}</li><li>${w.keysStep3}</li><li>${w.keysStep4}</li></ol><p class="note">${w.keysTest}</p><p class="note">${w.keysAgain}</p>
+<p><a class="crumb" href="/app/settings#alerts">← ${W(m).backToSettings}</a></p></div>`;
+  const res = await ownerPage(c, { active: "settings", title: w.keysTitle, body, back: "/app/settings" });
+  res.headers.set("Cache-Control", "no-store, private");
+  res.headers.set("X-Content-Type-Options", "nosniff");
+  res.headers.set("Referrer-Policy", "no-referrer");
+  return res;
+});
 
 const FLASH = ["saved", "nothingChanged", "switched", "envIsMaster"] as const;
 type Flash = (typeof FLASH)[number];
