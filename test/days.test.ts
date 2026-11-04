@@ -137,7 +137,7 @@ describe('"call me": we don\'t take calls on this number; the ₹99 call, where 
   for (const lang of ["en", "hi"] as const) {
     it(`${lang}: one message with the line and the menu buttons, and no number`, async () => {
       const c = allCopy[lang];
-      for (const text of lang === "en" ? ["Call me", "can I call you?", "phone number please", "Is it a video call?", "number pls"] : ["मुझे कॉल करो", "नंबर दो", "call kar do please"]) {
+      for (const text of lang === "en" ? ["Call me", "can I call you?", "phone number please", "number pls"] : ["मुझे कॉल करो", "नंबर दो", "call kar do please"]) {
         const from = await w.greeted(lang);
         await w.typed(from, text);
         const m = w.last();
@@ -149,6 +149,16 @@ describe('"call me": we don\'t take calls on this number; the ₹99 call, where 
       }
     });
   }
+
+  it("ticket 41: \"video call?\" is not a call request: the fixed voice-calls-only line, decided by code before the assistant", async () => {
+    for (const [lang, text] of [["en", "Is it a video call?"], ["en", "video call me"], ["hi", "क्या वीडियो कॉल होगी?"]] as const) {
+      const from = await w.greeted(lang);
+      await w.typed(from, text);
+      expect(w.last().interactive.body.text, text).toBe(allCopy[lang].answerVideo);
+      expect(w.sent()).toHaveLength(1);
+      expect(w.aiCalls()).toHaveLength(0);
+    }
+  });
 
   it("not in a chat a person has taken over, nor for a blocked or quiet person, nor in the no-selling week, nor with a booking coming up", async () => {
     const human = await w.greeted("en");

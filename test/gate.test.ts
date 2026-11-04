@@ -888,9 +888,9 @@ describe("the open booking step is sent again when someone types (docs/AGENT.md 
     const link = (await db.prepare("SELECT provider_link_id AS l FROM payments").first<{ l: string }>())!.l;
     const raw = JSON.stringify(paidEvent(link));
     await app.request("/pay/razorpay/webhook", { method: "POST", body: raw, headers: await rzpHeaders(raw) }, env());
-    expect((await conv(from)).pending_step).toBeNull();
+    expect((await conv(from)).pending_step).toBe("intent_name"); // the pay step is over; ticket 41's first question is the open one
     fetchMock.mockClear();
-    await typed(from, "when is my call exactly?");
+    await typed(from, "when is my call exactly?"); // a question, not a name: the questions end and it is answered
     expect(last().text?.body ?? last().interactive?.body?.text).toContain("Your bookings: call on Tue, 6 Oct at 2:30 pm"); // My bookings (ticket 31)
 
     const other = await greeted();

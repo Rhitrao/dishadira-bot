@@ -182,7 +182,7 @@ Sent when someone on the team uses **Send session link → With a time** in the 
 **Body**
 
 ```
-Shantha Rao has kept {{1}} at {{2}} (India time) for your full session. To confirm it, please pay by {{3}}: {{4}} If the time doesn't suit you, just reply here.
+Shantha Rao has kept {{1}} at {{2}} (India time) for your full session, a voice call by phone (audio only, no video). To confirm it, please pay by {{3}}: {{4}} If the time doesn't suit you, just reply here.
 ```
 
 | Variable | Meaning | Sample value |
@@ -191,6 +191,69 @@ Shantha Rao has kept {{1}} at {{2}} (India time) for your full session. To confi
 | {{2}} | Time of the session (India time) | 3:00 pm |
 | {{3}} | Pay by (the hold's end, India time; 20 minutes after it is sent) | 2:20 pm |
 | {{4}} | The payment link (our own /p/ link) | https://bot.example.com/p/EXAMPLE |
+
+---
+
+## Ticket 41: new versions that say "voice call, no video" (for Rohit to submit)
+
+Owner's request, 4 Nov 2026: every description of the call must say it is a **voice call by phone (audio only, no video)**. The bot's own messages inside the 24-hour window already say so (`docs/COPY.md`). An approved template can't be changed in place, so these four approved ones need a **new version under a new name**; until each is approved, the current one keeps going out unchanged (its `approved` flag stays as it is). `session_link` (11) is not submitted yet, so its wording above already says it. `session_offer`, `payment_update`, `package_confirmed`, `follow_up`, `session_reminder` and `review_ask` don't describe the call and stay as they are.
+
+Submit each as a new template: same category, language, variables, samples and (no) buttons as the one it replaces; the name is the old name plus `_v2`. When Meta shows one Active, tell Claude: a small PR points `src/config.ts` at the `_v2` name (and its Hindi one) and turns it on; the old template can be deleted after that.
+
+| New name (English) | Replaces | New name (Hindi) | Replaces |
+|---|---|---|---|
+| `call_booked_v2` | `call_booked` | `call_booked_hi_v2` | `call_booked_hi` |
+| `session_confirmed_v2` | `session_confirmed` | `session_confirmed_hind_v2` | `session_confirmed_hind` |
+| `reminder_v2` | `reminder` | `reminder_hind_v2` | `reminder_hind` |
+| `session_booked_v2` | `session_booked` | `session_booked_hi_v2` | `session_booked_hi` |
+
+**call_booked_v2** ({{1}} day, {{2}} time, as template 1)
+
+```
+Thank you, we have received your payment. Shantha Rao will call you on {{1}} at {{2}} (India time), on the number you are messaging from. It is a voice call by phone (audio only, no video). The call may come from a number you don't know, so please keep your phone nearby. This WhatsApp number is for messages only, not calls.
+```
+
+**session_confirmed_v2** ({{1}} day, {{2}} time, as template 3)
+
+```
+Your session with Shantha Rao is confirmed for {{1}} at {{2}} (India time). It is a distance session, a voice call by phone (audio only, no video): you stay where you are and she calls you at the booked time. Please keep your phone with you in a quiet place. We will remind you the day before.
+```
+
+**reminder_v2** ({{1}} "call" or "session", {{2}} day, {{3}} time, as template 4)
+
+```
+Reminder: your {{1}} with Shantha Rao is tomorrow, {{2}} at {{3}} (India time). It is a voice call by phone (audio only, no video). Please keep your phone with you.
+```
+
+**session_booked_v2** ({{1}} day, {{2}} time, {{3}} sessions left, as template 7)
+
+```
+Your session is booked for {{1}} at {{2}} (India time). Shantha Rao will call you then: a voice call by phone (audio only, no video). Sessions left: {{3}}.
+```
+
+**call_booked_hi_v2** (Hindi to be read by a native speaker before submitting)
+
+```
+हमें आपका भुगतान मिल गया है। शांता राव जी {{1}} को {{2}} बजे (भारतीय समय) आपको उसी नंबर पर कॉल करेंगी जिससे आप मैसेज कर रहे हैं। यह फ़ोन पर वॉइस कॉल होगी (सिर्फ़ आवाज़, वीडियो नहीं)। कॉल किसी अनजान नंबर से आ सकती है, इसलिए कृपया फ़ोन पास रखें। यह WhatsApp नंबर सिर्फ़ मैसेज के लिए है, कॉल के लिए नहीं।
+```
+
+**session_confirmed_hind_v2**
+
+```
+शांता राव जी के साथ आपका सेशन {{1}} को {{2}} बजे (भारतीय समय) तय हो गया है। यह दूर से होने वाला सेशन है, फ़ोन पर वॉइस कॉल (सिर्फ़ आवाज़, वीडियो नहीं): आप जहाँ हैं वहीं रहें, वे तय समय पर आपको कॉल करेंगी। कृपया किसी शांत जगह पर फ़ोन साथ रखें। एक दिन पहले हम आपको याद दिलाएँगे।
+```
+
+**reminder_hind_v2**
+
+```
+याद दिला दें: शांता राव जी के साथ आपकी बुकिंग ({{1}}) कल, {{2}} को {{3}} बजे (भारतीय समय) है। यह फ़ोन पर वॉइस कॉल है (सिर्फ़ आवाज़, वीडियो नहीं)। कृपया फ़ोन अपने पास रखें।
+```
+
+**session_booked_hi_v2**
+
+```
+आपका सेशन {{1}} को {{2}} बजे (भारतीय समय) बुक हो गया है। शांता राव जी उसी समय फ़ोन पर वॉइस कॉल करेंगी (सिर्फ़ आवाज़, वीडियो नहीं)। बचे हुए सेशन: {{3}}।
+```
 
 ---
 
@@ -283,7 +346,7 @@ Samples as the English one. Category Marketing.
 ### 11. session_link_hi
 
 ```
-शांता राव जी ने आपके पूरे सेशन के लिए {{1}} को {{2}} बजे (भारतीय समय) का समय रखा है। इसे पक्का करने के लिए कृपया {{3}} तक भुगतान करें: {{4}} अगर यह समय ठीक न हो, तो बस यहाँ जवाब दें।
+शांता राव जी ने आपके पूरे सेशन के लिए {{1}} को {{2}} बजे (भारतीय समय) का समय रखा है: फ़ोन पर वॉइस कॉल (सिर्फ़ आवाज़, वीडियो नहीं)। इसे पक्का करने के लिए कृपया {{3}} तक भुगतान करें: {{4}} अगर यह समय ठीक न हो, तो बस यहाँ जवाब दें।
 ```
 
 Samples: {{1}} बुध, 7 अक्टूबर · {{2}} दोपहर 3:00 · {{3}} दोपहर 2:20 · {{4}} https://bot.example.com/p/EXAMPLE. Category Utility.

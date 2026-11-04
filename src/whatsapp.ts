@@ -14,7 +14,8 @@ import { requestHuman } from "./handoff";
 import { mediaOf } from "./media";
 import { menuOut } from "./menu";
 import { applyLabel, ensureState, noSellActive } from "./noise";
-import { ACTION_TOPICS, matchTopic, sentRecently, topicOut, topicText, type Topic } from "./router";
+import { ACTION_TOPICS, isOutOfScope, isSexualHealth, isVideoQuestion, matchTopic, sentRecently, topicOut, topicText, type Topic } from "./router";
+import { intentChoice, intentText, isIntentStep, raiseOutOfScope } from "./intent";
 import { rescheduleChoice } from "./outcomes";
 import { botAudit, runCrisis, runEmergency } from "./safety";
 import { openOfferId, sessionChoice } from "./session";
@@ -241,7 +242,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     .prepare(
       `INSERT INTO conversations (wa_id, display_name, last_user_at, source_ad_id, ad_click_id, ad_headline) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
        ON CONFLICT (wa_id) DO UPDATE SET
-         display_name = COALESCE(excluded.display_name, display_name),
+         display_name = CASE WHEN name_given_at IS NOT NULL THEN display_name ELSE COALESCE(excluded.display_name, display_name) END,
          source_ad_id = COALESCE(source_ad_id, excluded.source_ad_id),
          ad_click_id = COALESCE(ad_click_id, excluded.ad_click_id),
          ad_headline = COALESCE(ad_headline, excluded.ad_headline),
@@ -502,6 +503,29 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       await timeMiss(step, atTime);
       return;
     }
+    // Ticket 41: one of the questions after a paid ₹99 call (src/intent.ts). A name, their work, or "Something else" in their own words is the
+    // answer; anything else (a question, a long message, noise) ends the questions and goes the usual way below.
+    if (step && isIntentStep(step.step)) {
+      if ((classifyWithoutAI(said) === "TO_CLASSIFIER" || isOutOfScope(said)) && (await intentText(env, conv!.id, step, said, (out, s) => reply(out, s))) === "done") return;
+      await clearStep(db, conv!.id);
+    }
+    // Ticket 41: a sexual-function concern is outside what we offer. It is never flirting or harassment (no strike, no block) and never goes to
+    // the assistant: the kind fixed answer (a doctor; no booking push), and for someone who has paid, an item for the team. A serious illness
+    // with a request to cure it gets the team's item too, and the usual answer (the assistant's, or the router's medical one).
+    if (isSexualHealth(said) && classifyWithoutAI(said) !== "abuse") {
+      await raiseOutOfScope(env, conv!.id);
+      await routeTopic("sexual_health");
+      return;
+    }
+    if (isOutOfScope(said)) await raiseOutOfScope(env, conv!.id);
+    // Ticket 41: "video call?": every call and session is a voice call by phone. The fixed line, never the assistant; above an open step.
+    if (isVideoQuestion(said) && classifyWithoutAI(said) === "TO_CLASSIFIER") {
+      const open = await openStep(db, conv!.id);
+      const withAnswer = open ? stepWithLine(open, cp.answerVideo) : null;
+      if (withAnswer) await reply(withAnswer, "reprompt");
+      else await routeTopic("video");
+      return;
+    }
     // The assistant (when AI_REPLIES is on) labels and answers the question. Otherwise, or when it cannot answer in the middle of a booking, the path below.
     let viaAI = false;
     if (decision === "TO_CLASSIFIER" && text !== null) {
@@ -601,6 +625,11 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
         // Without the assistant: the fixed-answer router (ticket 31), or the call-request line (ticket 30).
         const asked = await firstQuestion(db, conv!.firstQuestion);
         const key = conv!.firstQuestion;
+        // Ticket 41: a sexual-function concern as the first message: the fixed answer, never the assistant (see classified()).
+        if (asked && isSexualHealth(asked.text) && classifyWithoutAI(asked.text) !== "abuse") {
+          await routeTopic("sexual_health", cp2, (out, step) => sendMessage(env, conv!.id, out, `${key}:${step}`));
+          return;
+        }
         const answered = asked
           ? await answerWithAI({
               env, conv: { ...conv!, locale, consent_at: nowIso(), mode: conv!.mode }, text: asked.text, msgId: key, messages: asked.messages,
@@ -630,6 +659,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       return;
     }
     if (choice === "menu_book" || /^(pk|go|gate)_/.test(choice ?? "")) await db.prepare("UPDATE person_state SET book_tap_at = ?2 WHERE conversation_id = ?1").bind(conv!.id, nowIso()).run(); // a buying tap (warm leads in the digest)
+    if (await intentChoice(env, choice, conv!.id)) return; // ticket 41: the questions after a paid ₹99 call
     if (await bookingChoice(env, choice, conv!.id, m.id)) return;
     if (await sessionChoice(env, choice, conv!.id, m.id)) return;
     if (await packChoice(env, choice, conv!.id, m.id)) return;

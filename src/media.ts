@@ -4,8 +4,8 @@
 // - "View" (a POST with the page's form token and the Origin check, as every console change): audited VIEW_MEDIA (the chat and the kind,
 //   never content), then GET Graph /{media-id} with WA_TOKEN for the short-lived link, fetch it with the same Authorization, and stream
 //   the bytes straight to the browser with no-store. Nothing goes to D1, KV, R2, the AI or the export.
-// - Who: the owner; staff only while they may read chat text (Settings → Privacy) and never on a chat that had a safety message; a
-//   practitioner by the read_chat rule (their own customers), never on a safety chat either. The owner alone on a safety chat.
+// - Who: the same rule as the chat's text (read_chat): the owner; a practitioner for their own customers, a safety chat included (ticket 41,
+//   owner, 4 Nov 2026); staff only while they may read chat text (Settings → Privacy) and never on a chat that had a safety message.
 // Meta's docs: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media (the link lasts 5 minutes; media ~30 days).
 import { html } from "hono/html";
 import { can, type Member, type Target } from "./auth";
@@ -49,12 +49,13 @@ export async function hadSafety(db: Env["DB"], convId: number): Promise<boolean>
   return row !== null;
 }
 
-// `target` is the person's (src/people.ts personFor): whose customer they are, for a practitioner.
+// `target` is the person's (src/people.ts personFor): whose customer they are, for a practitioner. A chat that ever had a safety message asks
+// read_chat for a safety message (owner: yes; practitioner: their own customer; staff: never), as the chat's text does.
 export async function maySeeMedia(db: Env["DB"], m: Member, target: Target, convId: number): Promise<boolean> {
   if (can(m, "read_chat", target) !== "yes") return false;
   if (m.role === "OWNER") return true;
   if (await chatTextHidden(db, m.role)) return false;
-  return !(await hadSafety(db, convId));
+  return !(await hadSafety(db, convId)) || can(m, "read_chat", { ...target, safety: true }) === "yes";
 }
 
 // The row a View button names: an incoming message of this chat that still has its media id (the wipe clears it).

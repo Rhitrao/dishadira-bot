@@ -703,7 +703,8 @@ describe("a question in the very first message", () => {
     sends = "true";
     await typed(from, "hi");
     await tapButton(from, "lang_en");
-    expect(sent().some((p) => p.interactive?.body?.text === allCopy.en.ack)).toBe(true);
+    // Ticket 41: "video calls?" has its own fixed answer now (voice calls only, no video).
+    expect(sent().some((p) => p.interactive?.body?.text === allCopy.en.answerVideo)).toBe(true);
   });
 });
 
@@ -722,20 +723,23 @@ describe("dates, times and call language after the payment", () => {
     expect(res.status).toBe(200);
     return from;
   }
+  // The confirmation; after it come the questions of ticket 41 (src/intent.ts).
+  const confirmation = () => sent().filter((p) => p.type === "text").at(-1);
 
   it("Hindi: the confirmation uses Hindi dates and says the call is in Hindi", async () => {
     await bookAndPay("hi");
-    expect(last().text.body).toBe(allCopy.hi.confirmed("मंगल, 6 अक्टूबर", "शाम 5:30", "hi"));
-    expect(last().text.body).toContain("कॉल हिंदी में होगी");
-    expect(last().text.body).toContain("शाम 5:30 बजे");
+    expect(confirmation().text.body).toBe(allCopy.hi.confirmed("मंगल, 6 अक्टूबर", "शाम 5:30", "hi"));
+    expect(confirmation().text.body).toContain("वॉइस कॉल (सिर्फ़ आवाज़, वीडियो नहीं) होगी, हिंदी में");
+    expect(confirmation().text.body).toContain("शाम 5:30 बजे");
   });
-  it("English: Wed-style dates and 'Call in English'", async () => {
+  it("English: Wed-style dates and 'in English', a voice call (ticket 41)", async () => {
     await bookAndPay("en");
-    expect(last().text.body).toBe(
-      "Received your ₹99. Shantha Rao will call you on Tue, 6 Oct at 5:30 pm (India time), on the number you are messaging from. Call in English. " +
+    expect(confirmation().text.body).toBe(
+      "Received your ₹99. Shantha Rao will call you on Tue, 6 Oct at 5:30 pm (India time), on the number you are messaging from. It is a voice call by phone (audio only, no video), in English. " +
         "The call may come from a number you don't know, so please keep your phone nearby. This WhatsApp number is for messages only, not calls.",
     );
-    expect(last().text.body).not.toContain(config.businessNumber); // she calls from another number, which is never shown (ticket 30)
+    expect(confirmation().text.body).not.toContain(config.businessNumber); // she calls from another number, which is never shown (ticket 30)
+    expect(last().interactive?.body?.text).toBe(allCopy.en.intentName("Test Person")); // then the first question
   });
   it("the call language is the chat language at booking; changing language later changes the chat, not the booking", async () => {
     const from = newPhone();
@@ -751,8 +755,8 @@ describe("dates, times and call language after the payment", () => {
     const link = (await db.prepare("SELECT provider_link_id AS l FROM payments").first<{ l: string }>())!.l;
     const raw = JSON.stringify(paidEvent(link));
     await app.request("/pay/razorpay/webhook", { method: "POST", body: raw, headers: await rzpHeaders(raw) }, env());
-    expect(last().text.body).toContain("Tue, 6 Oct at 2:00 pm"); // the message is in the chat language
-    expect(last().text.body).toContain("Call in Hindi"); // the call is in the language it was booked in
+    expect(confirmation().text.body).toContain("Tue, 6 Oct at 2:00 pm"); // the message is in the chat language
+    expect(confirmation().text.body).toContain("in Hindi."); // the call is in the language it was booked in
   });
 });
 

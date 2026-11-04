@@ -106,9 +106,10 @@ describe("intake: only Meta's id and type", () => {
     const everything = JSON.stringify((await h.db.prepare("SELECT * FROM messages").all()).results) + JSON.stringify((await h.db.prepare("SELECT * FROM events").all()).results);
     for (const secret of ["CAPTIONSECRET", "FILENAMESECRET", "LOCATIONSECRET", "lookaside", "https://"]) expect(everything).not.toContain(secret);
     expect(metaCalls()).toBe(0); // nothing is downloaded at intake
-    // The existing reply to a photo from someone with no booking: the notice and the menu, once that day.
+    // The reply to a photo from someone with no booking (ticket 41 wording): the notice and the menu, once that day.
     const sent = vi.mocked(fetch).mock.calls.filter((c) => String(c[0]).endsWith("/messages")).map((c) => JSON.parse(String((c[1] as { body: string }).body)));
-    expect(sent.some((p) => /Only typed messages can be read here/.test(p.text?.body ?? ""))).toBe(true);
+    expect(sent.some((p) => /^Thank you — our team will take a look and reply here if needed\./.test(p.text?.body ?? ""))).toBe(true);
+    expect(sent.some((p) => /Only typed messages/.test(p.text?.body ?? ""))).toBe(false);
   });
 
   it("mediaOf and cleanMime", () => {
@@ -287,24 +288,30 @@ describe("who may view", () => {
     expect((await view(c, msg)).status).toBe(200);
   });
 
-  it("a chat that had a safety message: the owner only (staff and the practitioner get no button and a refusal)", async () => {
+  it("a chat that had a safety message (ticket 41): the owner and the practitioner for their own customer; staff never", async () => {
     const c = await person("919200000011", { mode: "HUMAN" });
     const msg = await mediaMsg(c);
     await ownCustomer(c);
     await safetyItem(c); // resolved: it still counts
-    for (const who of [STAFF, PRAC]) {
-      expect(hasView(await page(`/app/people/${c}`, who), c, msg), who).toBe(false);
-      expect((await view(c, msg, who)).status, who).toBe(403);
-    }
+    expect(hasView(await page(`/app/people/${c}`, STAFF), c, msg)).toBe(false);
     expect(hasView(await page(`/app/inbox/${c}`, STAFF), c, msg)).toBe(false);
+    expect((await view(c, msg, STAFF)).status).toBe(403);
     expect(metaCalls()).toBe(0);
+    expect(hasView(await page(`/app/people/${c}`, PRAC), c, msg)).toBe(true);
+    expect((await view(c, msg, PRAC)).status).toBe(200);
     expect(hasView(await page(`/app/people/${c}`), c, msg)).toBe(true);
     expect((await view(c, msg)).status).toBe(200);
+    // Another practitioner's customer's safety chat: no.
+    const other = await person("919200000018");
+    const m3 = await mediaMsg(other);
+    await safetyItem(other);
+    expect((await view(other, m3, PRAC)).status).toBe(403);
     // The bot's own safety message, without an item, counts too.
     const d = await person("919200000012");
     const m2 = await mediaMsg(d);
     await h.db.prepare("INSERT INTO messages (conversation_id, direction, dedupe_key, kind, body, status) VALUES (?1, 'OUT', 'wamid.x:emergency', 'text', 'fixed text', 'SENT')").bind(d).run();
     expect((await view(d, m2, STAFF)).status).toBe(403);
+    expect((await view(d, m2)).status).toBe(200);
   }, 60_000);
 
   it("the practitioner: their own customer yes, anyone else's no", async () => {

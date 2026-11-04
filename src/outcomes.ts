@@ -69,6 +69,8 @@ export async function applyDueOutcomes(env: Env, provider: PaymentProvider, nowM
     if (!claim.meta.changes) continue; // another run got it
     try {
       await applyOne(env, provider, o);
+      // Ticket 41: the call or session has its answer, so the team's "consider a refund" item about it (src/intent.ts) is settled too.
+      await db.prepare("UPDATE attention SET resolved_at = ?2 WHERE kind = 'OUT_OF_SCOPE' AND target = ?1 AND resolved_at IS NULL").bind(targetOf(o), now).run();
       applied++;
     } catch {
       await db.prepare("UPDATE outcomes SET applied_at = NULL WHERE id = ?1 AND applied_at = ?2").bind(o.id, now).run(); // retry next run

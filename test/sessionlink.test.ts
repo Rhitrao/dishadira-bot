@@ -195,7 +195,7 @@ describe("let them choose", () => {
   });
 
   it("the copy, English and Hindi (Hindi to be read)", () => {
-    expect(copyFor("en").sessionLinkBody).toBe("Shantha Rao would like to book a full session with you (₹799, 60 minutes, by phone). Tap below to choose a time; it is yours once it is paid.");
+    expect(copyFor("en").sessionLinkBody).toBe("Shantha Rao would like to book a full session with you: ₹799, 60 minutes, a voice call by phone (audio only, no video). Tap below to choose a time; it is yours once it is paid.");
     expect(copyFor("hi").sessionLinkBody).toContain("शांता राव जी आपके साथ एक पूरा सेशन बुक करना चाहती हैं");
   });
 

@@ -7,6 +7,7 @@ import { DEFAULT_PRICES, prices, type Prices } from "./business";
 export type Lang = "en" | "hi";
 export type FaqId = (typeof config.faqIds)[number];
 export type ForWhom = "SELF" | "FAMILY" | "PET";
+export type IntentArea = (typeof config.intent.areas)[number];
 
 // Any locale we do not know (an old row, a typo) reads as English.
 export const langOf = (locale: string | null | undefined): Lang => (locale === "hi" ? "hi" : "en");
@@ -304,6 +305,21 @@ export type Copy = {
   sessionReminderBody: string;
   reviewAsk: (reviewUrl: string, waLink: string) => string;
   sessionLinkBody: string; // the team's "Send session link", Let them choose: [Choose a time] starts the single session's day and time steps
+  // Ticket 41 (owner, 4 Nov 2026): every call and session is a voice call by phone, never video; and after a paid ₹99 call, three short
+  // skippable questions (src/intent.ts): the name, their work, and what they would like help with.
+  answerVideo: string; // "video call?" (src/router.ts topic video)
+  answerSexualHealth: string; // a sexual-function concern: outside what we offer, see a doctor (no booking push)
+  intentName: (name: string | null) => string; // name: the WhatsApp name, offered on the "Use <name>" button
+  btnUseName: (name: string) => string; // max 20 chars (the name is shortened to fit)
+  btnSkip: string; // max 20 chars
+  intentWork: string;
+  intentArea: string;
+  intentAreaButton: string; // max 20 chars: the button that opens the list
+  intentAreas: Record<IntentArea, string>; // max 24 chars each (list rows)
+  intentAreaDesc: { ENERGY: string; OTHER: string }; // max 72 chars (the line under two of the rows)
+  rowSkip: string; // max 24 chars (the list's last row)
+  intentOther: string; // after "Something else": type a few words
+  intentThanks: string;
   answerCall: string; // I1: the fixed answers (src/router.ts)
   answerTrust: string;
   answerAbroad: string;
@@ -327,9 +343,9 @@ export const LANGUAGE_BUTTONS = { en: "English", hi: "हिंदी" } as cons
 
 // KNOWLEDGE.md §10: one bilingual message, then the two language buttons.
 const GREETING =
-  "Namaste! This is Disha Dira's automated booking assistant. This chat is for booking a call. Shantha Rao calls you personally. " +
+  "Namaste! This is Disha Dira's automated booking assistant. This chat is for booking a call. Shantha Rao calls you personally, on a voice call (audio only, no video). " +
   "To answer you, your messages are processed by our assistant and AI provider. Privacy: disha-dira.com/privacy.html\n\n" +
-  "नमस्ते! यह दिशा दिरा का ऑटोमैटिक बुकिंग असिस्टेंट है। यह चैट कॉल बुक करने के लिए है। शांता राव जी आपको खुद कॉल करती हैं। " +
+  "नमस्ते! यह दिशा दिरा का ऑटोमैटिक बुकिंग असिस्टेंट है। यह चैट कॉल बुक करने के लिए है। शांता राव जी आपको खुद वॉइस कॉल करती हैं (सिर्फ़ आवाज़, वीडियो नहीं)। " +
   "आपको जवाब देने के लिए आपके मैसेज हमारे असिस्टेंट और AI सेवा प्रदाता द्वारा प्रोसेस किए जाते हैं। प्राइवेसी: disha-dira.com/privacy.html\n\n" +
   "Please choose your language / कृपया भाषा चुनें:";
 const CHOOSE_LANGUAGE = "Please choose your language / कृपया भाषा चुनें:";
@@ -342,6 +358,15 @@ const sessionPrice = rupees(P.single);
 const p10 = P.pack10;
 const p20 = P.pack20;
 const packPrice = (n: number) => rupees(n === p10.sessions ? p10.paise : p20.paise);
+// Ticket 41: how every call and session is described: a voice call by phone, never video.
+const VOICE = "a voice call by phone (audio only, no video)";
+const VOICE_HI = "फ़ोन पर वॉइस कॉल (सिर्फ़ आवाज़, वीडियो नहीं)";
+// "Use Priya" / "यही नाम: Priya": the WhatsApp name, shortened so the button stays within WhatsApp's 20 characters.
+const fitName = (prefix: string, name: string) => {
+  const room = 20 - [...prefix].length;
+  const n = [...name.trim()];
+  return prefix + (n.length <= room ? n.join("") : n.slice(0, room - 1).join("").trimEnd() + "…");
+};
 
 const ammaEn: AmmaCopy = {
   title: "Calls and sessions",
@@ -410,11 +435,11 @@ const en: Copy = {
   rowDayBoth: "Afternoon and evening times",
   rowDayAfternoon: "Afternoon times",
   rowDayEvening: "Evening times",
-  timesFor: (day) => `Free times on ${day} (India time). Each call is ${config.slots.callMinutes} minutes.`,
-  sessionTimesFor: (day) => `Free times on ${day} (India time). Each session is ${config.slots.sessionMinutes} minutes.`,
+  timesFor: (day) => `Free times on ${day} (India time). Each call is ${config.slots.callMinutes} minutes, ${VOICE}.`,
+  sessionTimesFor: (day) => `Free times on ${day} (India time). Each session is ${config.slots.sessionMinutes} minutes, ${VOICE}.`,
   sectionAfternoon: "Afternoon",
   sectionEvening: "Evening",
-  rowCall: `${config.slots.callMinutes}-min call`,
+  rowCall: `${config.slots.callMinutes}-min voice call`,
   rowSession: `${config.slots.sessionMinutes}-min session`,
   anotherDay: "Another day",
   listButtonTimes: "Choose a time",
@@ -429,7 +454,7 @@ const en: Copy = {
   payLabel: `Pay ${intro}`,
   payFailed: "Sorry, we couldn't create the payment link. Nothing was charged. Please try again.",
   confirmed: (day, time, callLang) =>
-    `Received your ${intro}. Shantha Rao will call you on ${day} at ${time} (India time), on the number you are messaging from. Call in ${callLang === "hi" ? "Hindi" : "English"}. ` +
+    `Received your ${intro}. Shantha Rao will call you on ${day} at ${time} (India time), on the number you are messaging from. It is ${VOICE}, in ${callLang === "hi" ? "Hindi" : "English"}. ` +
     "The call may come from a number you don't know, so please keep your phone nearby. This WhatsApp number is for messages only, not calls.",
   btnChooseTime: "Choose a time",
   sessionOfferBody: `Thank you for speaking with Shantha Rao. She would be glad to offer you a full session. Choose an option below: a single session, or a package of ${p10.sessions} or ${p20.sessions}.`,
@@ -442,24 +467,24 @@ const en: Copy = {
   sessionPayLabel: `Pay ${sessionPrice}`,
   sessionConfirmed: (day, time, remind = true) =>
     `Your session with Shantha Rao is confirmed for ${day} at ${time} (India time). ` +
-    "It is a distance session: you stay where you are and she calls you at the booked time. " +
+    `It is a distance session, ${VOICE}: you stay where you are and she calls you at the booked time. ` +
     `Please keep your phone with you in a quiet place. ${remind ? "We will remind you the day before." : "Please note the time; we'll message you here if anything changes."}`,
   notFitRefund: `Thank you for speaking with Shantha Rao. She feels a session isn't the right fit just now, so we're refunding your ${intro}. It usually reaches your account in 5–7 working days.`,
   missedOffer: "Sorry we missed each other. Choose a new time for your call. There is nothing more to pay.",
   rescheduled: (day, time) =>
-    `Your call is now booked for ${day} at ${time} (India time). Shantha Rao will call you on the number you are messaging from. ` +
+    `Your call is now booked for ${day} at ${time} (India time). Shantha Rao will call you on the number you are messaging from: ${VOICE}. ` +
     "The call may come from a number you don't know, so please keep your phone nearby. There is nothing more to pay. This WhatsApp number is for messages only, not calls.",
   rescheduleNotAvailable: "Sorry, this call cannot be moved again. A person will look into it.",
   missedFinal:
     "We were not able to reach you for the second time, so we are closing this booking. Thank you for your interest, and you are welcome to write to us again.",
   reminderCall: (day, time) =>
-    `Reminder: your call with Shantha Rao is tomorrow, ${day} at ${time} (India time). Please keep your phone with you.`,
+    `Reminder: your call with Shantha Rao is tomorrow, ${day} at ${time} (India time). It is ${VOICE}. Please keep your phone with you.`,
   reminderSession: (day, time) =>
-    `Reminder: your session with Shantha Rao is tomorrow, ${day} at ${time} (India time). Please keep your phone with you.`,
+    `Reminder: your session with Shantha Rao is tomorrow, ${day} at ${time} (India time). It is ${VOICE}. Please keep your phone with you.`,
   wordCall: "call",
   wordSession: "session",
-  mediaNotice: "Only typed messages can be read here. Please type your question, or tap a button below.",
-  mediaNoticeCustomer: "Only typed messages can be read here. If this was about your payment or booking, our team will check and reply here.",
+  mediaNotice: "Thank you — our team will take a look and reply here if needed. You can also type your question, or tap a button below.",
+  mediaNoticeCustomer: "Thank you — our team will take a look and reply here if needed.",
   crisis:
     "We're really sorry you're going through this. You don't have to face it alone. Please talk to someone right now: Tele-MANAS is a free government helpline, open 24×7. " +
     "Call *14416* or *1-800-891-4416*. If you or anyone else is in danger right now, call *112*. A person from our team has been told and will message you here as soon as they can.",
@@ -477,7 +502,7 @@ const en: Copy = {
   reprompt: (hint) => `${hint ? `${hint} ` : ""}Please choose from the options below.`,
   hintDays: hintDaysText("en"),
   repromptHelp: "If you would rather talk to a person from our team, tap below.",
-  callRequest: `We don't take calls on this WhatsApp number. The quickest way to talk to Shantha Rao is the ${intro} ${config.slots.callMinutes}-minute call: you choose a time, and she calls you.`,
+  callRequest: `We don't take calls on this WhatsApp number. The quickest way to talk to Shantha Rao is the ${intro} ${config.slots.callMinutes}-minute call: you choose a time, and she calls you. It is ${VOICE}.`,
   repromptQuestion: "Thanks for asking. Shantha Rao can explain this on your call. When you're ready, choose an option below.",
   timeNow: `Shantha Rao can't call right away: she calls you at the time you book. ${hintDaysText("en")} Please choose a free time below.`,
   timeOutside: `Sorry, that time is outside our hours. ${hintDaysText("en")} Please choose a free time below.`,
@@ -497,10 +522,10 @@ const en: Copy = {
   faqAnswers: {
     what_is_this:
       "Disha Dira offers no-touch pranic healing by phone with Shantha Rao, a certified Pranic Healer trained in the MCKS system. " +
-      `The first step is a ${config.slots.callMinutes}-minute call with her for ${intro}.`,
+      `The first step is a ${config.slots.callMinutes}-minute call with her for ${intro}: ${VOICE}.`,
     how_it_works:
       `1. Pick a call time. 2. Pay ${intro}. ` +
-      `3. Shantha Rao calls you for ${config.slots.callMinutes} minutes. ` +
+      `3. Shantha Rao calls you for ${config.slots.callMinutes} minutes: ${VOICE}. ` +
       "4. If you both agree, you can book a full session or a package.",
     price:
       `The first call is ${intro}. A single session is ${sessionPrice}. ` +
@@ -515,10 +540,10 @@ const en: Copy = {
       "We keep only your name, WhatsApp number, bookings and payments. Please do not share health details here.",
   },
   // sessions and packages (ticket 13)
-  packagesBody: "Sessions are 60 minutes by phone. Choose an option. Most people start with the ₹99 call, so Shantha Rao can suggest what suits them.",
+  packagesBody: `Sessions are ${config.slots.sessionMinutes} minutes, ${VOICE}. Choose an option. Most people start with the ${intro} call, so Shantha Rao can suggest what suits them.`,
   packagesButton: "See options",
   rowIntroTitle: `${intro} first call`,
-  rowIntroDesc: `${config.slots.callMinutes} min with Shantha Rao`,
+  rowIntroDesc: `${config.slots.callMinutes}-min voice call with Shantha Rao (no video)`,
   rowSingleTitle: "Single session",
   rowSingleDesc: sessionPrice,
   rowPack10Title: `${p10.sessions} sessions`,
@@ -536,7 +561,7 @@ const en: Copy = {
   packPending: "A payment link for a package is already open. Please use the payment button above, or try again in a few minutes.",
   packConfirmed: (n) => `Payment received. You have ${n} sessions. Book your first one now?`,
   btnBookSession: "Book a session",
-  creditBooked: (day, time, left) => `Your session is booked for ${day} at ${time} (India time). Shantha Rao will call you then. Sessions left: ${left}.`,
+  creditBooked: (day, time, left) => `Your session is booked for ${day} at ${time} (India time). Shantha Rao will call you then: ${VOICE}. Sessions left: ${left}.`,
   maxUpcoming: `You already have ${rules.maxUpcoming} upcoming sessions. You can book the next one after one of them.`,
   noCredits: "You have no sessions left in your package. You can buy a single session or a new package from \"Sessions & packages\".",
   creditsLeft: (left) => `Sessions left in your package: ${left}.`,
@@ -584,8 +609,8 @@ const en: Copy = {
   checkingPayment: "We received a payment that we need to check. Our team will sort it out and reply here today. Please don't pay again.",
   holdReleased: "Your held time has been released. Nothing was charged. Tap below to choose a time again.",
   handbackNotice: "Sorry we couldn't reply in time. You can book below, or ask again for a person.",
-  autoFollowUp1: `Just checking in: did you find what you were looking for? If you'd like to talk to Shantha Rao, the ${intro} ${config.slots.callMinutes}-minute call is the easiest way. You choose the time, and she calls you.`,
-  autoFollowUp2: `Whenever you're ready, you can book a ${intro} ${config.slots.callMinutes}-minute call with Shantha Rao. ${hoursText("en", false)}`,
+  autoFollowUp1: `Just checking in: did you find what you were looking for? If you'd like to talk to Shantha Rao, the ${intro} ${config.slots.callMinutes}-minute voice call (no video) is the easiest way. You choose the time, and she calls you.`,
+  autoFollowUp2: `Whenever you're ready, you can book a ${intro} ${config.slots.callMinutes}-minute voice call (no video) with Shantha Rao. ${hoursText("en", false)}`,
   autoFollowUpGentle: "Hope you're doing okay. If you'd like to talk to Shantha Rao, just reply to this message. We're here.",
   sessionReminderBody:
     `A gentle reminder: after your call, Shantha Rao offered you a full session. If you'd like to go ahead, choose an option below: a single session, or a package of ${p10.sessions} or ${p20.sessions}. ` +
@@ -594,17 +619,17 @@ const en: Copy = {
     "Thank you for your session with Shantha Rao.\n\n" +
     (reviewUrl ? `If the session helped, would you share a short Google review? ${reviewUrl}\n\n` : "") +
     `If someone you know might benefit, you can share this WhatsApp link: ${waLink}\n\nWith warm wishes, Disha Dira`,
-  sessionLinkBody: `Shantha Rao would like to book a full session with you (${sessionPrice}, ${config.slots.sessionMinutes} minutes, by phone). Tap below to choose a time; it is yours once it is paid.`,
+  sessionLinkBody: `Shantha Rao would like to book a full session with you: ${sessionPrice}, ${config.slots.sessionMinutes} minutes, ${VOICE}. Tap below to choose a time; it is yours once it is paid.`,
   answerCall:
-    `The first call is ${config.slots.callMinutes} minutes, by phone, at the time you pick. Shantha Rao calls you herself, listens to what is going on, ` +
+    `The first call is ${config.slots.callMinutes} minutes, ${VOICE}, at the time you pick. Shantha Rao calls you herself, listens to what is going on, ` +
     "and explains how she works and whether a full session would suit you. The call is in the language you chat in, English or Hindi.",
   answerTrust:
     "That's a fair question. Shantha Rao is a certified Pranic Healer trained in the MCKS system. Payment happens only on Razorpay's secure page, " +
     `and we never ask for your PIN or OTP. If she feels a session isn't the right fit after your first call, your ${intro} is refunded. We make no health promises.`,
   answerAbroad:
-    `${hoursText("en")} Please check the time difference where you are. Calls are by phone, so you can join from anywhere. ` +
+    `${hoursText("en")} Please check the time difference where you are. Calls are voice calls by phone (no video), so you can join from anywhere. ` +
     "Payment is on Razorpay's secure page: UPI needs an Indian bank account, and cards may work. If paying doesn't work, tap \"Talk to a person\".",
-  answerInPerson: "Calls and sessions are only by phone, so you can join from anywhere and nobody needs to travel. Shantha Rao is based in Bengaluru.",
+  answerInPerson: "Calls and sessions are only voice calls by phone (audio only, no video), so you can join from anywhere and nobody needs to travel. Shantha Rao is based in Bengaluru.",
   answerMedical:
     "Pranic healing is meant to support your wellbeing alongside your doctor's care, not replace it, so we never promise to treat any illness. " +
     "Please keep following your doctor's advice, and never stop or change a medicine without your doctor.",
@@ -614,6 +639,26 @@ const en: Copy = {
   answerPayment:
     "Sorry about this. Please don't pay again. If money was taken and no confirmation came, tap \"Talk to a person\" and our team will check. " +
     "When a payment fails, banks usually return the money on their own.",
+  answerVideo: "All calls and sessions are voice calls by phone — no video.",
+  answerSexualHealth:
+    "Thank you for telling us. This isn't something we can help with. Please consult a qualified doctor, such as a urologist or your physician. " +
+    "Pranic Healing complements medical care; it doesn't replace it.",
+  intentName: (name) =>
+    `Three quick questions before your call, so Shantha Rao knows a little about you. You can skip any of them.\n\n` +
+    (name ? `First, what name should she use? Tap "${fitName("Use ", name)}", or type your name.` : "First, what is your name? Please type it, or tap Skip."),
+  btnUseName: (name) => fitName("Use ", name),
+  btnSkip: "Skip",
+  intentWork: "Thank you. What is your profession or work? A few words is enough (for example: teacher, homemaker, student, retired).",
+  intentArea: "And what would you like Shantha Rao's help with? Choose one below.",
+  intentAreaButton: "Choose one",
+  intentAreas: {
+    STRESS: "Stress & anxiety", SLEEP: "Sleep", RELATIONSHIPS: "Relationships & family", WORK: "Work & career", ENERGY: "Low energy",
+    PHYSICAL: "Physical discomfort", OTHER: "Something else",
+  },
+  intentAreaDesc: { ENERGY: "Or feeling heavy", OTHER: "Type a few words" },
+  rowSkip: "Skip",
+  intentOther: "Please type a few words about it, or tap Skip.",
+  intentThanks: "Thank you. Shantha Rao will see this before your call.",
   prohibitedLine: "We can't help with influencing or controlling another person. Our sessions are only about helping you feel calmer and steadier.",
   jobsLine: "This chat is only for booking calls with Shantha Rao. For anything else, tap \"Talk to a person\".",
   pageLateBody: "Our team will message you on WhatsApp about your time. You can close this page.",
@@ -656,11 +701,11 @@ const hi: Copy = {
   rowDayBoth: "दोपहर और शाम का समय",
   rowDayAfternoon: "दोपहर का समय",
   rowDayEvening: "शाम का समय",
-  timesFor: (day) => `${day} के लिए खाली समय (भारतीय समय)। हर कॉल ${config.slots.callMinutes} मिनट की होती है।`,
-  sessionTimesFor: (day) => `${day} के लिए खाली समय (भारतीय समय)। हर सेशन ${config.slots.sessionMinutes} मिनट का होता है।`,
+  timesFor: (day) => `${day} के लिए खाली समय (भारतीय समय)। हर कॉल ${config.slots.callMinutes} मिनट की होती है: ${VOICE_HI}।`,
+  sessionTimesFor: (day) => `${day} के लिए खाली समय (भारतीय समय)। हर सेशन ${config.slots.sessionMinutes} मिनट का होता है: ${VOICE_HI}।`,
   sectionAfternoon: "दोपहर",
   sectionEvening: "शाम",
-  rowCall: `${config.slots.callMinutes} मिनट की कॉल`,
+  rowCall: `${config.slots.callMinutes} मिनट की वॉइस कॉल`,
   rowSession: `${config.slots.sessionMinutes} मिनट का सेशन`,
   anotherDay: "दूसरा दिन",
   listButtonTimes: "समय चुनें",
@@ -675,7 +720,7 @@ const hi: Copy = {
   payLabel: `${intro} भुगतान करें`,
   payFailed: "माफ़ कीजिए, भुगतान लिंक नहीं बन पाया। कोई पैसा नहीं कटा है। कृपया फिर से कोशिश करें।",
   confirmed: (day, time, callLang) =>
-    `हमें आपके ${intro} मिल गए हैं। शांता राव जी ${day} को ${time} बजे (भारतीय समय) आपको उसी नंबर पर कॉल करेंगी जिससे आप मैसेज कर रहे हैं। कॉल ${callLang === "hi" ? "हिंदी" : "अंग्रेज़ी"} में होगी। ` +
+    `हमें आपके ${intro} मिल गए हैं। शांता राव जी ${day} को ${time} बजे (भारतीय समय) आपको उसी नंबर पर कॉल करेंगी जिससे आप मैसेज कर रहे हैं। यह ${VOICE_HI} होगी, ${callLang === "hi" ? "हिंदी" : "अंग्रेज़ी"} में। ` +
     "कॉल किसी अनजान नंबर से आ सकती है, इसलिए कृपया फ़ोन पास रखें। यह WhatsApp नंबर सिर्फ़ मैसेज के लिए है, कॉल के लिए नहीं।",
   btnChooseTime: "समय चुनें",
   sessionOfferBody: `शांता राव जी से बात करने के लिए धन्यवाद। वे आपको पूरा सेशन देना चाहेंगी। नीचे एक विकल्प चुनें: एक सेशन, या ${p10.sessions} या ${p20.sessions} सेशन का पैकेज।`,
@@ -688,24 +733,24 @@ const hi: Copy = {
   sessionPayLabel: `${sessionPrice} भुगतान करें`,
   sessionConfirmed: (day, time, remind = true) =>
     `शांता राव जी के साथ आपका सेशन ${day} को ${time} बजे (भारतीय समय) तय हो गया है। ` +
-    "यह दूर से होने वाला सेशन है: आप जहाँ हैं वहीं रहें, वे तय समय पर आपको कॉल करेंगी। " +
+    `यह दूर से होने वाला सेशन है, ${VOICE_HI}: आप जहाँ हैं वहीं रहें, वे तय समय पर आपको कॉल करेंगी। ` +
     `कृपया किसी शांत जगह पर फ़ोन साथ रखें। ${remind ? "एक दिन पहले हम आपको याद दिलाएँगे।" : "कृपया समय नोट कर लें; अगर कुछ बदलता है तो हम यहीं मैसेज करेंगे।"}`,
   notFitRefund: `शांता राव जी से बात करने के लिए धन्यवाद। उन्हें लगता है कि अभी सेशन आपके लिए सही नहीं है, इसलिए आपके ${intro} वापस किए जा रहे हैं। यह आमतौर पर 5–7 कामकाजी दिनों में आपके खाते में आ जाता है।`,
   missedOffer: "माफ़ कीजिए, हमारी बात नहीं हो पाई। अपनी कॉल के लिए नया समय चुनें। आपको कोई और भुगतान नहीं करना है।",
   rescheduled: (day, time) =>
-    `आपकी कॉल अब ${day} को ${time} बजे (भारतीय समय) बुक है। शांता राव जी आपको उसी नंबर पर कॉल करेंगी जिससे आप मैसेज कर रहे हैं। ` +
+    `आपकी कॉल अब ${day} को ${time} बजे (भारतीय समय) बुक है। शांता राव जी आपको उसी नंबर पर कॉल करेंगी जिससे आप मैसेज कर रहे हैं: ${VOICE_HI}। ` +
     "कॉल किसी अनजान नंबर से आ सकती है, इसलिए कृपया फ़ोन पास रखें। आपको कोई और भुगतान नहीं करना है। यह WhatsApp नंबर सिर्फ़ मैसेज के लिए है, कॉल के लिए नहीं।",
   rescheduleNotAvailable: "माफ़ कीजिए, यह कॉल दोबारा नहीं बदली जा सकती। हमारी टीम इसे देखेगी।",
   missedFinal:
     "दूसरी बार भी आपसे बात नहीं हो पाई, इसलिए हम यह बुकिंग बंद कर रहे हैं। आपकी रुचि के लिए धन्यवाद। आप कभी भी हमें फिर से लिख सकते हैं।",
   reminderCall: (day, time) =>
-    `याद दिला दें: शांता राव जी के साथ आपकी कॉल कल, ${day} को ${time} बजे (भारतीय समय) है। कृपया फ़ोन अपने पास रखें।`,
+    `याद दिला दें: शांता राव जी के साथ आपकी कॉल कल, ${day} को ${time} बजे (भारतीय समय) है। यह ${VOICE_HI} है। कृपया फ़ोन अपने पास रखें।`,
   reminderSession: (day, time) =>
-    `याद दिला दें: शांता राव जी के साथ आपका सेशन कल, ${day} को ${time} बजे (भारतीय समय) है। कृपया फ़ोन अपने पास रखें।`,
+    `याद दिला दें: शांता राव जी के साथ आपका सेशन कल, ${day} को ${time} बजे (भारतीय समय) है। यह ${VOICE_HI} है। कृपया फ़ोन अपने पास रखें।`,
   wordCall: "कॉल",
   wordSession: "सेशन",
-  mediaNotice: "यहाँ सिर्फ़ लिखे हुए मैसेज पढ़े जा सकते हैं। कृपया अपना सवाल लिखें या नीचे कोई बटन दबाएँ।",
-  mediaNoticeCustomer: "यहाँ सिर्फ़ लिखे हुए मैसेज पढ़े जा सकते हैं। अगर यह आपके भुगतान या बुकिंग के बारे में था, तो हमारी टीम देखकर यहीं जवाब देगी।",
+  mediaNotice: "धन्यवाद — हमारी टीम इसे देखेगी और ज़रूरत हुई तो यहीं जवाब देगी। आप अपना सवाल लिखकर भी भेज सकते हैं, या नीचे कोई बटन दबाएँ।",
+  mediaNoticeCustomer: "धन्यवाद — हमारी टीम इसे देखेगी और ज़रूरत हुई तो यहीं जवाब देगी।",
   crisis:
     "हमें बहुत दुख है कि आप इस मुश्किल से गुज़र रहे हैं। आप अकेले नहीं हैं। कृपया अभी किसी से बात करें। टेली-मानस (Tele-MANAS) सरकार की मुफ़्त हेल्पलाइन है, जो हर दिन 24 घंटे खुली रहती है: " +
     "*14416* या *1-800-891-4416* पर कॉल करें। अगर आप या कोई और अभी खतरे में है, तो *112* पर कॉल करें। हमने अपनी टीम को बता दिया है, वे जल्द से जल्द आपको यहीं मैसेज करेंगे।",
@@ -723,7 +768,7 @@ const hi: Copy = {
   reprompt: (hint) => `${hint ? `${hint} ` : ""}कृपया नीचे दिए विकल्पों में से चुनें।`,
   hintDays: hintDaysText("hi"),
   repromptHelp: "अगर आप हमारी टीम के किसी व्यक्ति से बात करना चाहें, तो नीचे टैप करें।",
-  callRequest: `इस WhatsApp नंबर पर हम कॉल नहीं लेते। शांता राव जी से बात करने का सबसे आसान तरीका ${intro} की ${config.slots.callMinutes} मिनट की कॉल है: आप समय चुनें, और वे आपको कॉल करेंगी।`,
+  callRequest: `इस WhatsApp नंबर पर हम कॉल नहीं लेते। शांता राव जी से बात करने का सबसे आसान तरीका ${intro} की ${config.slots.callMinutes} मिनट की कॉल है: आप समय चुनें, और वे आपको कॉल करेंगी। यह ${VOICE_HI} होती है।`,
   repromptQuestion: "पूछने के लिए धन्यवाद। शांता राव जी कॉल पर इसे समझा सकती हैं। जब आप तैयार हों, नीचे दिए विकल्पों में से चुनें।",
   timeNow: `शांता राव जी अभी तुरंत कॉल नहीं कर सकतीं: वे आपके बुक किए हुए समय पर आपको कॉल करती हैं। ${hintDaysText("hi")} कृपया नीचे से कोई खाली समय चुनें।`,
   timeOutside: `माफ़ कीजिए, यह समय हमारे कॉल के समय से बाहर है। ${hintDaysText("hi")} कृपया नीचे से कोई खाली समय चुनें।`,
@@ -743,9 +788,9 @@ const hi: Copy = {
   faqAnswers: {
     what_is_this:
       "दिशा दिरा में शांता राव जी, जो MCKS पद्धति में प्रशिक्षित सर्टिफ़ाइड प्राणिक हीलर हैं, फ़ोन पर बिना छुए प्राणिक हीलिंग करती हैं। " +
-      `पहला कदम उनके साथ ${config.slots.callMinutes} मिनट की ${intro} की कॉल है।`,
+      `पहला कदम उनके साथ ${config.slots.callMinutes} मिनट की ${intro} की कॉल है: ${VOICE_HI}।`,
     how_it_works:
-      `1. कॉल का समय चुनें। 2. ${intro} का भुगतान करें। 3. शांता राव जी आपको ${config.slots.callMinutes} मिनट के लिए कॉल करेंगी। ` +
+      `1. कॉल का समय चुनें। 2. ${intro} का भुगतान करें। 3. शांता राव जी आपको ${config.slots.callMinutes} मिनट के लिए कॉल करेंगी: ${VOICE_HI}। ` +
       "4. अगर आप दोनों को ठीक लगे, तो आप पूरा सेशन या पैकेज बुक कर सकते हैं।",
     price:
       `पहली कॉल ${intro} की है। एक सेशन ${sessionPrice} का है। ` +
@@ -761,10 +806,10 @@ const hi: Copy = {
       "कृपया यहाँ सेहत से जुड़ी जानकारी या रिपोर्ट न भेजें।",
   },
   // सेशन और पैकेज (ticket 13)
-  packagesBody: "हर सेशन 60 मिनट का होता है, फ़ोन पर। एक विकल्प चुनें। ज़्यादातर लोग ₹99 की कॉल से शुरू करते हैं, ताकि शांता राव जी बता सकें कि उनके लिए क्या ठीक रहेगा।",
+  packagesBody: `हर सेशन ${config.slots.sessionMinutes} मिनट का होता है: ${VOICE_HI}। एक विकल्प चुनें। ज़्यादातर लोग ${intro} की कॉल से शुरू करते हैं, ताकि शांता राव जी बता सकें कि उनके लिए क्या ठीक रहेगा।`,
   packagesButton: "विकल्प देखें",
   rowIntroTitle: `${intro} पहली कॉल`,
-  rowIntroDesc: `शांता राव जी से ${config.slots.callMinutes} मिनट`,
+  rowIntroDesc: `शांता राव जी से ${config.slots.callMinutes} मिनट की वॉइस कॉल (वीडियो नहीं)`,
   rowSingleTitle: "एक सेशन",
   rowSingleDesc: sessionPrice,
   rowPack10Title: `${p10.sessions} सेशन`,
@@ -782,7 +827,7 @@ const hi: Copy = {
   packPending: "पैकेज का भुगतान लिंक पहले से खुला है। कृपया ऊपर दिए भुगतान बटन का इस्तेमाल करें, या कुछ मिनट बाद फिर कोशिश करें।",
   packConfirmed: (n) => `भुगतान मिल गया। आपके पास ${n} सेशन हैं। क्या अभी पहला सेशन बुक करें?`,
   btnBookSession: "सेशन बुक करें",
-  creditBooked: (day, time, left) => `आपका सेशन ${day} को ${time} बजे (भारतीय समय) बुक हो गया है। शांता राव जी उसी समय कॉल करेंगी। बचे हुए सेशन: ${left}।`,
+  creditBooked: (day, time, left) => `आपका सेशन ${day} को ${time} बजे (भारतीय समय) बुक हो गया है। शांता राव जी उसी समय कॉल करेंगी: ${VOICE_HI}। बचे हुए सेशन: ${left}।`,
   maxUpcoming: `आपके ${rules.maxUpcoming} सेशन पहले से बुक हैं। उनमें से एक होने के बाद आप अगला बुक कर सकते हैं।`,
   noCredits: "आपके पैकेज में कोई सेशन नहीं बचा है। आप \"सेशन और पैकेज\" से एक सेशन या नया पैकेज ले सकते हैं।",
   creditsLeft: (left) => `पैकेज में बचे सेशन: ${left}।`,
@@ -830,8 +875,8 @@ const hi: Copy = {
   checkingPayment: "हमें एक भुगतान मिला है जिसे हमें जाँचना है। हमारी टीम आज ही इसे ठीक करके यहीं जवाब देगी। कृपया दोबारा भुगतान न करें।",
   holdReleased: "आपके लिए रोका गया समय छोड़ दिया गया है। कोई पैसा नहीं कटा। फिर से समय चुनने के लिए नीचे दबाएँ।",
   handbackNotice: "माफ़ कीजिए, हम समय पर जवाब नहीं दे पाए। आप नीचे से बुक कर सकते हैं, या फिर से किसी व्यक्ति से बात करने को कह सकते हैं।",
-  autoFollowUp1: `हम बस यह जानना चाहते थे: क्या आपको वह मिल गया जो आप ढूँढ रहे थे? अगर आप शांता राव जी से बात करना चाहें, तो ${intro} की ${config.slots.callMinutes} मिनट की कॉल सबसे आसान तरीका है। समय आप चुनते हैं, और वे आपको कॉल करती हैं।`,
-  autoFollowUp2: `जब भी आप तैयार हों, शांता राव जी के साथ ${intro} की ${config.slots.callMinutes} मिनट की कॉल बुक कर सकते हैं। ${hoursText("hi", false)}`,
+  autoFollowUp1: `हम बस यह जानना चाहते थे: क्या आपको वह मिल गया जो आप ढूँढ रहे थे? अगर आप शांता राव जी से बात करना चाहें, तो ${intro} की ${config.slots.callMinutes} मिनट की वॉइस कॉल (वीडियो नहीं) सबसे आसान तरीका है। समय आप चुनते हैं, और वे आपको कॉल करती हैं।`,
+  autoFollowUp2: `जब भी आप तैयार हों, शांता राव जी के साथ ${intro} की ${config.slots.callMinutes} मिनट की वॉइस कॉल (वीडियो नहीं) बुक कर सकते हैं। ${hoursText("hi", false)}`,
   autoFollowUpGentle: "उम्मीद है आप ठीक हैं। अगर आप शांता राव जी से बात करना चाहें, तो बस इस मैसेज का जवाब दें। हम आपके लिए यहाँ हैं।",
   sessionReminderBody:
     `एक छोटी-सी याद: कॉल के बाद शांता राव जी ने आपको पूरा सेशन देने की बात कही थी। अगर आप आगे बढ़ना चाहें, तो नीचे एक विकल्प चुनें: एक सेशन, या ${p10.sessions} या ${p20.sessions} सेशन का पैकेज। ` +
@@ -840,17 +885,17 @@ const hi: Copy = {
     "शांता राव जी के साथ सेशन के लिए धन्यवाद।\n\n" +
     (reviewUrl ? `अगर सेशन से मदद मिली हो, तो क्या आप Google पर एक छोटा-सा रिव्यू लिखेंगे? ${reviewUrl}\n\n` : "") +
     `अगर आपके किसी जानने वाले को इससे फ़ायदा हो सकता है, तो आप उन्हें यह WhatsApp लिंक भेज सकते हैं: ${waLink}\n\nशुभकामनाओं के साथ, दिशा दिरा`,
-  sessionLinkBody: `शांता राव जी आपके साथ एक पूरा सेशन बुक करना चाहती हैं (${sessionPrice}, ${config.slots.sessionMinutes} मिनट, फ़ोन पर)। समय चुनने के लिए नीचे टैप करें; भुगतान होते ही वह समय आपका हो जाएगा।`,
+  sessionLinkBody: `शांता राव जी आपके साथ एक पूरा सेशन बुक करना चाहती हैं: ${sessionPrice}, ${config.slots.sessionMinutes} मिनट, ${VOICE_HI}। समय चुनने के लिए नीचे टैप करें; भुगतान होते ही वह समय आपका हो जाएगा।`,
   answerCall:
-    `पहली कॉल ${config.slots.callMinutes} मिनट की होती है, फ़ोन पर, आपके चुने हुए समय पर। शांता राव जी खुद आपको कॉल करती हैं, आपकी बात सुनती हैं, ` +
+    `पहली कॉल ${config.slots.callMinutes} मिनट की होती है, ${VOICE_HI}, आपके चुने हुए समय पर। शांता राव जी खुद आपको कॉल करती हैं, आपकी बात सुनती हैं, ` +
     "और बताती हैं कि वे कैसे काम करती हैं और क्या पूरा सेशन आपके लिए ठीक रहेगा। कॉल उसी भाषा में होती है जिसमें आप चैट करते हैं, अंग्रेज़ी या हिंदी।",
   answerTrust:
     "यह सही सवाल है। शांता राव जी MCKS पद्धति में प्रशिक्षित सर्टिफ़ाइड प्राणिक हीलर हैं। भुगतान सिर्फ़ Razorpay के सुरक्षित पेज पर होता है, " +
     `और हम कभी आपका PIN या OTP नहीं माँगते। अगर पहली कॉल के बाद उन्हें लगे कि सेशन आपके लिए सही नहीं है, तो आपके ${intro} वापस कर दिए जाते हैं। हम सेहत को लेकर कोई वादा नहीं करते।`,
   answerAbroad:
-    `${hoursText("hi")} कृपया अपने यहाँ के समय का अंतर देख लें। कॉल फ़ोन पर होती है, इसलिए आप कहीं से भी जुड़ सकते हैं। ` +
+    `${hoursText("hi")} कृपया अपने यहाँ के समय का अंतर देख लें। कॉल फ़ोन पर वॉइस कॉल होती है (वीडियो नहीं), इसलिए आप कहीं से भी जुड़ सकते हैं। ` +
     "भुगतान Razorpay के सुरक्षित पेज पर होता है: UPI के लिए भारतीय बैंक खाता चाहिए, कार्ड से भुगतान हो सकता है। अगर भुगतान न हो पाए, तो \"किसी से बात करें\" दबाएँ।",
-  answerInPerson: "कॉल और सेशन सिर्फ़ फ़ोन पर होते हैं, इसलिए आप कहीं से भी जुड़ सकते हैं और कहीं जाना नहीं पड़ता। शांता राव जी बेंगलुरु में रहती हैं।",
+  answerInPerson: "कॉल और सेशन सिर्फ़ फ़ोन पर वॉइस कॉल से होते हैं (सिर्फ़ आवाज़, वीडियो नहीं), इसलिए आप कहीं से भी जुड़ सकते हैं और कहीं जाना नहीं पड़ता। शांता राव जी बेंगलुरु में रहती हैं।",
   answerMedical:
     "प्राणिक हीलिंग डॉक्टर के इलाज के साथ आपकी सेहत को सहारा देने के लिए है, उसकी जगह नहीं, इसलिए हम किसी बीमारी के इलाज का वादा नहीं करते। " +
     "कृपया अपने डॉक्टर की सलाह मानते रहें, और डॉक्टर से पूछे बिना कोई दवा बंद न करें या न बदलें।",
@@ -860,6 +905,26 @@ const hi: Copy = {
   answerPayment:
     "इसके लिए माफ़ कीजिए। कृपया दोबारा भुगतान न करें। अगर पैसे कट गए और पुष्टि का मैसेज नहीं आया, तो \"किसी से बात करें\" दबाएँ, हमारी टीम जाँच करेगी। " +
     "भुगतान फेल होने पर बैंक आमतौर पर पैसे खुद लौटा देते हैं।",
+  answerVideo: "सभी कॉल और सेशन फ़ोन पर वॉइस कॉल होते हैं — वीडियो नहीं।",
+  answerSexualHealth:
+    "बताने के लिए धन्यवाद। इसमें हम मदद नहीं कर सकते। कृपया किसी योग्य डॉक्टर, जैसे यूरोलॉजिस्ट या अपने फ़िज़िशियन, से सलाह लें। " +
+    "प्राणिक हीलिंग डॉक्टर के इलाज के साथ सहारा देती है, उसकी जगह नहीं लेती।",
+  intentName: (name) =>
+    "कॉल से पहले तीन छोटे सवाल, ताकि शांता राव जी आपके बारे में थोड़ा जान सकें। आप कोई भी सवाल छोड़ सकते हैं।\n\n" +
+    (name ? `पहला: वे आपको किस नाम से बुलाएँ? "${fitName("यही नाम: ", name)}" दबाएँ, या अपना नाम लिखें।` : `पहला: आपका नाम क्या है? कृपया लिखें, या "छोड़ें" दबाएँ।`),
+  btnUseName: (name) => fitName("यही नाम: ", name),
+  btnSkip: "छोड़ें",
+  intentWork: "धन्यवाद। आप क्या काम करते हैं? कुछ शब्द काफ़ी हैं (जैसे: टीचर, गृहिणी, विद्यार्थी, रिटायर्ड)।",
+  intentArea: "और आप शांता राव जी से किस बात में मदद चाहते हैं? नीचे एक चुनें।",
+  intentAreaButton: "एक चुनें",
+  intentAreas: {
+    STRESS: "तनाव और चिंता", SLEEP: "नींद", RELATIONSHIPS: "रिश्ते और परिवार", WORK: "काम और करियर", ENERGY: "कम ऊर्जा",
+    PHYSICAL: "शारीरिक तकलीफ़", OTHER: "कुछ और",
+  },
+  intentAreaDesc: { ENERGY: "या भारीपन महसूस होना", OTHER: "कुछ शब्दों में लिखें" },
+  rowSkip: "छोड़ें",
+  intentOther: "कृपया इसके बारे में कुछ शब्द लिखें, या \"छोड़ें\" दबाएँ।",
+  intentThanks: "धन्यवाद। शांता राव जी कॉल से पहले इसे देख लेंगी।",
   prohibitedLine: "हम किसी दूसरे व्यक्ति को प्रभावित करने या उस पर काबू करने में मदद नहीं कर सकते। हमारे सेशन सिर्फ़ आपको शांत और स्थिर महसूस कराने के लिए हैं।",
   jobsLine: "यह चैट सिर्फ़ शांता राव जी के साथ कॉल बुक करने के लिए है। किसी और बात के लिए \"किसी से बात करें\" दबाएँ।",
   pageLateBody: "आपके समय के बारे में हमारी टीम WhatsApp पर मैसेज करेगी। आप यह पेज बंद कर सकते हैं।",

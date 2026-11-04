@@ -27,15 +27,17 @@ export async function wipeChats(env: Env, nowMs = Date.now()): Promise<number> {
   return res.meta.changes;
 }
 
+// Ticket 41: the work and the area they gave after paying for the call (intros.profession, help_area) go with the name, and so does the mark
+// that they typed the name themselves (name_given_at), so their WhatsApp name is used again if they write later.
+const OLD = "COALESCE((SELECT MAX(s.end_utc) FROM slots s WHERE s.owner_id = conversations.id AND s.state = 'BOOKED'), last_user_at, created_at) < ?1";
 export async function removeOldNames(env: Env, nowMs = Date.now()): Promise<number> {
   const cutoff = iso(nowMs - config.retention.nameDaysAfterLastBooking * DAY);
-  const res = await env.DB
-    .prepare(
-      `UPDATE conversations SET display_name = NULL WHERE display_name IS NOT NULL
-         AND COALESCE((SELECT MAX(s.end_utc) FROM slots s WHERE s.owner_id = conversations.id AND s.state = 'BOOKED'), last_user_at, created_at) < ?1`,
-    )
-    .bind(cutoff)
-    .run();
+  const [res] = await env.DB.batch([
+    env.DB.prepare(`UPDATE conversations SET display_name = NULL, name_given_at = NULL WHERE (display_name IS NOT NULL OR name_given_at IS NOT NULL) AND ${OLD}`).bind(cutoff),
+    env.DB
+      .prepare(`UPDATE intros SET profession = NULL, help_area = NULL WHERE (profession IS NOT NULL OR help_area IS NOT NULL) AND conversation_id IN (SELECT id FROM conversations WHERE ${OLD})`)
+      .bind(cutoff),
+  ]);
   return res.meta.changes;
 }
 
@@ -44,5 +46,6 @@ export async function removeOldNames(env: Env, nowMs = Date.now()): Promise<numb
 // keys and the audit log stay, as the law requires. Returned unrun, so the caller batches them with the audit row.
 export const wipePersonStmts = (db: Env["DB"], convId: number, nowIso: string) => [
   db.prepare("UPDATE messages SET body = NULL, media_id = NULL, media_mime = NULL, wiped_at = ?2 WHERE conversation_id = ?1 AND (body IS NOT NULL OR media_id IS NOT NULL)").bind(convId, nowIso),
-  db.prepare("UPDATE conversations SET display_name = NULL, first_question_msg = NULL WHERE id = ?1").bind(convId),
+  db.prepare("UPDATE conversations SET display_name = NULL, name_given_at = NULL, first_question_msg = NULL WHERE id = ?1").bind(convId),
+  db.prepare("UPDATE intros SET profession = NULL, help_area = NULL WHERE conversation_id = ?1 AND (profession IS NOT NULL OR help_area IS NOT NULL)").bind(convId),
 ];

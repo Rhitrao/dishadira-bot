@@ -4,6 +4,7 @@ import { DEFAULT_PRICES, priceAt } from "../business";
 import { config } from "../config";
 import { copyFor, langOf, rupees } from "../copy";
 import type { Env } from "../env";
+import { startIntent } from "../intent";
 import { paymentCleared, personState, quietActive, noSellActiveFor } from "../noise";
 import { creditPackage } from "../packages";
 import { REMINDER_AT } from "../remind";
@@ -411,20 +412,22 @@ export async function resendSkippedPaid(env: Env, nowMs = Date.now()): Promise<n
 async function confirm(env: Env, conversationId: number, paymentId: number, startUtc: string): Promise<void> {
   const conv = await env.DB.prepare("SELECT locale FROM conversations WHERE id = ?1").bind(conversationId).first<{ locale: string }>();
   const intro = await env.DB
-    .prepare("SELECT i.call_lang AS callLang FROM payments p JOIN intros i ON i.id = p.target_id WHERE p.id = ?1 AND p.purpose = 'INTRO'")
+    .prepare("SELECT i.id, i.call_lang AS callLang FROM payments p JOIN intros i ON i.id = p.target_id WHERE p.id = ?1 AND p.purpose = 'INTRO'")
     .bind(paymentId)
-    .first<{ callLang: string | null }>();
+    .first<{ id: number; callLang: string | null }>();
   const lang = langOf(conv?.locale);
   const en = formatIstLang(startUtc, "en");
   const hi = formatIstLang(startUtc, "hi");
   const p = lang === "hi" ? hi : en;
-  await sendOrTemplate(
+  const res = await sendOrTemplate(
     env,
     conversationId,
     { type: "text", text: copyFor(lang).confirmed(p.day, p.time, langOf(intro?.callLang ?? conv?.locale)) },
     { type: "template", name: "call_booked", params: [en.day, en.time], paramsHi: [hi.day, hi.time] },
     `paid:${paymentId}`, // dedupe key: one confirmation per payment
   );
+  // Ticket 41: then the three short questions (name, work, what they'd like help with), once per call, only inside the 24-hour window.
+  if (intro && (res === "SENT" || res === "UNKNOWN")) await startIntent(env, conversationId, intro.id);
 }
 
 // Cron: payments still PENDING after config.razorpay.pollAfterMinutes get a status read, then the same logic as the webhook.

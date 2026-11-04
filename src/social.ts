@@ -81,10 +81,10 @@ const SAME = { price: "price", refund: "refund", book: "book", what_is_this: "wh
 type FromWhatsApp = Exclude<RouterTopic, keyof typeof SAME>;
 const FROM_WHATSAPP = (Object.keys(config.router.topics) as RouterTopic[]).filter((t): t is FromWhatsApp => !(t in SAME));
 // Tried before our own: an illness, "black magic", a payment problem, "when is my call" (as on WhatsApp, where they come first too).
-const FIRST = ["medical", "black_magic", "payment_issue", "my_booking"] as const satisfies readonly FromWhatsApp[];
+const FIRST = ["sexual_health", "medical", "black_magic", "payment_issue", "my_booking"] as const satisfies readonly FromWhatsApp[]; // ticket 41: a sexual-function concern first
 // Answered with [Message on WhatsApp] and the WhatsApp text "Hi" instead of the booking button: no booking push after an illness is named
 // (docs/KNOWLEDGE.md §5, 59-62), and a booking or payment is looked at on WhatsApp.
-const NO_BOOK = ["medical", "my_booking", "payment_issue"] as const satisfies readonly FromWhatsApp[];
+const NO_BOOK = ["sexual_health", "medical", "my_booking", "payment_issue"] as const satisfies readonly FromWhatsApp[];
 export type Topic = Own | FromWhatsApp;
 // The questions offered as quick replies after the follow (Instagram: at most 13, titles up to 20 characters; Messenger the same).
 export const QUESTIONS = ["book", "price", "what", "how"] as const satisfies readonly Topic[];
@@ -126,8 +126,8 @@ export function socialWords(lang: Lang): Words {
   const p = prices();
   const intro = rupees(p.intro);
   const mins = config.slots.callMinutes;
-  const booking = `This is Disha Dira's automated booking assistant. Tap below to book a ${intro} ${mins}-minute call with Shantha Rao on WhatsApp. You choose the time, and she calls you.`;
-  const bookingHi = `यह दिशा दिरा का ऑटोमैटिक बुकिंग असिस्टेंट है। नीचे टैप करके WhatsApp पर शांता राव जी के साथ ${intro} की ${mins} मिनट की कॉल बुक करें। समय आप चुनते हैं, और वे आपको कॉल करती हैं।`;
+  const booking = `This is Disha Dira's automated booking assistant. Tap below to book a ${intro} ${mins}-minute call with Shantha Rao on WhatsApp. You choose the time, and she calls you: a voice call by phone (audio only, no video).`;
+  const bookingHi = `यह दिशा दिरा का ऑटोमैटिक बुकिंग असिस्टेंट है। नीचे टैप करके WhatsApp पर शांता राव जी के साथ ${intro} की ${mins} मिनट की कॉल बुक करें। समय आप चुनते हैं, और वे आपको फ़ोन पर वॉइस कॉल करती हैं (सिर्फ़ आवाज़, वीडियो नहीं)।`;
   if (lang === "hi")
     return {
       ask: "नमस्ते, दिशा दिरा में रुचि लेने के लिए धन्यवाद! हम हर हफ़्ते प्राणिक हीलिंग का एक छोटा टिप शेयर करते हैं। कृपया हमें फ़ॉलो करें, फिर नीचे टैप करें, और हमारा बुकिंग असिस्टेंट सेशन में आपकी मदद करेगा।",
@@ -148,9 +148,9 @@ export function socialWords(lang: Lang): Words {
       lines: {
         price: `शांता राव जी के साथ पहली ${mins} मिनट की कॉल ${intro} की है। एक सेशन ${rupees(p.single)} का है, या ${p.pack10.sessions} सेशन ${rupees(p.pack10.paise)} में और ${p.pack20.sessions} सेशन ${rupees(p.pack20.paise)} में।`,
         refund: `अगर पहली कॉल के बाद शांता राव जी को लगे कि सेशन आपके लिए सही नहीं है, तो ${intro} वापस कर दिए जाते हैं। कॉल छूट जाए तो एक बार मुफ़्त में नया समय चुन सकते हैं।`,
-        how: `${mins} मिनट की कॉल में शांता राव जी आपके चुने हुए समय पर उस नंबर पर कॉल करती हैं जिससे आप WhatsApp पर बुक करते हैं। आप अपनी बात बताते हैं, और वे बताती हैं कि सेशन आपके लिए सही रहेगा या नहीं।`,
+        how: `${mins} मिनट की कॉल में शांता राव जी आपके चुने हुए समय पर उस नंबर पर वॉइस कॉल करती हैं (सिर्फ़ आवाज़, वीडियो नहीं) जिससे आप WhatsApp पर बुक करते हैं। आप अपनी बात बताते हैं, और वे बताती हैं कि सेशन आपके लिए सही रहेगा या नहीं।`,
         book: `आप WhatsApp पर शांता राव जी के साथ ${intro} की ${mins} मिनट की कॉल बुक कर सकते हैं। समय आप चुनते हैं।`,
-        where: "सभी कॉल और सेशन फ़ोन पर होते हैं, इसलिए आप कहीं से भी जुड़ सकते हैं, भारत में या विदेश में (जैसे दुबई)। समय भारत के समय से होता है।",
+        where: "सभी कॉल और सेशन फ़ोन पर वॉइस कॉल से होते हैं (वीडियो नहीं), इसलिए आप कहीं से भी जुड़ सकते हैं, भारत में या विदेश में (जैसे दुबई)। समय भारत के समय से होता है।",
         what: "प्राणिक हीलिंग बिना छुए की जाने वाली एक सौम्य एनर्जी हीलिंग पद्धति है। यह डॉक्टर के इलाज के साथ चलती है, उसकी जगह नहीं लेती।",
         call: `हम यहाँ कॉल नहीं लेते और नंबर नहीं देते। शांता राव जी से बात करने का सबसे आसान तरीका ${intro} की ${mins} मिनट की कॉल है: आप WhatsApp पर समय चुनें, और वे आपको कॉल करेंगी।`,
         ...whatsAppLines("hi"),
@@ -187,9 +187,9 @@ export function socialWords(lang: Lang): Words {
     lines: {
       price: `A first ${mins}-minute call with Shantha Rao is ${intro}. A session is ${rupees(p.single)}, or ${p.pack10.sessions} sessions for ${rupees(p.pack10.paise)} and ${p.pack20.sessions} for ${rupees(p.pack20.paise)}.`,
       refund: `If Shantha Rao feels a session isn't the right fit after your first call, the ${intro} is refunded. If you miss the call, you get one free chance to pick a new time.`,
-      how: `On the ${mins}-minute call, Shantha Rao calls the number you book from on WhatsApp, at the time you pick. You share what is going on, and she explains whether a session would suit you.`,
+      how: `On the ${mins}-minute call, Shantha Rao calls the number you book from on WhatsApp, at the time you pick: a voice call (audio only, no video). You share what is going on, and she explains whether a session would suit you.`,
       book: `You can book a ${intro} ${mins}-minute call with Shantha Rao on WhatsApp. You pick the time.`,
-      where: "All calls and sessions are by phone, so you can join from anywhere, in India or abroad (such as Dubai). Times are in India time.",
+      where: "All calls and sessions are voice calls by phone (no video), so you can join from anywhere, in India or abroad (such as Dubai). Times are in India time.",
       what: "Pranic Healing is a gentle, no-touch energy healing practice. It complements medical care and is not a substitute for it.",
       call: `We don't take calls here or share a number. The quickest way to talk to Shantha Rao is the ${intro} ${mins}-minute call: you choose a time on WhatsApp, and she calls you.`,
       ...whatsAppLines("en"),

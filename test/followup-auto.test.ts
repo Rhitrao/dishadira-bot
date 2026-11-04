@@ -116,8 +116,8 @@ const WA_BOOK = { id: "menu_book", title: "Book ₹99 call" };
 
 describe("the rules", () => {
   it("the owner's wording, with the prices, minutes and hours in force", () => {
-    expect(en.autoFollowUp1).toBe("Just checking in: did you find what you were looking for? If you'd like to talk to Shantha Rao, the ₹99 15-minute call is the easiest way. You choose the time, and she calls you.");
-    expect(en.autoFollowUp2).toBe("Whenever you're ready, you can book a ₹99 15-minute call with Shantha Rao. Calls are Monday to Saturday, 2 pm to 7 pm.");
+    expect(en.autoFollowUp1).toBe("Just checking in: did you find what you were looking for? If you'd like to talk to Shantha Rao, the ₹99 15-minute voice call (no video) is the easiest way. You choose the time, and she calls you."); // ticket 41: voice only
+    expect(en.autoFollowUp2).toBe("Whenever you're ready, you can book a ₹99 15-minute voice call (no video) with Shantha Rao. Calls are Monday to Saturday, 2 pm to 7 pm.");
     expect(socialWords("en").followUp1).toBe(en.autoFollowUp1);
     expect(socialWords("en").followUp2).toBe(en.autoFollowUp2);
     expect(socialWords("en").followUpGentle).toBe("Hope you're doing okay. If you'd like to talk to Shantha Rao, just message us on WhatsApp. We're here.");
@@ -253,7 +253,7 @@ describe("WhatsApp", () => {
     await waPerson();
     fetchMock.mockClear();
     await tick(T0 + 60 * MIN);
-    expect(waBody(waSent()[0])).toContain("₹149 15-minute call");
+    expect(waBody(waSent()[0])).toContain("₹149 15-minute voice call");
     await setSetting(db, "price.intro_paise", "9900");
     await loadPrices(env());
   }, 60_000);

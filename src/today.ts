@@ -16,6 +16,7 @@ import { auditStmt, languageCsrf, refused, S, type ConsoleCtx, type ConsoleVars 
 import { consoleCopy, consoleLang, type ConsoleLang } from "./console-copy";
 import { rupees, serviceName, type ForWhom } from "./copy";
 import type { Env } from "./env";
+import { aboutHtml, OUT_OF_SCOPE, seesAbout } from "./intent";
 import { heartbeatStale } from "./mail";
 import { isOutcomeValue, recordOutcome, undoOutcome, type OutcomeValue } from "./outcomes";
 import { razorpay } from "./pay/razorpay";
@@ -148,14 +149,18 @@ export type Booking = {
   convId: number; name: string | null; waId: string; locale: string; service: string; callLang: string | null; forWhom: ForWhom | null;
   practitionerId: number | null; origin: string | null; packSize: number | null; packNo: number | null; firstBuy: number; amount: number | null;
   oid: number | null; value: string | null; tappedAt: string | null; undoUntil: string | null; appliedAt: string | null;
+  profession: string | null; helpArea: string | null; outOfScope: number; // ticket 41 (src/intent.ts)
 };
 
 const PAID = "('PAID','REFUND_PENDING','REFUNDED','REFUND_FAILED')";
+// Ticket 41: an open "consider a refund" item on this booking (src/intent.ts).
+const SCOPE = (target: string) => `EXISTS (SELECT 1 FROM attention a WHERE a.kind = '${OUT_OF_SCOPE}' AND a.resolved_at IS NULL AND a.target = ${target})`;
 // The same calls and sessions /amma lists, plus whose they are. `where` narrows to a time range or one row; ?3 is the practitioner (NULL = all).
 const CALLS_SQL = (where: string) => `SELECT 'CALL' AS kind, i.id, i.slot_id AS slotId, s.start_utc AS startUtc, s.end_utc AS endUtc, i.state,
     c.id AS convId, c.display_name AS name, c.wa_id AS waId, c.locale, i.service, i.call_lang AS callLang, i.for_whom AS forWhom,
     i.practitioner_id AS practitionerId, NULL AS origin, NULL AS packSize, NULL AS packNo, 0 AS firstBuy, ${config.prices.intro} AS amount,
-    o.id AS oid, o.value, o.tapped_at AS tappedAt, o.undo_until AS undoUntil, o.applied_at AS appliedAt
+    o.id AS oid, o.value, o.tapped_at AS tappedAt, o.undo_until AS undoUntil, o.applied_at AS appliedAt,
+    i.profession, i.help_area AS helpArea, ${SCOPE("'intro:' || i.id")} AS outOfScope
   FROM intros i JOIN slots s ON s.id = i.slot_id JOIN conversations c ON c.id = i.conversation_id
   LEFT JOIN outcomes o ON o.intro_id = i.id AND o.slot_id = i.slot_id
   WHERE s.kind = 'CALL' AND i.state IN ('PAID','RESCHEDULED','CALLED_SESSION','CALLED_NOT_FIT','MISSED','RUDE') AND (?3 IS NULL OR i.practitioner_id = ?3) AND ${where}`;
@@ -167,7 +172,10 @@ const SESSIONS_SQL = (where: string) => `SELECT 'SESSION' AS kind, se.id, se.slo
     ${FIRST_BUY} AS firstBuy,
     COALESCE((SELECT k.price_paise FROM packages k WHERE k.id = se.package_id),
              (SELECT COALESCE(p.paid_paise, p.amount_paise) FROM payments p WHERE p.purpose = 'SESSION' AND p.target_id = se.id AND p.state IN ${PAID} ORDER BY p.id LIMIT 1)) AS amount,
-    o.id AS oid, o.value, o.tapped_at AS tappedAt, o.undo_until AS undoUntil, o.applied_at AS appliedAt
+    o.id AS oid, o.value, o.tapped_at AS tappedAt, o.undo_until AS undoUntil, o.applied_at AS appliedAt,
+    (SELECT x.profession FROM intros x WHERE x.conversation_id = c.id AND x.profession IS NOT NULL ORDER BY x.id DESC LIMIT 1) AS profession,
+    (SELECT x.help_area FROM intros x WHERE x.conversation_id = c.id AND x.help_area IS NOT NULL ORDER BY x.id DESC LIMIT 1) AS helpArea,
+    ${SCOPE("'session:' || se.id")} AS outOfScope
   FROM sessions se JOIN slots s ON s.id = se.slot_id JOIN conversations c ON c.id = se.conversation_id
   LEFT JOIN intros i ON i.id = se.intro_id LEFT JOIN outcomes o ON o.session_id = se.id
   WHERE s.kind = 'SESSION' AND se.state IN ('CONFIRMED','CREDIT_BOOKED','NOT_FIT') AND (?3 IS NULL OR se.practitioner_id = ?3) AND ${where}`;
@@ -257,6 +265,8 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number) {
   } else if (b.oid === null && outcomesFor(b).length && now >= startMs(b) + OUTCOME_HOURS * HOUR) {
     extra = statusChip(t.noOutcomeYet, "attention");
   }
+  // Ticket 41: their work, what they'd like help with, and an open "consider a refund" item, before the call (src/intent.ts).
+  if (await seesAbout(c.env.DB, m, b.practitionerId)) extra = html`${aboutHtml(b, m.locale)}${extra}`;
   // A call: "Send session link (₹799)" for whoever may book for them (ticket 40, src/sessionlink.ts).
   const slink = b.kind === "CALL" ? await sessionLinkButton(c.env, m, b.convId) : "";
   if (slink) extra = html`${extra}<div class="acts">${slink}</div>`;

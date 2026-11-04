@@ -24,6 +24,7 @@ import { applyMoneyReceived } from "./requests";
 import { takeOverStmt } from "./handoff";
 import { buildExport, EXPORT_LIMITS, exportDays, exportFileName } from "./export";
 import { sessionLinkButton } from "./sessionlink";
+import { aboutHtml, aboutPerson, seesAbout } from "./intent";
 import { maySeeMedia, viewButton, viewMedia } from "./media";
 import { iso } from "./slots";
 import {
@@ -375,6 +376,11 @@ async function personPage(c: ConsoleCtx, id: number, opts: PageOpts = {}) {
 <p>${p.speaks(langName(person.locale, loc))} · ${p.firstContact(dayName(person.createdAt, loc))}</p><p>${ad}</p>
 ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person.mode === "BLOCKED" ? statusChip(p.chipBlocked, "danger") : ""}</div></div>`;
 
+  // Ticket 41: their work, what they'd like help with (from the questions after their ₹99 call), and an open "consider a refund" item.
+  const about = (await seesAbout(c.env.DB, m, target.practitionerId ?? null)) ? await aboutPerson(c.env.DB, id) : null;
+  const aboutCard = about ? aboutHtml(about, loc) : "";
+  const aboutHtmlCard = aboutCard ? html`<div class="card">${aboutCard}</div>` : "";
+
   // Take over this chat (ticket 36): only while the bot has it (not blocked, not already with the team), for someone who may reply.
   const takeOver =
     person.mode === "BOT" && canTakeOver(m, target, await hasSafetyItem(c.env, id))
@@ -507,7 +513,7 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
   }
   if (owner) more.push(confirmWith({ label: p.removeData, effect: p.removeDataEffect, confirm: p.removeDataYes, action: `${base}/remove-data`, csrf: await token(c, `people-remove:${id}`), fields: reasonField(p, "remove-reason", draft.form === "remove" ? draft.reason : "") }));
 
-  const detail = html`${head}${takeOver}${sessionLinkCard}${section(p.secNext, next)}${section(p.secPackage, packHtml)}${payHtml}<div id="chat">${section(p.secChat, chatHtml)}</div>${section(p.secSafety, safetyHtml)}${
+  const detail = html`${head}${aboutHtmlCard}${takeOver}${sessionLinkCard}${section(p.secNext, next)}${section(p.secPackage, packHtml)}${payHtml}<div id="chat">${section(p.secChat, chatHtml)}</div>${section(p.secSafety, safetyHtml)}${
     more.length ? section(p.secMore, html`<div class="acts">${more}</div>`) : ""
   }`;
   const list = listHtml({ m, p, rows: await listPeople(c.env, m, q, f, nowMs), q, f, openId: id, nowMs });

@@ -23,6 +23,10 @@ export function matchTopic(text: string): Topic | null {
 // The answer's words, for an answer that goes on top of an open booking step (src/whatsapp.ts), or null for the two action topics.
 export function topicText(cp: Copy, topic: Topic): string | null {
   switch (topic) {
+    case "sexual_health":
+      return cp.answerSexualHealth;
+    case "video":
+      return cp.answerVideo;
     case "medical":
       return cp.answerMedical;
     case "black_magic":
@@ -50,12 +54,13 @@ export function topicText(cp: Copy, topic: Topic): string | null {
   }
 }
 
-// The answer as one message with buttons. No booking push after an illness is named (KNOWLEDGE.md §5, 59-62): Help and Talk to a person only.
+// The answer as one message with buttons. No booking push after an illness or a sexual-function concern is named (KNOWLEDGE.md §5, 59-62;
+// ticket 41): Help and Talk to a person only.
 // Money trouble and refunds offer Talk to a person, which is where those go (KNOWLEDGE.md §5, 36, 37, 98).
 export function topicOut(cp: Copy, topic: Topic, noSell: boolean): Out | null {
   const text = topicText(cp, topic);
   if (text === null) return null;
-  if (topic === "medical") return menuOut(cp, true, text);
+  if (topic === "medical" || topic === "sexual_health") return menuOut(cp, true, text);
   if (topic === "payment_issue") return { type: "buttons", body: text, buttons: [{ id: "menu_person", title: cp.btnPerson }, { id: "menu_bookings", title: cp.rowMyBookings }] };
   return menuOut(cp, noSell, text, topic === "refund" || topic === "abroad");
 }
@@ -69,3 +74,10 @@ export async function sentRecently(db: D1Database, convId: number, suffix: strin
     .first();
   return row !== null;
 }
+
+// Ticket 41: outside what we offer, for the team's "consider a refund" item after a payment: a sexual-function concern, or a request to cure or
+// treat a serious illness by name (config.serious). Before a payment only the reply changes.
+export const isSexualHealth = (text: string) => hasPhrase(text, config.router.topics.sexual_health);
+// "Is it a video call?": answered in code with the fixed line, also while the assistant is on (src/whatsapp.ts).
+export const isVideoQuestion = (text: string) => hasPhrase(text, config.router.topics.video);
+export const isOutOfScope = (text: string) => isSexualHealth(text) || (hasPhrase(text, config.serious.illness) && hasPhrase(text, config.serious.cureWords));
