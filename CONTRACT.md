@@ -1,5 +1,5 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-11-03 (v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-11-04 (v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
   read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
@@ -126,6 +126,10 @@ Store only name, WhatsApp number, bookings, payments. Wipe message text CHAT_RET
 personal fields 90 days after last booking; keep dedupe keys, payment, refund and audit rows.
 Secrets, real phone numbers and customer data stay out of git, PRs, logs, fixtures and coding prompts.
   Live chat text may go to the AI provider only through src/ai.ts, redacted as above. Fixtures are synthetic.
+  v10: the owner alone may download recent chats as one file (/admin/export, /app for the owner; audited EXPORT_CHATS with counts only):
+  chats active in the last 1-30 days, a code and the last 4 digits (never the number or the name), text only while the wipe keeps it,
+  every text redacted as above plus UPI ids and the person's name; crisis/emergency chats and blocked numbers counts only. The owner may
+  analyse it (e.g. in a Claude chat) once the privacy page says so; the file never goes into git, PRs, logs, tickets or coding prompts.
 Test and live credentials and data never mix; going live switches the Worker to a fresh live D1.
 
 Release and process
