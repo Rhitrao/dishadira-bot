@@ -189,7 +189,7 @@ export async function makeGist(env: Env, convId: number, nowMs = Date.now(), for
   }
   const clean = (f: GistFields): GistFields => ({ asking: cleanField(f.asking), concerns: cleanField(f.concerns), promised: cleanField(f.promised), next: cleanField(f.next) });
   await store(JSON.stringify({ en: clean(parsed.data.en), hi: clean(parsed.data.hi) }));
-  await botAudit(db, "GIST_MADE", `conv:${convId}`, `in ${r.usage.input} out ${r.usage.output} usd ${usageUsd(r.usage).toFixed(5)}`);
+  await botAudit(db, "GIST_MADE", `conv:${convId}`, `in ${r.usage.input} out ${r.usage.output} usd ${usageUsd(r.usage).toFixed(6)}`);
   return "MADE";
 }
 
