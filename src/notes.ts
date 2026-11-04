@@ -110,7 +110,7 @@ function flashLine(c: ConsoleCtx, n: NotesCopy, where?: string) {
   return text ? html`<p class="nflash" role="status">${text}</p>` : "";
 }
 
-export const NOTES_CSS = `<style>
+export const NOTES_CSS = raw(`<style>
 .nts .lbl{display:block;font-weight:500;margin:0 0 8px}
 .nts textarea{display:block;width:100%;min-height:112px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:12px;resize:vertical}
 .nts select{display:block;width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px}
@@ -134,10 +134,11 @@ details.nx>summary{list-style:none;cursor:pointer}details.nx>summary::-webkit-de
 details.nx[open]>summary{margin-bottom:8px}
 .nx-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:flex-start}
 .nx-row>details{flex:0 0 auto}.nx-row>details[open]{flex:1 1 100%}
-.nx-row details.confirm>summary{min-height:48px;padding:10px 16px}
+.nx-row details.confirm>summary{min-height:48px;padding:10px 12px;border-color:transparent;background:transparent}
+details.nx[open]>summary.btn.primary{background:transparent;border-color:transparent;color:var(--accent);box-shadow:none;padding-left:0;font-weight:600}
 .tnotes{border-top:1px solid var(--line);margin:4px 0 12px;padding-top:4px}
 .tnotes .ph{margin-top:12px}
-</style>`;
+</style>`);
 
 // The form's fields: the text, which booking it is about, and when (Before / During / After), chosen from the time and changeable.
 async function formFields(n: NotesCopy, o: { idp: string; bookings: Booking[]; chosen: Booking | null; nowMs: number; locale: string; text?: string; showBooking: boolean }) {
@@ -219,7 +220,7 @@ export async function notesCard(c: ConsoleCtx, convId: number, practitionerId: n
   if (loose.length) groups.push(html`<div class="card nts"><h3>${n.general}</h3>${await phases(loose)}</div>`);
 
   const body = html`${NOTES_CSS}${flashLine(c, n)}${aboutHtml}${addHtml}${groups.length ? groups : html`<div class="empty"><p>${n.noNotes}</p></div>`}`;
-  return html`<div id="notes"><section><h2 class="sec"><span>${n.secNotes}</span>${timed.length ? html`<span class="n">${timed.length}</span>` : ""}</h2>${body}</section></div>`;
+  return html`<div id="notes"><section><h2 class="sec"><span>${n.secNotes}</span>${all.length ? html`<span class="n">${all.length}</span>` : ""}</h2>${body}</section></div>`;
 }
 
 // ---------- Today ----------

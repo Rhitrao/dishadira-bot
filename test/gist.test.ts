@@ -265,6 +265,7 @@ describe("when it's made (the 2-minute cron)", () => {
     for (const p of [`/app/people/${c}`, `/app/inbox/${c}`]) {
       const html = await page(p);
       expect(html, p).toContain('<div class="card gist" id="gist">');
+      expect(html, p).not.toContain("&lt;style");
       expect(html, p).toContain("<li><b>Asking about:</b> Asking about help with sleep</li>");
       expect(html, p).toContain("<li><b>Concerns:</b> Prefers evening calls in Hindi</li>");
       expect(html, p).not.toContain("<b>Promised:</b>"); // "nothing mentioned" is left out

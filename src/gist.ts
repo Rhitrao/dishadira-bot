@@ -14,7 +14,7 @@
 //  - Stored in `gists`, wiped with the chat text and by Remove their data (src/wipe.ts); never in the export, emails or notifications.
 //  - The owner's switch in Settings, "Chat gist (AI)", on by default, audited (GIST_SWITCH); off: facts only.
 import { Hono } from "hono";
-import { html } from "hono/html";
+import { html, raw } from "hono/html";
 import { z } from "zod";
 import { postToModel, toolInput, usageUsd } from "./ai";
 import { can, memberCsrf, type Member } from "./auth";
@@ -279,7 +279,7 @@ export async function gistFacts(env: Env, m: Member, convId: number, practitione
   const open = packs.find((k) => k.left > 0);
   const credits = open ? n.creditsLeft(open.left, open.size) : null;
   const nb = bookings.find((b) => LIVE.includes(b.state) && Date.parse(b.endUtc) > nowMs);
-  const next = nb ? `${bookingWhat(n, nb)} · ${when(nb.startUtc, loc, nowMs)}` : n.noNext;
+  const next = nb ? `${bookingWhat(n, nb)} · ${istDay(Date.parse(nb.startUtc)) === istDay(nowMs) ? n.todayAt(clock(nb.startUtc, loc)) : when(nb.startUtc, loc, nowMs)}` : n.noNext;
 
   // Open items: waiting for a person, safety, outside what we offer, a refund.
   const targets = [`conv:${convId}`, ...bookings.map((b) => `${b.kind === "CALL" ? "intro" : "session"}:${b.id}`)];
@@ -321,7 +321,7 @@ export async function gistFacts(env: Env, m: Member, convId: number, practitione
 }
 
 // ---------- the card ----------
-const GIST_CSS = `<style>
+const GIST_CSS = raw(`<style>
 .gist h3{font-size:20px;font-weight:600;margin:0}
 .gist dl{display:grid;grid-template-columns:minmax(0,1fr);gap:0 16px;margin:8px 0 0}
 .gist dt{color:var(--muted);font-size:16px;margin:12px 0 0}.gist dd{margin:0;overflow-wrap:anywhere}
@@ -332,8 +332,8 @@ const GIST_CSS = `<style>
 .gai .gw{color:var(--muted);font-size:16px;margin:8px 0 0}
 .gist .gflash{font-weight:600;margin:12px 0 0}
 .gist form{margin-top:12px}
-@media (min-width:900px){.gist dl{grid-template-columns:9.5em minmax(0,1fr)}.gist dt,.gist dd{margin:10px 0 0}}
-</style>`;
+@media (min-width:900px){.gist dl{grid-template-columns:7.5em minmax(0,1fr)}.gist dt,.gist dd{margin:10px 0 0}}
+</style>`);
 
 type Row = { summary: string | null; madeAt: string | null; held: number };
 const FLASH: Record<string, keyof NotesCopy> = { done: "refreshed", failed: "refreshFailed", soon: "refreshSoon", nothing: "refreshNothing", cap: "aiCap", off: "aiOff" };

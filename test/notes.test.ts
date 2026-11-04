@@ -89,6 +89,7 @@ describe("writing, editing and deleting notes", () => {
     expect(audit).toEqual([{ actor: OWNER, memberId: 1, target: `conv:${conv}`, detail: `note ${n.id}, call ${call}, before` }]);
     const page = await (await h.get(`/app/people/${conv}?n=saved`)).text();
     expect(page).toContain("Note saved.");
+    expect(page).not.toContain("&lt;style"); // the notes' styles are styles, not text
     expect(page).toContain("Wants help with sleep.\nPrefers Hindi.");
     expect(page).toMatch(/<h2 class="sec"><span>Notes<\/span><span class="n">1<\/span>/);
     expect(page).toContain("₹99 call · Wed, 4 Nov, 2:30 pm");
