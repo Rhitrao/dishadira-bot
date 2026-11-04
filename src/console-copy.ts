@@ -159,6 +159,8 @@ const en = {
   tpl_package_confirmed: "package confirmed",
   tpl_session_booked: "session booked",
   tpl_follow_up: "follow-up",
+  tpl_session_reminder: "session reminder",
+  tpl_review_ask: "review and referral ask",
   tplOther: "an update",
   showEarlier: "Show earlier messages",
 
@@ -351,6 +353,8 @@ const hi: ConsoleCopy = {
   tpl_package_confirmed: "पैकेज पक्का",
   tpl_session_booked: "सेशन बुक हुआ",
   tpl_follow_up: "फ़ॉलो-अप",
+  tpl_session_reminder: "सेशन की याद",
+  tpl_review_ask: "रिव्यू और रेफ़रल",
   tplOther: "एक जानकारी",
   showEarlier: "पहले के संदेश देखें",
 

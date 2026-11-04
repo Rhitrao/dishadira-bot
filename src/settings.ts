@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { can, listMembers, memberCsrf, WORKSPACE_ID, type Member } from "./auth";
+import { AFTER_SWITCHES, afterKey, afterSwitches, isAfterSwitch, setAfterSwitchStmt } from "./aftercall";
 import { ACCENTS, accentOf, chosenIds, DEFAULT_PRICES, isAccent, KEYS, loadPrices, PRICE_NAMES, pricePaise, readPrices, staffReadsChat, validPrice, type AccentName, type PriceName, type Prices } from "./business";
 import { config } from "./config";
 import { auditStmt, languageCsrf, refused, type ConsoleCtx, type ConsoleVars } from "./console";
@@ -77,6 +78,19 @@ const en = {
   markBack: "The practitioner is back",
   switched: "Switch changed.",
   envIsMaster: "That's off for this copy of the bot, so it can't be turned on here.",
+  // After the call (ticket 40)
+  secAfter: "After the call",
+  afterReminder: "After-call reminder",
+  afterReminderWhy: (h: number) =>
+    `When the practitioner marks a call "Session" and the customer hasn't paid or booked ${h} hours after the offer, the bot sends one gentle reminder with the same options. Never at night, never to anyone who said stop.`,
+  afterReview: "Review & referral ask",
+  afterReviewWhy:
+    "The morning after a paid session, one thank-you asking for a short Google review and giving a WhatsApp link to share with a friend. At most once in 90 days per person; never after Not right fit, a refund, rudeness or a safety message. No discount or gift for a review.",
+  afterNoLink: "No Google review link is set yet, so the review sentence is left out. Ask Claude to add it to the bot's settings.",
+  afterTemplate: (name: string) => `When the WhatsApp 24-hour window has closed this needs the template "${name}" approved in Meta; until then it is skipped and counted in the daily summary.`,
+  turnOn: "Turn on",
+  turnOff: "Turn off…",
+  turnOffConfirm: (what: string) => `Turn off: ${what}`,
   // Emails
   secEmails: "Emails",
   digestWho: "Who gets the daily summary (9 pm)",
@@ -204,6 +218,18 @@ const hi: Words = {
   markBack: "प्रैक्टिशनर वापस आ गए हैं",
   switched: "स्विच बदल गया।",
   envIsMaster: "यह बॉट की इस कॉपी में बंद है, इसलिए यहाँ से चालू नहीं हो सकता।",
+  secAfter: "कॉल के बाद",
+  afterReminder: "कॉल के बाद याद दिलाना",
+  afterReminderWhy: (h) =>
+    `जब प्रैक्टिशनर कॉल पर "सेशन" चुनें और ऑफ़र के ${h} घंटे बाद तक ग्राहक ने भुगतान या बुकिंग न की हो, तो बॉट उन्हीं विकल्पों के साथ एक बार हल्के से याद दिलाता है। रात में कभी नहीं, और "बंद करें" कहने वालों को कभी नहीं।`,
+  afterReview: "रिव्यू और रेफ़रल",
+  afterReviewWhy:
+    "भुगतान वाले सेशन के अगले दिन सुबह, एक धन्यवाद संदेश: Google पर छोटा रिव्यू लिखने का अनुरोध, और किसी दोस्त को भेजने के लिए WhatsApp लिंक। एक व्यक्ति को 90 दिन में ज़्यादा से ज़्यादा एक बार; 'सही नहीं', रिफ़ंड, बदतमीज़ी या सुरक्षा संदेश के बाद कभी नहीं। रिव्यू के बदले कोई छूट या तोहफ़ा नहीं।",
+  afterNoLink: "Google रिव्यू का लिंक अभी सेट नहीं है, इसलिए रिव्यू वाला वाक्य हटा दिया जाता है। इसे जोड़ने के लिए Claude से कहें।",
+  afterTemplate: (name) => `WhatsApp की 24 घंटे की खिड़की बंद होने पर इसके लिए Meta में "${name}" टेम्पलेट मंज़ूर होना चाहिए; तब तक यह छोड़ दिया जाता है और रोज़ की रिपोर्ट में गिना जाता है।`,
+  turnOn: "चालू करें",
+  turnOff: "बंद करें…",
+  turnOffConfirm: (what) => `बंद करें: ${what}`,
   secEmails: "ईमेल",
   digestWho: "रोज़ की रिपोर्ट (रात 9 बजे) किसे जाए",
   safetyWho: "सुरक्षा संपर्क: संकट वाले संदेश पर तुरंत किसे ईमेल जाए",
@@ -277,6 +303,8 @@ const ACTION_WORDS: Record<string, { en: string; hi: string }> = {
   PRICE_CHANGED: { en: "Changed a price", hi: "दाम बदला" },
   SWITCH_CHANGED: { en: "Changed a bot switch", hi: "बॉट का स्विच बदला" },
   ADMIN_SWITCH: { en: "Changed a bot switch", hi: "बॉट का स्विच बदला" },
+  AFTER_SWITCH: { en: "Changed an after-call message switch", hi: "कॉल के बाद वाले संदेश का स्विच बदला" },
+  ADMIN_AFTER_SWITCH: { en: "Changed an after-call message switch", hi: "कॉल के बाद वाले संदेश का स्विच बदला" },
   BUSINESS_CHANGED: { en: "Changed the business details", hi: "बिज़नेस की जानकारी बदली" },
   HOLIDAY_ADDED: { en: "Marked a holiday", hi: "छुट्टी तय की" },
   HOLIDAY_REMOVED: { en: "Removed a holiday", hi: "छुट्टी हटाई" },
@@ -317,7 +345,8 @@ const KEY_WORDS: Record<string, { en: string; hi: string }> = {
   [KEYS.intro]: { en: "First call price", hi: "पहली कॉल का दाम" }, [KEYS.single]: { en: "Session price", hi: "सेशन का दाम" },
   [KEYS.pack10]: { en: "10-session package price", hi: "10 सेशन के पैकेज का दाम" }, [KEYS.pack20]: { en: "20-session package price", hi: "20 सेशन के पैकेज का दाम" },
   [KEYS.digest]: { en: "Daily summary", hi: "रोज़ की रिपोर्ट" }, [KEYS.safety]: { en: "Safety contact", hi: "सुरक्षा संपर्क" },
-  [KEYS.staffReadChat]: { en: "Staff read chats", hi: "स्टाफ़ चैट पढ़े" }, [KEYS.accent]: { en: "Accent colour", hi: "मुख्य रंग" }, [KEYS.locale]: { en: "Language for new members", hi: "नए सदस्यों की भाषा" },
+  [KEYS.staffReadChat]: { en: "Staff read chats", hi: "स्टाफ़ चैट पढ़े" }, "after.reminder": { en: "After-call reminder", hi: "कॉल के बाद याद दिलाना" },
+  "after.review": { en: "Review & referral ask", hi: "रिव्यू और रेफ़रल" }, [KEYS.accent]: { en: "Accent colour", hi: "मुख्य रंग" }, [KEYS.locale]: { en: "Language for new members", hi: "नए सदस्यों की भाषा" },
 };
 function targetText(target: string, locale: string) {
   const l = consoleLang(locale);
@@ -497,6 +526,26 @@ ${bForm?.bad ? html`<span class="err">${w.badName}</span>` : html`<span class="h
     }),
   );
 
+  // After the call (ticket 40): two on/off switches, owner only like the rest of this page
+  const after = await afterSwitches(env.DB);
+  const afterCards = await Promise.all(
+    AFTER_SWITCHES.map(async (n) => {
+      const title = n === "reminder" ? w.afterReminder : w.afterReview;
+      const why = n === "reminder" ? w.afterReminderWhy(config.afterCall.reminderAfterHours) : w.afterReviewWhy;
+      const on = after[n];
+      const post = async (v: "on" | "off") => ({ action: "/app/settings/after", csrf: await token(c, `after:${n}:${v}`), fields: { name: n, v } });
+      const act = on
+        ? confirmStep({ label: w.turnOff, effect: why, confirm: w.turnOffConfirm(title), post: await post("off") })
+        : html`<form method="post" action="/app/settings/after">${hidden("csrf", (await post("on")).csrf)}${hidden("name", n)}${hidden("v", "on")}<button class="btn primary" type="submit">${w.turnOn}</button></form>`;
+      const notes = [
+        n === "review" && !config.afterCall.googleReviewUrl ? w.afterNoLink : "",
+        w.afterTemplate(n === "reminder" ? "session_reminder" : "review_ask"),
+      ].filter(Boolean);
+      return html`<article class="card" id="after-${n}"><h3>${title}</h3>${on ? statusChip(w.on, "done") : statusChip(w.paused, "attention")}<p class="why">${why}</p>
+${notes.map((x) => html`<p class="why">${x}</p>`)}<div class="acts">${act}</div></article>`;
+    }),
+  );
+
   // Emails
   const digestSet = new Set(digestIds?.length ? digestIds : owner ? [owner.id] : []);
   const safetyId = safetyIds?.find((id) => active.some((x) => x.id === id)) ?? owner?.id;
@@ -534,7 +583,7 @@ ${bForm?.bad ? html`<span class="err">${w.badName}</span>` : html`<span class="h
   const system = await systemCard(c, now);
   const body = html`${screenHead("settings", lang)}
 ${section(w.secBusiness, business)}${section(w.secPrices, pricesCard)}${section(w.secTeam, team)}${section(w.secBot, switchCards)}
-${section(w.secEmails, emails)}${section(w.secPayments, rzp)}${section(w.secPrivacy, privacy)}${section(w.secSystem, system)}`;
+${section(w.secAfter, afterCards)}${section(w.secEmails, emails)}${section(w.secPayments, rzp)}${section(w.secPrivacy, privacy)}${section(w.secSystem, system)}`;
   return ownerPage(c, { active: "settings", title: SETTINGS_TITLE[consoleLang(lang)], body, flash: o.flash, status: o.status, back: "/app/settings" });
 }
 const SETTINGS_TITLE = { en: "Settings", hi: "सेटिंग्स" };
@@ -645,6 +694,17 @@ settings.post("/switch", async (c) => {
   ]);
   if (name === "AMMA_AWAY" && v === "on") await raiseAwayItems(c.env);
   return back(c, "switched", `sw-${name.toLowerCase()}`);
+});
+
+// ---- After the call (ticket 40): the reminder and the review ask, each on or off; audited ----
+settings.post("/after", async (c) => {
+  const f = await formOf(c);
+  const name = one(f.name);
+  const v = one(f.v);
+  if (!isAfterSwitch(name) || (v !== "on" && v !== "off")) return c.text("Bad request", 400);
+  if (!(await okToken(c, f, `after:${name}:${v}`))) return c.text("Forbidden", 403);
+  await c.env.DB.batch([setAfterSwitchStmt(c.env.DB, name, v === "on"), auditStmt(c, "AFTER_SWITCH", afterKey(name), v)]);
+  return back(c, "switched", `after-${name}`);
 });
 
 // ---- Who gets the daily summary and the crisis email: active members only ----

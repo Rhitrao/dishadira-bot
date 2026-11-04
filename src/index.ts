@@ -3,6 +3,7 @@ import type { Env } from "./env";
 import { admin } from "./admin";
 import { loadPrices } from "./business";
 import { amma } from "./amma";
+import { cleanAfterCall, reviewAsks, sessionReminders } from "./aftercall";
 import { cleanFollowUps, whatsappFollowUps } from "./followup";
 import { serveFont } from "./fonts";
 import { consoleApp } from "./console";
@@ -106,7 +107,7 @@ const scheduled = async (event: { cron: string; scheduledTime?: number }, env: E
   // One failing job must not stop the others; each is safe to run again.
   for (const job of [applyDueOutcomes, retryRefunds, reconcile]) await job(env, provider).catch(() => 0);
   for (const job of [raiseAwayItems, raiseTapReminders, returnStaleHumans, sendAlerts, wipeChats, nudgeWaitingChats, mailOpenRequests, nudgeUnpaidHolds, resendSkippedPaid, sendRefundNotices, cleanSocial,
-    whatsappFollowUps, socialFollowUps, cleanFollowUps]) await job(env).catch(() => 0);
+    whatsappFollowUps, socialFollowUps, cleanFollowUps, sessionReminders, reviewAsks, cleanAfterCall]) await job(env).catch(() => 0);
   await runDailyJobs(env, event.scheduledTime ?? Date.now()).catch(() => undefined);
 };
 

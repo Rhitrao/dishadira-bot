@@ -5,6 +5,7 @@ import { config } from "./config";
 import type { Env } from "./env";
 import { sendAlerts, sendEmailToEach } from "./mail";
 import { formatIstParts, iso, istDay } from "./slots";
+import { afterCallLines } from "./aftercall";
 import { followUpLines } from "./followup";
 import { socialLines } from "./social";
 import { switchStates } from "./switches";
@@ -222,6 +223,9 @@ export async function digestText(env: Env, nowMs = Date.now()): Promise<string> 
     "",
     "Automatic follow-ups (last 24 hours)",
     ...(await followUpLines(env, nowMs)),
+    "",
+    "After the call (last 24 hours)",
+    ...(await afterCallLines(env, nowMs)),
     "",
     "Worth a follow-up (last 24 hours, not paid yet)",
     ...(leads.length ? leads.map((l) => `- ${firstName(l.name)} · ${consoleLink(env, `/admin/conv/${l.id}`)}`) : ["- Nobody."]),

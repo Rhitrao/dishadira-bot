@@ -1,12 +1,12 @@
 # WhatsApp templates to submit to Meta
 
-Seven message templates. Meta must approve them before the bot can message a customer more than 24 hours after their last message (day-before reminders, a booking confirmation after a late payment, and so on). Until a template is approved the bot does **not** send it; it raises an item in Rohit's queue instead.
+Eight message templates for bookings and payments (1 to 8), plus three from ticket 40 (9 to 11). Meta must approve them before the bot can message a customer more than 24 hours after their last message (day-before reminders, a booking confirmation after a late payment, and so on). Until a template is approved the bot does **not** send it; it raises an item in Rohit's queue instead.
 
 How to submit (WhatsApp Manager → Message templates → Create template), for every template below:
 
-- **Category:** Utility. Never Marketing.
+- **Category:** Utility, except `review_ask` and `session_reminder` (Marketing; see each one for why).
 - **Name:** exactly as written (lower case, underscores). **Language:** English.
-- **Header and footer:** none. **Buttons:** none, except `session_offer` and `package_confirmed`, which have one Quick reply button each (see below).
+- **Header and footer:** none. **Buttons:** none, except `session_offer`, `package_confirmed` and `session_reminder`, which have one Quick reply button each (see below).
 - **Variables:** written `{{1}}`, `{{2}}`, `{{3}}`. Paste the sample values shown (Meta requires them; they are examples, not real data).
 - Do not add offers, discounts, emojis or promotional words. Each text is a confirmation, reminder or account update about something the customer already did.
 
@@ -138,6 +138,41 @@ We're following up on your message to our team. Please reply here when it suits 
 
 No variables, so no sample values.
 
+## 9. session_reminder (ticket 40)
+
+Sent once, 48 hours after the session offer (template 2 or the same list in the chat), when the customer has not paid or booked anything and their 24-hour window has closed. Never at night, never to anyone who said stop, is blocked, is with the team, or sent a safety message. The owner turns it off in Settings ("After-call reminder"). No variables. One Quick reply button.
+
+**Category: Marketing.** Meta's Utility category is for a transaction the customer has already agreed to; this reminds them of an offer they have not taken up, which Meta counts as Marketing (it already filed `session_offer`, a very similar message, under Marketing). Submitting it as Utility would most likely be re-categorised or rejected. As a Marketing template it costs more per message in India, and customers see Meta's "Stop promotions" option; that is fine for a single message.
+
+**Body**
+
+```
+A gentle reminder: after your call, Shantha Rao offered you a full session. If you'd like to go ahead, tap below to see your options. If now isn't the right time, that's completely fine.
+```
+
+**Button:** one **Quick reply**, text exactly `See options` (as `session_offer`: a tap on it, or any reply, shows the list of a single session, 10 or 20).
+
+No variables, so no sample values. Until it is approved (`approved: false` in `src/config.ts`), a reminder whose window has closed is not sent; the 9pm summary counts it ("not sent (the WhatsApp template isn't approved yet)"), and it is never sent later for that offer.
+
+## 10. review_ask (ticket 40)
+
+Sent once, the morning after a paid session (from 10 am India time), when the 24-hour window has closed. At most once per person in 90 days; never after "Not right fit", a refund, rudeness, a "Talk to a person" request, a safety message, or "stop". The owner turns it on in Settings ("Review & referral ask"; off until the Google review link is in `src/config.ts`, `afterCall.googleReviewUrl`). No buttons.
+
+**Category: Marketing.** It asks for a review and for a referral, which is promotional by Meta's rules (Utility must be about the customer's own transaction). No discount, gift or anything else is offered for a review (Google does not allow incentives for reviews), and the wording must stay that way.
+
+**Body**
+
+```
+Thank you for your session with Shantha Rao. If the session helped, would you share a short Google review? {{1}} If someone you know might benefit, you can share this WhatsApp link: {{2}} With warm wishes, Disha Dira
+```
+
+| Variable | Meaning | Sample value |
+|---|---|---|
+| {{1}} | The Google review link (`afterCall.googleReviewUrl`) | https://g.page/r/EXAMPLE/review |
+| {{2}} | The WhatsApp link to pass on: wa.me to the business number, with "Hi, I was referred by a friend" filled in | https://wa.me/910000000000?text=Hi%2C%20I%20was%20referred%20by%20a%20friend |
+
+Inside the 24-hour window the same sentences go as a normal message, with line breaks; without a review link the review sentence is left out there, and outside the window nothing is sent (this template always has the link).
+
 ---
 
 ## Hindi versions
@@ -209,3 +244,19 @@ Samples: {{1}} बुध, 7 अक्टूबर · {{2}} दोपहर 2:00 
 ```
 
 No variables.
+
+### 9. session_reminder_hi
+
+```
+एक छोटी-सी याद: कॉल के बाद शांता राव जी ने आपको पूरा सेशन देने की बात कही थी। अगर आप आगे बढ़ना चाहें, तो अपने विकल्प देखने के लिए नीचे टैप करें। अगर अभी सही समय नहीं है, तो कोई बात नहीं।
+```
+
+One Quick reply button, text `विकल्प देखें`. No variables. Category Marketing, as the English one.
+
+### 10. review_ask_hi
+
+```
+शांता राव जी के साथ सेशन के लिए धन्यवाद। अगर सेशन से मदद मिली हो, तो क्या आप Google पर एक छोटा-सा रिव्यू लिखेंगे? {{1}} अगर आपके किसी जानने वाले को इससे फ़ायदा हो सकता है, तो आप उन्हें यह WhatsApp लिंक भेज सकते हैं: {{2}} शुभकामनाओं के साथ, दिशा दिरा
+```
+
+Samples as the English one. Category Marketing. The Hindi of 9 and 10 is a draft for a native speaker to read before it is submitted.

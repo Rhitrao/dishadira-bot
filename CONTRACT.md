@@ -1,5 +1,5 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-11-03 (v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-11-04 (v10: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
   read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
@@ -22,7 +22,7 @@ DIGEST_TO, and member addresses the owner has verified in Cloudflare Email Routi
 shows the one-time link, with a "Send on WhatsApp" link and a field to copy it. Static site is separate (Cloudflare Pages). Native fetch/Web Crypto. Runtime libs: hono, zod, jose.
 Vitest + wrangler in GitHub Actions. Pin versions, commit the lockfile.
 AI: Anthropic API (Claude Haiku) answers typed questions only, behind the AI_REPLIES flag, grounded only in docs/KNOWLEDGE.md.
-Not in v1: voice, broadcasts, marketing templates, queues, Durable Objects, ORMs, React frameworks,
+Not in v1: voice, broadcasts, marketing templates (v10 exception below), queues, Durable Objects, ORMs, React frameworks,
 vector DBs, third-party CRMs, Supabase, Next.js. Official Meta WhatsApp Cloud API only; no WhatsApp Web automation.
 Reference only: github.com/ArnasDon/wacrm (MIT) for webhook verification, dedupe, template-status and handoff patterns.
 Copy small pieces only, keep its MIT notice in a NOTICE file, never vendor the app.
@@ -96,8 +96,17 @@ Automatic follow-ups (v8), on the channel the person wrote on (WhatsApp, Instagr
   20 hours, no price, no booking button. Never after a paid booking (ever), "I booked/paid", stop/opt-out, a block or an insult, a safety
   message, human takeover, while SENDS is off or paused, or while Amma is away; an Instagram/Messenger contact whose code opened a
   WhatsApp chat gets WhatsApp's only. Prices, minutes and hours from the prices and config in force.
+After the call (v10, owner's decision 4 Nov 2026; each a 1:1 message to one customer about their own call or session, never a broadcast):
+  one session reminder 48 hours after an untaken session offer (the same options; never after a payment or booking), and one review and
+  referral ask the morning after a paid session (from 10:00 IST; a Google review link from config and a wa.me link to the business number;
+  at most once per person in 90 days; never after Not right fit, a refund, a complaint, rudeness or a safety message; no incentive for a
+  review). Both: exclusions and night hours as the automatic follow-ups, claimed atomically, once; owner switches in Settings (reminder on,
+  review off by default). The team may also send a customer who had (or has) a ₹99 call a ₹799 session link from /app, with a held time
+  (the same guarded hold and link) or for the customer to choose; audited. These are the only marketing templates allowed:
+  session_reminder and review_ask (both `approved: false` until Meta approves them; skipped and counted until then).
 Outside the 24-hour window only approved templates: call_booked, session_offer, session_confirmed, reminder,
-  payment_update, package_confirmed, session_booked, follow_up (no variables; Hindi follow_up_hi). All UTILITY. follow_up stays
+  payment_update, package_confirmed, session_booked, follow_up (no variables; Hindi follow_up_hi), and v10's session_reminder,
+  review_ask (MARKETING) and session_link (UTILITY). All others UTILITY. follow_up stays
   `approved: false` in config until Meta approves it. If a needed template isn't approved, raise attention instead of sending.
 
 Amma's page (/amma)
