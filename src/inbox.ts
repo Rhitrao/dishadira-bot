@@ -115,7 +115,7 @@ const INBOX_CSS = `
 .ph{display:flex;align-items:flex-start;gap:16px}.ph>div{min-width:0;flex:1}
 .views .n{margin-left:8px;color:inherit;opacity:.85}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}
-.ibx .chip{white-space:normal}
+.ibx .chip{white-space:normal;border-radius:14px}
 .ibx .row{display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
 .ibx .row .chips{margin:4px 0 0}
 .who-h{font-size:20px;font-weight:600;margin:0}

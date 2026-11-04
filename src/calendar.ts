@@ -161,7 +161,7 @@ const CAL_CSS = `
 .md{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-height:64px;padding:6px 2px;border-radius:12px;background:var(--surface);border:1px solid var(--line);color:var(--ink);text-decoration:none;overflow:hidden}
 .md:hover{border-color:var(--muted)}
 .md .dn{font-size:18px;font-weight:600;line-height:1.2}
-.md .cnt{font-size:16px;line-height:1.1;color:var(--accent);font-weight:600}
+.md .cnt{font-size:16px;line-height:1.25;color:var(--accent);font-weight:600;background:var(--accent-tint);border-radius:999px;padding:0 7px}
 .md .dots{display:flex;flex-wrap:wrap;justify-content:center;gap:3px;max-width:40px}
 .md .dots i{width:7px;height:7px;border-radius:50%;background:var(--accent)}
 .md .dots i.s{background:var(--gold)}

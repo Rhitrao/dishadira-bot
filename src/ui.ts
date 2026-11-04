@@ -265,7 +265,8 @@ details.confirm .panel .btn{width:100%}
 .tabbar .on{color:var(--accent);font-weight:600}
 .tabbar .on .ic{background:var(--accent-tint);box-shadow:inset 0 -2px 0 var(--gold)}
 .tabbar .badge{position:absolute;top:2px;left:calc(50% + 8px)}
-.tabbar details{position:relative}
+.tabbar details{position:relative;display:flex}
+.tabbar details>summary{flex:1}
 .tabbar .sheet{position:absolute;right:0;bottom:calc(100% + 12px);width:240px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:8px;box-shadow:0 16px 40px var(--shade)}
 .tabbar .sheet a{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 12px;border-radius:var(--r-sm);color:var(--ink);text-decoration:none;font-weight:500}
 .tabbar .sheet a.on{background:var(--accent-tint);color:var(--accent)}
