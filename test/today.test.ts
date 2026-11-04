@@ -621,3 +621,32 @@ describe("the page", () => {
     expect(forms(html).find((f) => f.action === "/app/language")).toBeTruthy();
   });
 });
+
+describe("ticket 41: what they told us after paying, on the call card and their page", () => {
+  it("work, the area and an open 'consider a refund' item: the owner, the practitioner whose call it is, staff only while they may read chats", async () => {
+    const b = await booking({ name: "Asha Test" });
+    await db.prepare("UPDATE intros SET profession = 'Schoolteacher', help_area = 'SLEEP' WHERE id = ?1").bind(b.id).run();
+    await db.prepare("INSERT INTO attention (kind, target) VALUES ('OUT_OF_SCOPE', ?1)").bind(`intro:${b.id}`).run();
+    const scope = "Check this booking: the concern may be outside what we offer — consider a refund.";
+    for (const who of [OWNER, PRAC, STAFF]) {
+      const html = await page(who);
+      expect(html, who).toContain("Work: Schoolteacher · Wants help with: Sleep");
+      expect(html, who).toContain(scope);
+      const person = decode(await (await get(`/app/people/${b.conv}`, who)).text());
+      expect(person, who).toContain("Work: Schoolteacher · Wants help with: Sleep");
+    }
+    expect(await page(PRAC2)).not.toContain("Schoolteacher"); // not their call
+    await db.prepare("INSERT INTO settings (key, value) VALUES ('privacy.staff_read_chat', 'false')").run();
+    expect(await page(STAFF)).not.toContain("Schoolteacher");
+    expect(await page(STAFF)).not.toContain(scope);
+    expect(decode(await (await get(`/app/people/${b.conv}`, STAFF)).text())).not.toContain("Schoolteacher");
+    // Hindi console: the area in Hindi.
+    await db.prepare("UPDATE members SET locale = 'hi' WHERE email = ?1").bind(OWNER).run();
+    expect(await page(OWNER)).toContain("काम: Schoolteacher · किस बात में मदद चाहिए: नींद");
+    // Amma marks the call: once the outcome applies, the item is settled.
+    await db.prepare("UPDATE members SET locale = 'en' WHERE email = ?1").bind(OWNER).run();
+    expect((await tap(PRAC, b.id, "SESSION")).status).toBeLessThan(400);
+    await applyDueOutcomes(env(), razorpay(env()), NOW + 11 * MIN);
+    expect(await count("SELECT COUNT(*) AS n FROM attention WHERE kind = 'OUT_OF_SCOPE' AND resolved_at IS NULL")).toBe(0);
+  }, 90_000);
+});

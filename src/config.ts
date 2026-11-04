@@ -83,10 +83,10 @@ export const config = {
     // "we don't take calls on this number" line and the menu (src/gate.ts CALL_REQUEST). No number is ever given.
     callRequest: [
       "call me", "call me back", "call back", "callback", "can i call", "can we call", "may i call", "i want to call", "i will call", "want to call", "call you",
-      "video call", "voice call", "whatsapp call", "phone call me", "phone me",
+      "voice call", "whatsapp call", "phone call me", "phone me", // ticket 41: "video call" is the router's video topic (no video, voice calls only)
       "phone number", "contact number", "mobile number", "your number", "number please", "number pls", "send number", "give number", "give me number",
       "call karo", "call kar do", "call kijiye", "call karna hai", "phone karo", "number do", "number dijiye", "number bhejo",
-      "मुझे कॉल करो", "मुझे कॉल करें", "मुझे कॉल कीजिए", "कॉल करो", "कॉल कीजिए", "कॉल कर सकते", "कॉल कर सकती", "वीडियो कॉल", "फोन करो", "फोन नंबर", "नंबर दो", "नंबर दीजिए", "नंबर भेजो", "अपना नंबर",
+      "मुझे कॉल करो", "मुझे कॉल करें", "मुझे कॉल कीजिए", "कॉल करो", "कॉल कीजिए", "कॉल कर सकते", "कॉल कर सकती", "फोन करो", "फोन नंबर", "नंबर दो", "नंबर दीजिए", "नंबर भेजो", "अपना नंबर",
     ],
     callRequestMaxWords: 12,
     // ... unless it also has one of these: it is about a call she makes ("she didn't call me", "can she call me now?"), so the assistant answers.
@@ -310,11 +310,29 @@ export const config = {
       },
     },
     topics: {
+      // Ticket 41 (owner, 4 Nov 2026): a sexual-function concern is outside what we offer. Kindly referred to a doctor, no booking push, and
+      // never read as flirting or harassment: src/whatsapp.ts answers it before the noise rules and the assistant. Tried first.
+      sexual_health: [
+        "erection", "erections", "erectile", "erectile dysfunction", "impotence", "impotent", "ed problem", "ed issue", "premature ejaculation", "early ejaculation",
+        "ejaculation", "sex problem", "sex problems", "sexual problem", "sexual problems", "sexual weakness", "sexual health", "sex power", "sexual power", "low libido",
+        "libido", "low sperm", "sperm count", "low sperm count", "nil shukranu", "shukranu", "ling", "ling problem", "mardana kamzori", "mardana taqat", "mardana takat",
+        "mardangi", "napunsakta", "napunsak", "shighrapatan", "shigrapatan", "night fall", "nightfall", "swapnadosh",
+        "स्तंभन", "स्तंभन दोष", "नपुंसकता", "नपुंसक", "शीघ्रपतन", "मर्दाना कमजोरी", "मर्दाना कमज़ोरी", "शुक्राणु", "लिंग", "यौन समस्या", "यौन कमजोरी", "स्वप्नदोष",
+      ],
+      // Ticket 41: "Is it a video call?": every call and session is a voice call by phone, never video. Before the medical topic and in_person.
+      video: [
+        "video call", "video calls", "video calling", "videocall", "video pe", "video par", "video me", "video mein", "video session", "on video", "via video",
+        "video chat", "is it video", "is this video", "will it be video", "video or audio", "audio or video", "video hoga", "video hogi", "video wala",
+        "face to face", "zoom", "google meet", "gmeet", "skype", "camera on", "वीडियो कॉल", "वीडियो पर", "वीडियो पे", "वीडियो में",
+      ],
       medical: [
         "cancer", "tumour", "tumor", "diabetes", "sugar", "thyroid", "depression", "anxiety", "bp", "blood pressure", "stroke", "paralysis", "heart", "kidney", "liver",
         "asthma", "arthritis", "migraine", "pcod", "pcos", "infertility", "pregnant", "pregnancy", "surgery", "operation", "hospital", "doctor", "medicine", "medicines",
         "medication", "tablets", "illness", "disease", "disorder", "sick", "pain", "cure", "treatment", "treat", "bimari", "bimaari", "beemari", "ilaj", "ilaaj", "dawai", "dawa",
         "बीमारी", "बीमार", "इलाज", "दवा", "दवाई", "डॉक्टर", "कैंसर", "शुगर", "दर्द", "अस्पताल",
+        // Ticket 41: serious illnesses the list did not name yet (config.router.serious decides the team's item after a payment)
+        "hiv", "aids", "tb", "tuberculosis", "hepatitis", "cirrhosis", "dialysis", "chemo", "chemotherapy", "leukemia", "leukaemia", "epilepsy", "seizures",
+        "parkinson", "parkinsons", "alzheimer", "alzheimers", "dementia", "schizophrenia", "bipolar", "autism", "lupus", "टीबी", "लकवा", "मिर्गी", "किडनी",
       ],
       black_magic: [
         "black magic", "kala jadu", "kaala jaadu", "jadu tona", "jaadu", "jadu", "tona", "totka", "nazar", "evil eye", "buri nazar", "curse", "cursed", "possessed",
@@ -361,6 +379,30 @@ export const config = {
         "book", "booking", "book karna", "book karni", "book kar", "appointment", "schedule", "want to book", "i want to book", "call book", "बुक", "बुकिंग",
       ],
     },
+  },
+  // Ticket 41: a paying customer (a paid ₹99 call or a booked session not yet held) whose message, or "Something else" answer, is outside what
+  // we offer gets one item for the team ("consider a refund"; never an automatic refund): a sexual-function concern (router.topics.sexual_health),
+  // or a request to cure or treat a serious illness by name (one of `illness` and one of `cureWords`, whole words after normalising).
+  serious: {
+    illness: [
+      "cancer", "tumour", "tumor", "kidney failure", "dialysis", "hiv", "aids", "tb", "tuberculosis", "hepatitis", "cirrhosis", "leukemia", "leukaemia", "chemo",
+      "chemotherapy", "paralysis", "stroke", "heart disease", "heart problem", "epilepsy", "seizures", "parkinson", "parkinsons", "alzheimer", "alzheimers", "dementia",
+      "schizophrenia", "bipolar", "infertility", "कैंसर", "टीबी", "लकवा", "मिर्गी", "बांझपन",
+    ],
+    cureWords: [
+      "cure", "cured", "curing", "treat", "treatment", "heal my", "heal it", "heal this", "remove my", "get rid", "fix my", "theek", "thik", "ilaj", "ilaaj", "ilaz", "khatam",
+      "इलाज", "ठीक", "खत्म", "दूर",
+    ],
+  },
+  // Ticket 41 (owner, 4 Nov 2026): after a ₹99 call is paid, three short questions, one at a time, all skippable (src/intent.ts). The area is a
+  // code on the intro; the "Something else" words stay only in the chat (wiped with it). No reminders for these questions.
+  intent: {
+    areas: ["STRESS", "SLEEP", "RELATIONSHIPS", "WORK", "ENERGY", "PHYSICAL", "OTHER"],
+    nameMaxChars: 40, // a typed name longer than this (or with digits, a link or a question mark) is not read as a name
+    nameMaxWords: 4,
+    workMaxChars: 60,
+    workMaxWords: 8,
+    otherMaxChars: 300,
   },
   // Automatic replies to Instagram DMs and Facebook Messenger (ticket 32, src/social.ts), behind SOCIAL_REPLIES. Public addresses only.
   // Automatic follow-ups (ticket 35, src/followup.ts): on the channel they wrote on, to someone who sent a real message and hasn't booked.

@@ -65,8 +65,10 @@ export const isHandoffWords = (text: string) =>
 
 // "Call me", "can I call?", "number please", "मुझे कॉल करो": a short message (at most callRequestMaxWords words) asking to call us or for a number.
 // Not when it is about a call she makes ("she didn't call me", "can she call me now?"): the assistant answers those.
+// Ticket 41: not "video call" either ("can we do a video call?", "video call me"): that is the router's video answer (voice calls only, no video).
 export const isCallRequest = (text: string) =>
-  normalize(text).split(" ").length <= config.words.callRequestMaxWords && hasPhrase(text, config.words.callRequest) && !hasPhrase(text, config.words.callRequestNot);
+  normalize(text).split(" ").length <= config.words.callRequestMaxWords && hasPhrase(text, config.words.callRequest) && !hasPhrase(text, config.words.callRequestNot) &&
+  !hasPhrase(text, config.router.topics.video);
 
 // Someone with a call or session booked that hasn't ended (or a paying customer, below): "call me" from them is about their booking, so the assistant (or a person) answers.
 const hasUpcomingBooking = async (env: Env, convId: number, nowMs: number) =>

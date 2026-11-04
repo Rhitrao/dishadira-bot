@@ -1,5 +1,5 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-11-04 (v12: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v11: ticket 38: customer photos and files viewed on demand, never stored, and /app the live console; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-11-04 (v13: ticket 41, the owner's requests of 4 Nov 2026: calls and sessions are voice calls only, the three questions after a paid ₹99 call, out-of-scope concerns, the media reply, and safety-chat photos for the practitioner; v12: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v11: ticket 38: customer photos and files viewed on demand, never stored, and /app the live console; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
   read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
@@ -8,6 +8,8 @@ Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no 
 Goal: turn Click-to-WhatsApp ad enquiries into paid sessions; Amma only ever speaks to people who have paid.
 Scope: one practice, one practitioner, two services (PROTECTION, HEALING), INR, Asia/Kolkata, English + Hindi.
 Journey: pick a call slot -> pay ₹99 -> Amma calls (15 min) -> Session | Not right fit | Missed | Rude ->
+  v13 (owner, 4 Nov 2026): every call and session is a voice call by phone (audio only), never video, and the bot says so wherever it
+  describes one (templates: a new version each, docs/TEMPLATES.md).
   Session: single ₹799, or a package (10 for ₹5,000 / 20 for ₹9,000) -> confirmed -> day-before reminder.
 Also from the menu at any time (with a soft nudge to the ₹99 call first): single session, or a package. Package sessions
   are booked later from credits, with no payment per session; max 2 upcoming per buyer; packages never expire.
@@ -68,6 +70,8 @@ Console v4 (ticket 19, docs/CONSOLE-PRD.md): workspaces, members (one role each:
   Settings (ticket 24): the owner's prices (price.*_paise; config is the default and the fallback), email recipients (mail.*),
   privacy.staff_read_chat and business.* live in the settings table; a payment is checked against the price when its link was made.
   Media (ticket 38, v11): messages.media_id and media_mime: Meta's id and type of a file a customer sent, never the file or a link.
+  v13 (ticket 41): intros.profession (short, as typed) and intros.help_area (a code: STRESS | SLEEP | RELATIONSHIPS | WORK | ENERGY |
+  PHYSICAL | OTHER); conversations.name_given_at (a typed name is kept over the WhatsApp profile name). All three wiped with the name.
 
 Flow invariants
 Bot is button-led: max 3 reply buttons, lists max 10 rows, CTA URL label max 20 chars. The AI may only choose a reply and one
@@ -75,6 +79,15 @@ Bot is button-led: max 3 reply buttons, lists max 10 rows, CTA URL label max 20 
 Safety: crisis and medical-emergency detection runs in code before the AI and sends fixed messages (docs/KNOWLEDGE.md §9).
 Noise: strikes, quiet periods and blocks per docs/AGENT.md §4. Existing customers and safety messages are never filtered.
 Age: booking asks once whether the person is 18+; under-18s are asked to have a parent or guardian message.
+After a paid ₹99 call (v13, owner's decision 4 Nov 2026): after the confirmation, inside the 24-hour window, while the bot has the chat,
+  three short questions one at a time, each with Skip: the name she should use (the WhatsApp name on a button, or typed), their work
+  (typed), and what they'd like help with (a fixed list; "Something else" then a few typed words, kept only as chat text). Once per call;
+  never chased, no reminders; an answer that isn't one (a question, noise) ends them. Shown on /app's Today card and person page to the
+  owner, the practitioner for their own customers, and staff while they may read chat text; never on /amma.
+Out of scope (v13): a sexual-function concern gets a fixed reply (not something we help with; a qualified doctor; pranic healing
+  complements medical care), never the AI, never a strike, block or flirt line, no booking push. From a paying customer (a paid call or
+  booked session not yet held) it, or a request to cure a serious illness by name, raises OUT_OF_SCOPE on that booking ("consider a
+  refund"); never an automatic refund. The outcome settles the item. Before payment only the reply changes.
 Greeting says it is Disha Dira's booking assistant and that Shantha Rao calls personally; first choice is language.
 Customer sees real call slots BEFORE paying. Holding a slot and creating a link happen in one guarded step.
 Payment links expire no later than the hold and no earlier than the provider minimum.
@@ -129,15 +142,17 @@ Privacy and safety
 Never store or send: home address, private phone numbers, medical advice, diagnoses, cure claims, "black magic"/"evil eye" (full banned list: docs/KNOWLEDGE.md §8).
 Never send to the AI: phone numbers, names, payment ids, emails, links, digit runs of 6+. First message and privacy page
   disclose the automated assistant and the AI provider.
-Never ask for health details. Inbound media is never stored (v11: only Meta's media id and type, wiped with the text); the team may view
+Never ask for health details (v13 exception, the owner's decision of 4 Nov 2026: the "what would you like help with" list after a paid
+  ₹99 call, above). Inbound media is never stored (v11: only Meta's media id and type, wiped with the text); the team may view
   a file on demand: a POST (CSRF + Origin), audited VIEW_MEDIA (the chat and the kind, never content), fetched from Meta with WA_TOKEN
   and streamed with no-store, nosniff and a script-free CSP; never cached in D1/KV/R2, never to the AI, never in the export (a name
   like "[photo]" only). Who: the owner; staff while they may read chat text; a practitioner for their own customers; a chat that had
-  a safety message, the owner only. The bot's replies to media are unchanged. First message states booking-only use, that it is an
+  a safety message (v13): the owner and the practitioner for their own customers, as its text; staff never. v13: the bot's reply to a
+  file says "Thank you — our team will take a look and reply here if needed." (the payment-screenshot item is unchanged). First message states booking-only use, that it is an
   automated assistant, and that messages are processed by the AI provider (docs/KNOWLEDGE.md §10).
 Safety messages (crisis, medical emergency) are sent to everyone, including blocked, quiet and HUMAN chats, and even when
   the SENDS switch is paused (never when the SENDS env flag is "false").
-Store only name, WhatsApp number, bookings, payments. Wipe message text (and media ids, v11) CHAT_RETENTION_MINUTES after the person's last message (live 10080 = 7 days,
+Store only name, WhatsApp number, bookings, payments (v13: and the work and help area given after paying, wiped with the name). Wipe message text (and media ids, v11) CHAT_RETENTION_MINUTES after the person's last message (live 10080 = 7 days,
   test 10) and
 personal fields 90 days after last booking; keep dedupe keys, payment, refund and audit rows.
 Secrets, real phone numbers and customer data stay out of git, PRs, logs, fixtures and coding prompts.

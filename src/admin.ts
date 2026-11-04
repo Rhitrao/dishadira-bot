@@ -155,7 +155,7 @@ const TITLE: Record<string, string> = {
   PAID_NO_PACKAGE: "Package payment, package missing", PAID_PACKAGE_NOT_BOOKABLE: "Package payment for a closed package",
   THREAT: "Threatening message", NO_FREE_TIMES: "Wanted to book: no free times", NO_PHONE: "Wrote without a phone number", REFUND_NOT_STARTED: "Refund not taken by Razorpay yet",
   [HOLIDAY_ITEM]: "Bookings on a holiday", SOCIAL_SAFETY: "Safety message on Instagram or Messenger",
-  SOCIAL_THREAT: "Threat on Instagram or Messenger",
+  SOCIAL_THREAT: "Threat on Instagram or Messenger", OUT_OF_SCOPE: "Check this booking: may be outside what we offer",
 };
 const TODO: Record<string, string> = {
   CRISIS: "Write to them yourself now. Tap Done once you have.",
@@ -173,6 +173,7 @@ const TODO: Record<string, string> = {
   THREAT: "Read it; block them from the chat if needed, then tap Done.",
   NO_FREE_TIMES: "Open more times, or message them once a time is free, then tap Done.",
   REFUND_NOT_STARTED: "Check the refund in Razorpay; tap Done once it has gone through.",
+  OUT_OF_SCOPE: "A paying customer wrote about something we don't offer (a sexual-health concern, or curing a serious illness). Read the chat; consider a refund. Nothing was refunded automatically.",
   [HOLIDAY_ITEM]: "Move each booking from the person's page (see Days off), then tap Done.",
   SOCIAL_SAFETY: "Open the Instagram or Page inbox, write to them yourself, then tap Done.",
   SOCIAL_THREAT: "Read it in the Instagram or Page inbox; block or report them there if needed, then tap Done.",

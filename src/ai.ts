@@ -8,6 +8,7 @@ import { z } from "zod";
 import { EMAIL_RE, redactDigits, URL_RE } from "./aicheck";
 import { prices } from "./business";
 import { config } from "./config";
+import { nameWords } from "./export";
 import { langOf, rupees, type Lang } from "./copy";
 import { KNOWLEDGE } from "./knowledge";
 import { LABELS, noSellActive } from "./noise";
@@ -147,6 +148,13 @@ export function redact(text: string): string {
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
+// Ticket 41: a name the person typed (the question after paying for the call) never goes to the AI: its words become [name] in the history.
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export const withoutName = (text: string, names: readonly string[]) =>
+  names.reduce((t, w) => t.replace(new RegExp(`(?<![\\p{L}\\p{M}])${escapeRe(w)}(?![\\p{L}\\p{M}])`, "giu"), "[name]"), text);
+const namesOf = async (db: D1Database, convId: number) =>
+  nameWords((await db.prepare("SELECT display_name AS n FROM conversations WHERE id = ?1 AND name_given_at IS NOT NULL").bind(convId).first<{ n: string | null }>())?.n);
+
 // The last `historyMessages` messages that still have text, oldest first, up to and including message row `uptoId`. Messages that never went out
 // (SENDS was off) are left out, and so are templates and the customer's taps (stored as the button's label). Consecutive messages from one side are joined; the first and the last must be the customer's.
 export async function recentMessages(db: D1Database, convId: number, uptoId: number): Promise<ChatMessage[]> {
@@ -158,10 +166,11 @@ export async function recentMessages(db: D1Database, convId: number, uptoId: num
     )
     .bind(convId, uptoId, config.ai.historyMessages)
     .all<{ direction: "IN" | "OUT"; body: string }>();
+  const names = await namesOf(db, convId);
   const out: ChatMessage[] = [];
   for (const r of results.reverse()) {
     const role = r.direction === "IN" ? "user" : "assistant";
-    const content = role === "user" ? redact(r.body) : redactDigits(r.body);
+    const content = withoutName(role === "user" ? redact(r.body) : redactDigits(r.body), names);
     if (!content) continue;
     const prev = out.at(-1);
     if (prev && prev.role === role) prev.content += `\n${content}`;

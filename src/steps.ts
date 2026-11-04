@@ -9,7 +9,8 @@ import { hasPhrase, normalize } from "./safety";
 import { sendMessage, type Out, type SendResult } from "./send";
 import { availableSlots, iso, istDay, istMinutes } from "./slots";
 
-export type StepName = "language" | "age" | "service" | "who" | "day" | "time" | "pay" | "gate" | "bookings" | "packages";
+export type StepName = "language" | "age" | "service" | "who" | "day" | "time" | "pay" | "gate" | "bookings" | "packages"
+  | "intent_name" | "intent_work" | "intent_area" | "intent_other"; // ticket 41, src/intent.ts
 
 // Sends a step message and, if it went out, makes it the open step. `resend` is what to send again if it differs from the message itself
 // (the language step resends the short language question, not the whole greeting). `until` is when the step stops being open (a payment step: the hold).

@@ -95,7 +95,8 @@ export const settleFollowUp = (db: D1Database, channel: Channel, person: string,
     .bind(channel, person, anchor, stage, state, iso(nowMs))
     .run();
 
-export const namesIllness = (text: string | null) => !!text && hasPhrase(text, config.router.topics.medical);
+// Ticket 41: a sexual-function concern too (no price, no booking button after it).
+export const namesIllness = (text: string | null) => !!text && (hasPhrase(text, config.router.topics.medical) || hasPhrase(text, config.router.topics.sexual_health));
 
 // ---- WhatsApp ----
 // A real message: anything the bot answers as a person talking (a greeting, "ok", a photo, a tap, a question), not a reaction, spam, an

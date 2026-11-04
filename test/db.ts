@@ -17,6 +17,7 @@ import socialNoiseSql from "../migrations/0014_social_noise.sql?raw";
 import followupsSql from "../migrations/0015_followups.sql?raw";
 import mediaSql from "../migrations/0016_media.sql?raw";
 import afterCallSql from "../migrations/0017_after_call.sql?raw";
+import intentSql from "../migrations/0018_intent.sql?raw";
 
 // D1 runs one statement per prepare(); split a migration file on ";" at line ends.
 export async function applySql(db: D1Database, sql: string): Promise<void> {
@@ -28,13 +29,13 @@ export async function applySql(db: D1Database, sql: string): Promise<void> {
   for (const s of statements) await db.prepare(s).run();
 }
 
-export const migrations = { initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql, adClickSql, membersSql, inboxSql, socialSql, socialMoreSql, socialNoiseSql, followupsSql, mediaSql, afterCallSql };
+export const migrations = { initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql, adClickSql, membersSql, inboxSql, socialSql, socialMoreSql, socialNoiseSql, followupsSql, mediaSql, afterCallSql, intentSql };
 
-// A fresh local D1 (real workerd SQLite) with the migrations applied. `through` stops early (4 = before the Hindi/booking-steps migration, 5 = before the gatekeeper migration, 6 = before the packages migration, 7 = before the handoff migration, 8 = before the ad-click migration, 9 = before the members migration, 10 = before the inbox migration, 11 = before the social migration, 12 = before the second social migration, 13 = before the social noise migration, 14 = before the follow-ups migration, 15 = before the media migration 0016, 16 = before the after-call migration 0017).
-export async function newDb(through = 17): Promise<{ db: D1Database; close: () => Promise<void> }> {
+// A fresh local D1 (real workerd SQLite) with the migrations applied. `through` stops early (4 = before the Hindi/booking-steps migration, 5 = before the gatekeeper migration, 6 = before the packages migration, 7 = before the handoff migration, 8 = before the ad-click migration, 9 = before the members migration, 10 = before the inbox migration, 11 = before the social migration, 12 = before the second social migration, 13 = before the social noise migration, 14 = before the follow-ups migration, 15 = before the media migration 0016, 16 = before the after-call migration 0017, 17 = before the intent migration 0018).
+export async function newDb(through = 18): Promise<{ db: D1Database; close: () => Promise<void> }> {
   const mf = new Miniflare({ modules: true, script: "export default {}", d1Databases: { DB: "test" } });
   const db = (await mf.getD1Database("DB")) as unknown as D1Database;
-  await applySql(db, [initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql, adClickSql, membersSql, inboxSql, socialSql, socialMoreSql, socialNoiseSql, followupsSql, mediaSql, afterCallSql].slice(0, through).join("\n"));
+  await applySql(db, [initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql, adClickSql, membersSql, inboxSql, socialSql, socialMoreSql, socialNoiseSql, followupsSql, mediaSql, afterCallSql, intentSql].slice(0, through).join("\n"));
   return { db, close: () => mf.dispose() };
 }
 

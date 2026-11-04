@@ -37,6 +37,8 @@ const sample: Record<string, (c: Copy, lang: Lang) => string> = {
   dupKeeps: (c) => c.dupKeeps("{day}", "{time}"),
   latePaidTaken: (c) => c.latePaidTaken("{amount}"),
   reviewAsk: (c) => c.reviewAsk("{Google review link}", "{WhatsApp link}"),
+  intentName: (c) => `${c.intentName("{WhatsApp name}")} — with no WhatsApp name: ${c.intentName(null)}`,
+  btnUseName: (c) => c.btnUseName("{name}"),
 };
 
 const sections: { title: string; intro?: string; entries: Entry[] }[] = [
@@ -276,6 +278,27 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
       ["sessionLinkBody", "The team's \"Send session link\", Let them choose (with the button \"Choose a time\", then the session's day and time steps)"],
     ],
   },
+  {
+    title: "8d. Voice calls only, out of scope, and the questions after paying (ticket 41)",
+    intro:
+      "Every call and session is a voice call by phone, never video (owner, 4 Nov 2026). Right after a ₹99 call is paid (after the confirmation, inside the 24-hour window), three short questions, one at a time, each with Skip; nothing is ever chased. The owner decided (4 Nov 2026) that the bot may ask what they'd like help with, from this short list. The Hindi is for review.",
+    entries: [
+      ["answerVideo", "\"Is it a video call?\", \"video pe\", \"वीडियो कॉल\" (with the menu buttons)"],
+      ["answerSexualHealth", "A sexual-function concern (never treated as flirting; buttons: Help, Talk to a person). From someone who has paid, the team also gets an item: consider a refund"],
+      ["intentName", "Question 1: the name (buttons: Use {name} when there is a WhatsApp name, and Skip)"],
+      ["btnUseName", "Button (max 20 letters; a long name is shortened)"],
+      ["btnSkip", "Skip button on each question (max 20 letters)"],
+      ["intentWork", "Question 2: their work (typed; button: Skip)"],
+      ["intentArea", "Question 3: what they'd like help with (a list)"],
+      ["intentAreaButton", "The list's button (max 20 letters)"],
+      ...(["STRESS", "SLEEP", "RELATIONSHIPS", "WORK", "ENERGY", "PHYSICAL", "OTHER"] as const).map((a): Entry => [`intentAreas.${a}`, `List row (max 24 letters)`]),
+      ["intentAreaDesc.ENERGY", "Line under \"Low energy\" (max 72 letters)"],
+      ["intentAreaDesc.OTHER", "Line under \"Something else\" (max 72 letters)"],
+      ["rowSkip", "The list's last row (max 24 letters)"],
+      ["intentOther", "After \"Something else\": their own words (button: Skip; the words stay only in the chat)"],
+      ["intentThanks", "After the last answer or Skip"],
+    ],
+  },
 ];
 
 const get = (c: Copy, path: string): unknown => path.split(".").reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], c);
@@ -293,7 +316,7 @@ export function renderCopyDoc(): string {
     "",
     "Words in {curly brackets} are filled in automatically (a day, a time, a number). Prices, call lengths, the hold time, the opening hours and the name of the \"Energy cleansing\" service come from `src/config.ts`.",
     "",
-    "Rules the copy follows: it never names an illness, never promises a result, never asks for health details. Amma's page (section 9) is English only.",
+    "Rules the copy follows: it never names an illness, never promises a result, never asks for health details (one exception, the owner's decision of 4 Nov 2026: after a paid ₹99 call, what they'd like help with, from a short list; section 8d). Amma's page (section 9) is English only.",
     "",
     "Dates and times customers see are in India time: English `Wed, 21 Oct` and `2:30 pm`; Hindi `बुध, 21 अक्टूबर` and `दोपहर 2:30` (`सुबह` before noon, `शाम` from 4 pm).",
   ];
