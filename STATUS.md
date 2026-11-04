@@ -1,7 +1,7 @@
 # STATUS
 Updated: 2026-11-04 (Ticket 37: export chats to analyse them)
 
-## Ticket 37 (PR: see the branch `chat-export`, no migration, CONTRACT v10)
+## Ticket 37 (PR https://github.com/Rhitrao/dishadira-bot/pull/58, no migration, CONTRACT v10)
 Why: Rohit, 4 Nov 2026: "ability to export chat and analyze them deeply and figure out action plans" (ads started 2–3 Nov).
 - **Export chats** (src/export.ts): a card at the bottom of **/admin/people** (choose 1, 3, 7, 14 or 30 days, default 7) and GET `/admin/export?days=N` (1 to 30; anything else 400). /admin is the owner's alone (ROHIT_EMAIL; Amma, staff and no Access get 403). On /app (CONSOLE_V2 on) an owner-only link under People and `/app/people/export` (staff and practitioners refused). A download: `Content-Disposition: attachment; filename="disha-dira-chats-YYYY-MM-DD.json"` (India date), one pretty JSON file, no-store. Audited `EXPORT_CHATS` (target `export:7d`, detail "days 7, chats N, messages M", never content).
 - **The file**: `generated_at`, `days`, `timezone` "Asia/Kolkata", `window`, `text_kept_for`, `notes` (a legend, and that text older than retention is gone), `truncated`, `limits`, `summary`, `social`, `chats`. Each chat (activity in the window: created, last message, or any message): `code` "C-0007" (the conversation id, so /admin/conv/7), `last4`, `first_seen`, `last_message_at`, `source` {kind ad | instagram | messenger | tag | organic_or_unknown, ad_id, ad_headline, tag e.g. "BLR" from the first message}, `language` (en, hi, not_chosen), `mode`, `blocked`, `stopped`, `handed_to_team`, `safety`, `furthest_step` (first_message > greeted > language_chosen > age_question > age_confirmed > service_list > who_for > day_list > time_list > call_held > pay_link_sent > call_paid, from our own records), `outcome` (paid_intro, intro_status, calls, missed, cancelled by us, sessions booked/completed/cancelled/no-show, packages bought, money paid, refunds), `followups` (stage, time, state), `message_count`, `text_wiped_count`, `messages` [{at (IST ISO), from customer | bot | team, kind text | button | list | template | media, text}]. Summary: chats in the file and started, by source, by ad (id + headline, chats, paid), by tag, by language, reached each step ("at least that far"), paid ₹99 calls, intro states, sessions, packages, money, refunds, handed to team, blocked, stopped, safety, follow-ups by stage. Social: Instagram and Messenger counts only (people, opened WhatsApp, followed, booked, stopped, blocked, follow-ups).
@@ -115,7 +115,7 @@ Razorpay (Payment Links). The previous provider rejected the business, so Ticket
 - [ ] 34 Instagram and Messenger: timed-out sends, our own echoes, rude and sexual messages (migration 0014; PR https://github.com/Rhitrao/dishadira-bot/pull/55)
 - [ ] 35 Instagram/Messenger conversations continue, every comment gets a DM, follow-ups on all channels (migration 0015; PR https://github.com/Rhitrao/dishadira-bot/pull/56)
 - [ ] 36 The team can take over a chat; typed times at the time step (no migration, CONTRACT v9; PR https://github.com/Rhitrao/dishadira-bot/pull/57)
-- [ ] 37 Export chats to analyse them (no migration, CONTRACT v10; PR: see the branch `chat-export`)
+- [ ] 37 Export chats to analyse them (no migration, CONTRACT v10; PR https://github.com/Rhitrao/dishadira-bot/pull/58)
 
 ## Credits
 Budget $157 (tickets $117 + reserve $40). Hard stop at $190 total. Spent so far: not visible to Claude; Rohit to update from the Usage page.
