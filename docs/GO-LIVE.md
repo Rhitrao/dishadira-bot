@@ -44,8 +44,8 @@ Cloudflare → Workers & Pages → `dishadira-bot-test` → **Settings → Varia
 | `RAZORPAY_WEBHOOK_SECRET` | A password you invent; Razorpay signs every payment notice with it and the bot checks that signature | Make up a long random phrase (20+ letters and numbers). You paste the same phrase into Razorpay in step 9. Test and live use different phrases. |
 | `ACCESS_TEAM` | The name of your Cloudflare Zero Trust team | Zero Trust dashboard → **Settings → Custom pages → Team domain** (the part before `.cloudflareaccess.com`) |
 | `ACCESS_AUD` | The code that identifies the Access application from step 5 | Zero Trust → **Access → Applications →** your application → **Overview → Application Audience (AUD) Tag** |
-| `AMMA_EMAIL` | The Google address Amma signs in with | Ask Amma which Google account she uses |
-| `ROHIT_EMAIL` | The Google address you sign in with | Yours. Only this address can open `/admin`. |
+| `AMMA_EMAIL` | The Google address Amma signs in with | Ask Amma which Google account she uses. The first visit to `/app` makes this address the practitioner (once; later changes are made in Settings → Team). |
+| `ROHIT_EMAIL` | The Google address you sign in with | Yours. Only this address can open `/admin`, and the first visit to `/app` makes it the owner (once). |
 | `DIGEST_TO` | Where the 9 pm summary and alert emails go | Your own address; it must be the verified address from step 6 |
 | `ANTHROPIC_API_KEY` | Lets the assistant answer typed questions (only used when `AI_REPLIES` is `"true"`, see step 14d) | Anthropic Console → **API keys → Create key**. Give the key its own workspace or project and set a **monthly spend limit** (for example US$10). Use a different key for test and live. The same kind of key also goes into GitHub for the manual eval (STATUS.md). |
 
@@ -141,7 +141,7 @@ Always one at a time, with a Deploy in between and a look at `/admin` after each
 
 ### 14b. Safety and privacy checks (ticket 12)
 - [ ] `CHAT_RETENTION_MINUTES` in `wrangler.toml` is `"10080"` (7 days) under `[vars]` and `[env.live.vars]`, and `"10"` under `[env.test.vars]`. Message text is erased that long after a person's last message; bookings, payments and refunds are kept.
-- [ ] `PUBLIC_URL` under `[env.live.vars]` is the address of the live Worker (`https://bot.disha-dira.com`). The urgent e-mail "Urgent: crisis message" links to `<PUBLIC_URL>/admin` and never contains what the person wrote. Check `DIGEST_TO` and the e-mail binding work before the ad starts: this e-mail is the one that must never be missed.
+- [ ] `PUBLIC_URL` under `[env.live.vars]` is the address of the live Worker (`https://bot.disha-dira.com`). The urgent e-mail "Urgent: crisis message" links to `<PUBLIC_URL>/app/people/<id>` (to `/admin/conv/<id>` while `CONSOLE_V2` is `"false"`) and never contains what the person wrote. Check `DIGEST_TO` and the e-mail binding work before the ad starts: this e-mail is the one that must never be missed.
 - [ ] On the test copy, send the words "I want to die" from your own phone: you must get the Tele-MANAS message at once, an e-mail within a minute, and an item "CRISIS" in `/admin`. The chat then belongs to a person (resolve the item to give it back to the bot) and the bot sells nothing to that number for 7 days ("Clear no-sell" on the person's page, `/admin/conv/<id>`, lifts it early).
 - [ ] The word lists for crisis, emergency, spam, flirting and abuse are in `src/config.ts` (`safety`, `noise`, `words`). Read them once and ask Claude to add what is missing.
 
@@ -165,20 +165,54 @@ The assistant (ticket 14) sends what customers type to Anthropic, in the United 
 - [ ] On live, `AI_REPLIES` stays `"false"` until the eval (`Actions → Assistant eval`) passes, the shadow week is done and Amma has read `docs/KNOWLEDGE.md` and the Hindi messages.
 
 ### 15. How to pause everything
-Fastest first. None of these needs coding.
-- **One tap, instant:** `/admin` → switch **New bookings** to paused (nobody can start a new booking) and **Sends** to paused (the bot stops sending messages; incoming messages are still recorded). Resume with the same switch.
-- **The assistant misbehaves:** `/admin` → switch **AI answers** to paused. Typed questions then get the plain acknowledgement and an item for you, and nothing is sent to Anthropic. (Or set `AI_REPLIES = "false"` in `wrangler.toml` and Deploy.)
-- **Amma is unavailable:** `/admin` → **Amma away**. New bookings pause and every booked call and session of today and tomorrow becomes an item for you (offer a new time or refund).
-- **Stop for good until you say so:** in `wrangler.toml` set `NEW_BOOKINGS = "false"` and `SENDS = "false"` under `[env.live.vars]`, then **Deploy → live**. The switches in `/admin` can only turn things off, never on, so the file is always the final say.
+Fastest first. None of these needs coding. (Since ticket 38 the console is `/app`; with `CONSOLE_V2 = "false"` the same switches are on `/admin`.)
+- **One tap, instant:** `/app` → **Settings → Bot** → **Taking bookings** → Pause (nobody can start a new booking) and **Messages to customers** → Pause (the bot stops sending messages; incoming messages are still recorded). Resume with **Turn back on**.
+- **The assistant misbehaves:** `/app` → **Settings → Bot** → **The assistant** → Pause. Typed questions then get the plain acknowledgement and an item for you, and nothing is sent to Anthropic. (Or set `AI_REPLIES = "false"` in `wrangler.toml` and Deploy.)
+- **Amma is unavailable:** `/app` → **Settings → Bot** → **Practitioner away** → Mark as away. New bookings pause and every booked call and session of today and tomorrow goes on Today for you (offer a new time or refund).
+- **Stop for good until you say so:** in `wrangler.toml` set `NEW_BOOKINGS = "false"` and `SENDS = "false"` under `[env.live.vars]`, then **Deploy → live**. The switches in the console can only turn things off, never on, so the file is always the final say.
 - **Emergency, no deploy:** in the Razorpay dashboard deactivate the live API key (Account & Settings → API Keys), and in the Meta app remove the webhook subscription. The bot then cannot take money or hear customers.
 - Keep your phone number list private; never share screenshots with numbers.
 
 ### 16. How to analyse chats (ticket 37, every week)
 The owner can download one file of recent WhatsApp conversations and ask Claude for a deep analysis and an action plan.
 - **Before the first time:** the website's privacy page must say so (disha-dira.com/privacy.html is not in this repo; Rohit adds it). Proposed sentence: "We may review recent conversations, with phone numbers and names removed, to improve our service. This review may use our AI service provider (Anthropic)." The page's line from 14d says messages go to the AI provider "only to reply to you": change that line too, so the two agree.
-- **Every Monday morning** (message text is deleted 7 days after a person's last message, so a weekly download keeps every chat's text): open **/admin/people**, scroll to **Export chats**, choose **Last 7 days**, tap **Export chats**. On the new console it is /app/people → "Export chats" (owner only). The file is `disha-dira-chats-YYYY-MM-DD.json`.
+- **Every Monday morning** (message text is deleted 7 days after a person's last message, so a weekly download keeps every chat's text): open **/app/people** and tap **Export chats** (owner only; the last 7 days). With `CONSOLE_V2 = "false"` it is /admin/people → **Export chats** → **Last 7 days**. The file is `disha-dira-chats-YYYY-MM-DD.json`.
 - Start a new Claude chat, attach the file and ask: "Deep analysis and an action plan for these chats: where do people stop, what do they ask, which ad and tag works, what should we change in the bot's messages and the ads?"
-- To open one chat yourself: its code is the person page (`C-0007` is /admin/conv/7), or search /admin/people by the last 4 digits.
+- To open one chat yourself: its code is the person page (`C-0007` is /app/people/7, or /admin/conv/7 on the old console), or search People by the last 4 digits.
 - **Afterwards delete the downloaded file** (Downloads, and the attachment in that Claude chat if you no longer need it). Never commit it, never put it in a ticket, PR or coding prompt, never share it.
 - What the file holds: `summary` (chats in the file and started; by source: ad with headline and ad id, a "(BLR)"-style tag in the first message, Instagram/Messenger link, organic or unknown; language; how many reached each booking step; paid ₹99 calls, sessions, packages, refunds, money paid; handed to the team, blocked, stopped, safety chats; follow-ups by stage), `social` (Instagram and Messenger counts only: they keep no text) and `chats` (code, last 4 digits, first seen, last message, source, language, mode, furthest step, outcome, follow-ups, and the messages that still have text: who, India time, kind, text). The `notes` field in the file explains each field.
 - Removed from every text: phone numbers, emails, UPI ids, payment ids, other digit runs of 6 or more, links other than disha-dira.com and wa.me (and a payment link's token), the person's own name. Never in the file: the full number, the WhatsApp name, Meta's click id. A chat with a crisis or emergency message, and a blocked number, have counts only. Text the wipe already removed is not there. At most 2,000 chats and 20,000 messages (`truncated: true` then: choose fewer days). Each download is in the audit log as `EXPORT_CHATS`, with the counts only.
+
+### 17. Switch live to the new console /app (ticket 38)
+From this release the live bot runs the new console: `/app` is the daily tool for you, Amma and the team, and `/admin` and `/amma` send everyone to it. Do these in order. Nothing here was done by Claude.
+
+**1. Cloudflare Access must cover /app (do this first, before the deploy).**
+- [ ] Open dash.cloudflare.com → **Zero Trust** → **Access** → **Applications**.
+- [ ] Find the **live** application: the one for `bot.disha-dira.com` with the destinations `/amma` and `/admin`. Click its name → **Configure** (or **Edit**).
+- [ ] Use this same application; do not make a new one. The bot checks the application's AUD tag (the secret `ACCESS_AUD`), and a second application has a different tag, so everyone would see "No access".
+- [ ] Under **Basic information** (newer dashboards: **Destinations** / **Public hostnames**) click **Add domain** (or **+ Add public hostname**): subdomain `bot`, domain `disha-dira.com`, path `app`. Add one more line the same way with path `app/*`. Keep the `amma` and `admin` lines. Do **not** protect the whole site: WhatsApp, Razorpay, Instagram and the `/p/` payment links must work without signing in.
+- [ ] Click **Save application** (or **Next** until **Save**).
+- [ ] Open the same application's **Policies** tab → the **Allow** policy → **Edit**. Under **Include** → **Emails**, the list must have the Google address of every person who uses the console: yours, Amma's, and each staff member's. Add any that are missing → **Save policy**.
+- [ ] Check in a private window: `https://bot.disha-dira.com/app` must ask you to sign in with Google. `https://bot.disha-dira.com/health` must open without signing in.
+
+**2. Secrets on the live Worker (check, nothing new to add).** Cloudflare → **Workers & Pages** → `dishadira-bot-live` → **Settings** → **Variables and Secrets**. These must be listed (Cloudflare never shows their values; you can't check the value, only that it is there):
+- [ ] `ROHIT_EMAIL`: exactly the Google address you sign in with. The first visit to `/app` makes it the owner.
+- [ ] `AMMA_EMAIL`: exactly the Google address Amma signs in with. The same first visit makes it the practitioner, with every existing call and session hers. This happens **once**, on the very first `/app` visit: if it was wrong or missing then, invite Amma afterwards from **Settings → Team** as Practitioner.
+- [ ] `ACCESS_TEAM` and `ACCESS_AUD`: already there (`/admin` works with them); `ACCESS_AUD` must be the AUD tag of the application from step 1 (Overview → Application Audience (AUD) Tag).
+- [ ] `WA_TOKEN` and `WA_PHONE_ID`: already there (the bot replies with them). Viewing a customer's photo uses the same token.
+- [ ] `DIGEST_TO`: already there. Emails now link to `/app`.
+- Staff are not secrets: after the switch, invite each one from **/app → Settings → Team** (the page shows a one-time link with "Send on WhatsApp"), and add their Google address to the Access policy (step 1).
+
+**3. Merge and deploy.**
+- [ ] Merge PR #58 (chat export) first, then this ticket's PR.
+- [ ] GitHub → **Actions** → **Deploy** → **Run workflow** → environment **live**. It applies migration 0016 (the photo ids) and turns `CONSOLE_V2 = "true"` on for live.
+
+**4. Test on live, the same day.**
+- [ ] On your laptop open `https://bot.disha-dira.com/app`: you see **Today** with your name at the top and the tabs Today, Inbox, Calendar, People, Payments, Settings. Your old bookmark `/admin` now opens `/app`.
+- [ ] Amma, on her phone: open `https://bot.disha-dira.com/amma` (her old bookmark) or `/app`, sign in with her Google account: she sees **Today** with her calls (tabs Today, Calendar, People). The **Call** button shows from 1 hour before a call until 1 hour after it ends. If she sees "No access", her address isn't a member (step 2) or isn't in the Access policy (step 1).
+- [ ] Open **Calendar** (this week's calls and sessions), **Inbox** (chats waiting for the team) and **People** (search a customer by the last 4 digits).
+- [ ] Make one test booking from your own phone on WhatsApp: book a ₹99 call and pay it. Once paid it shows on Today and in Calendar, and on Amma's phone. To get the ₹99 back, Amma taps **Not right fit** on Today once the call time has started (that refund is once per person, so use a number that hasn't had one).
+- [ ] From your own phone send the business number a photo. In **People** → your chat, the photo shows as "Photo" with **View**: it opens in a new tab. (Staff can view too unless Settings → Privacy hides chats from staff; a chat with a crisis message, only you.)
+- [ ] **Settings → Bot**: the switches show the same state as before on `/admin`.
+
+**5. Rollback, if anything is wrong.** In `wrangler.toml`, under `[env.live.vars]`, set `CONSOLE_V2 = "false"` and run **Actions → Deploy → live**. `/admin` and `/amma` work exactly as before, emails link to them again, and nothing needs undoing (the new tables and columns are only added to). Photo ids stay on the rows, are viewable from `/admin/conv/<id>`, and are wiped with the text as before.

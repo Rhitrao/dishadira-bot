@@ -351,7 +351,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       return;
 
     case "HUMAN_WAIT": {
-      // Typed text waits for Rohit in /admin. A photo or file from someone with a booking may be a payment screenshot: he should know.
+      // Typed text waits for the team in the console. A photo or file from someone with a booking may be a payment screenshot: he should know.
       if (text === null && (await hasBookingContext(db, conv.id))) await raiseAttention(db, "MEDIA_FROM_CUSTOMER", `conv:${conv.id}`);
       // One short acknowledgement per handoff, so the person knows the message arrived: claimed by moving last_ack_at past human_since.
       const claim = await db
