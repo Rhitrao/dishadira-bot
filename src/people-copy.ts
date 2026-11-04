@@ -21,6 +21,7 @@ const en = {
   showingRecent: (n: number) => `Showing the ${n} most recent. Search to find someone older.`,
   seeEveryone: "See everyone",
   openToday: "Back to Today",
+  exportChats: "Export chats (last 7 days, for analysis)",
 
   // Times
   justNow: "just now",
@@ -166,6 +167,7 @@ const hi: PeopleCopy = {
   showingRecent: (n) => `सबसे नए ${n} दिख रहे हैं। पुराने किसी को खोजने के लिए सर्च करें।`,
   seeEveryone: "सभी को देखें",
   openToday: "आज पर वापस",
+  exportChats: "चैट एक्सपोर्ट करें (पिछले 7 दिन, विश्लेषण के लिए)",
 
   justNow: "अभी",
   minAgo: (n) => `${n} मिनट पहले`,
