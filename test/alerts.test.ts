@@ -12,6 +12,7 @@ import { generateSlots, iso } from "../src/slots";
 import { CONSOLE_CSP } from "../src/ui";
 import { ConsoleHarness, ORIGIN, OWNER, PRAC, STAFF } from "./console-env";
 import { decryptPayload, testKeys, testSubscription, type TestSub } from "./pushkit";
+import { fromB64u, pushOn, vapidKeys } from "../src/push";
 import { paidEvent, rzpHeaders } from "./razorpay";
 
 const NOW = Date.parse("2026-11-04T09:00:00Z"); // Wed 4 Nov, 2:30 pm India time
@@ -533,5 +534,80 @@ describe("the daily digest", () => {
     const text = await digestText(h.env());
     expect(text).toContain("Phone alerts to the team (last 24 hours): 1 sent, 1 not delivered.");
     expect(text.split("\n").filter((l) => l.includes("Phone alerts"))).toHaveLength(1);
+  });
+});
+
+describe('the owner\'s "Make alert keys" (only while the two secrets are missing)', () => {
+  const allText = async () => {
+    // Every row of every table, as text: a key must be in none of them.
+    const tables = (await h.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'").all<{ name: string }>()).results;
+    const out: string[] = [];
+    for (const t of tables) out.push(JSON.stringify((await h.db.prepare(`SELECT * FROM "${t.name}"`).all()).results));
+    return out.join("\n");
+  };
+  const keysToken = () => token(OWNER);
+
+  it("the button shows for the owner only, and only while the secrets are missing", async () => {
+    h.vars = {};
+    expect(decode(await (await h.get("/app/settings")).text())).toContain("Make alert keys");
+    expect(decode(await (await h.get("/app/settings", PRAC)).text())).not.toContain("Make alert keys");
+    h.vars = { ...keys };
+    expect(decode(await (await h.get("/app/settings")).text())).not.toContain("Make alert keys");
+  });
+
+  it("a fresh, valid pair shown once on a page that isn't cached and has no script; nothing kept but an audit row with no value", async () => {
+    h.vars = {};
+    const before = { audit: await h.count("SELECT COUNT(*) AS n FROM audit_log"), settings: await h.count("SELECT COUNT(*) AS n FROM settings") };
+    const logs: string[] = [];
+    const spies = (["log", "error", "warn", "info"] as const).map((k) => vi.spyOn(console, k).mockImplementation((...a: unknown[]) => void logs.push(a.map(String).join(" "))));
+    const res = await postAs(OWNER, "/app/settings/alerts/keys", { csrf: await keysToken() });
+    for (const s of spies) s.mockRestore();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("no-store, private");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("Content-Security-Policy")).toBe(CONSOLE_CSP);
+    const t = decode(await res.text());
+    expect(t).not.toContain("<script");
+    expect(t).toContain("Workers & Pages → dishadira-bot-live → Settings → Variables and Secrets");
+    const pub = /VAPID_PUBLIC_KEY<\/span><textarea[^>]*>([A-Za-z0-9_-]+)<\/textarea>/.exec(t)?.[1];
+    const priv = /VAPID_PRIVATE_KEY<\/span><textarea[^>]*>([A-Za-z0-9_-]+)<\/textarea>/.exec(t)?.[1];
+    expect(pub).toMatch(/^[A-Za-z0-9_-]{87}$/);
+    expect(priv).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    // A matching P-256 pair: the bot accepts it, and a signature made with the private key verifies with the public one.
+    const env = { VAPID_PUBLIC_KEY: pub!, VAPID_PRIVATE_KEY: priv! };
+    expect(await pushOn(env as never)).toBe(true);
+    const k = (await vapidKeys(env as never))!;
+    const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, k.signKey, new TextEncoder().encode("probe"));
+    const verify = await crypto.subtle.importKey("raw", fromB64u(pub!)!, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+    expect(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, verify, sig, new TextEncoder().encode("probe"))).toBe(true);
+    // Nothing kept: one audit row with no value, no setting, the keys in no table and no log line.
+    expect(await h.count("SELECT COUNT(*) AS n FROM audit_log")).toBe(before.audit + 1);
+    expect(await h.count("SELECT COUNT(*) AS n FROM settings")).toBe(before.settings);
+    expect(await h.audits("MAKE_PUSH_KEYS")).toEqual([{ actor: OWNER, memberId: await id(OWNER), target: `member:${await id(OWNER)}`, detail: "" }]);
+    const everything = await allText();
+    for (const v of [pub!, priv!, pub!.slice(10, 40), priv!.slice(5, 30)]) {
+      expect(everything).not.toContain(v);
+      expect(logs.join("\n")).not.toContain(v);
+    }
+    // Twice gives a different pair.
+    const t2 = decode(await (await postAs(OWNER, "/app/settings/alerts/keys", { csrf: await keysToken() })).text());
+    expect(t2).not.toContain(priv!);
+  });
+
+  it("the practitioner and staff are refused; a forged token, no or a foreign Origin too; with the secrets set nothing is made", async () => {
+    h.vars = {};
+    expect((await postAs(PRAC, "/app/settings/alerts/keys", { csrf: await token(PRAC) })).status).toBe(403);
+    expect((await postAs(STAFF, "/app/settings/alerts/keys", { csrf: await token(STAFF) })).status).toBe(403);
+    expect((await postAs(OWNER, "/app/settings/alerts/keys", { csrf: "0".repeat(64) })).status).toBe(403);
+    expect((await postAs(OWNER, "/app/settings/alerts/keys", { csrf: await token(PRAC) })).status).toBe(403);
+    expect((await postAs(OWNER, "/app/settings/alerts/keys", { csrf: await keysToken() }, undefined, null)).status).toBe(403);
+    expect((await postAs(OWNER, "/app/settings/alerts/keys", { csrf: await keysToken() }, undefined, "https://evil.example")).status).toBe(403);
+    expect((await postAs(OWNER, "/app/settings/alerts/keys", {})).status).toBe(403); // a GET-like empty form
+    expect((await h.get("/app/settings/alerts/keys")).status).toBe(403); // a GET makes nothing (no token)
+    h.vars = { ...keys };
+    const r = await postAs(OWNER, "/app/settings/alerts/keys", { csrf: await keysToken() });
+    expect(r.status).toBe(303);
+    expect(r.headers.get("Location")).toBe("/app/settings#alerts");
+    expect(await h.audits("MAKE_PUSH_KEYS")).toEqual([]);
   });
 });

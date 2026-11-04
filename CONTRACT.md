@@ -32,8 +32,10 @@ Reference only: github.com/ArnasDon/wacrm (MIT) for webhook verification, dedupe
 Copy small pieces only, keep its MIT notice in a NOTICE file, never vendor the app.
 Browser-only development (Claude Code web + GitHub Actions). Nothing runs on Rohit's Chromebook.
 v14 (ticket 45): Web Push (RFC 8030, VAPID RFC 8292, aes128gcm RFC 8291) is sent by the Worker itself with Web Crypto, to the team's
-  own devices only; no third-party push service or library. Secrets VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY (Rohit makes the pair with
-  `npm run vapid-keys` in a browser-only place, e.g. a GitHub Codespace; never in a chat or Actions); without them alerts are off.
+  own devices only; no third-party push service or library. Secrets VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY: the owner makes the pair with
+  /app Settings → "Make alert keys" (owner only, only while they are missing, POST with token + Origin; a fresh pair shown once on a
+  no-store page, never stored in D1/KV, logs or audit text; audited MAKE_PUSH_KEYS with no value) and pastes it into Cloudflare;
+  `npm run vapid-keys` is the terminal alternative (never in a chat or Actions). Without them alerts are off.
 Payments go through a PaymentProvider interface: createLink, getStatus, verifyWebhook, refund.
 Razorpay (Payment Links) is the one provider, behind that interface. Only one provider may be in the code at a time.
 

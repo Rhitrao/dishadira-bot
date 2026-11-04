@@ -70,6 +70,14 @@ export function vapidKeys(env: Pick<Env, "VAPID_PUBLIC_KEY" | "VAPID_PRIVATE_KEY
   }
   return p;
 }
+// A fresh key pair, as the two secrets want it (base64url): the public key as the 65-byte uncompressed point, the private key as the
+// 32-byte scalar. For the owner's "Make alert keys" and `npm run vapid-keys`; never stored or logged by the Worker.
+export async function makeVapidPair(): Promise<{ publicKey: string; privateKey: string }> {
+  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"])) as CryptoKeyPair;
+  const jwk = (await crypto.subtle.exportKey("jwk", pair.privateKey)) as JsonWebKey;
+  const raw = new Uint8Array((await crypto.subtle.exportKey("raw", pair.publicKey)) as ArrayBuffer);
+  return { publicKey: b64u(raw), privateKey: jwk.d! };
+}
 export const pushOn = async (env: Pick<Env, "VAPID_PUBLIC_KEY" | "VAPID_PRIVATE_KEY">) => (await vapidKeys(env)) !== null;
 
 // ---- VAPID (RFC 8292) ----
