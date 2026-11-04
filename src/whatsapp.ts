@@ -11,6 +11,7 @@ import { creditBalance, packChoice, sessionOfferOut } from "./packages";
 import { classifyWithoutAI, gate, isCallRequest, isJobText, isMenuWord, isThreat, plainWord } from "./gate";
 import { noteWhatsAppMessage, realWhatsAppMessage } from "./followup";
 import { requestHuman } from "./handoff";
+import { mediaOf } from "./media";
 import { menuOut } from "./menu";
 import { applyLabel, ensureState, noSellActive } from "./noise";
 import { ACTION_TOPICS, matchTopic, sentRecently, topicOut, topicText, type Topic } from "./router";
@@ -28,6 +29,7 @@ export { isMenuWord, plainWord };
 type C = Context<{ Bindings: Env }>;
 
 // Everything Meta sends is checked loosely at the edges and strictly per message, so one odd item never costs the batch.
+const mediaPart = z.object({ id: z.string().optional(), mime_type: z.string().optional() }).optional();
 const message = z.object({
   id: z.string().min(1),
   from: z.string().min(1).optional(), // omitted when the sender has a username and no phone number can be shared
@@ -43,6 +45,8 @@ const message = z.object({
     .optional(),
   button: z.object({ payload: z.string().optional(), text: z.string().optional() }).optional(), // template quick-reply tap
   referral: z.object({ source_id: z.string().optional(), ctwa_clid: z.string().optional(), headline: z.string().optional() }).optional(),
+  // Ticket 38: a photo or file's Meta id and type, so the team can view it on demand (src/media.ts). Captions and filenames are dropped here.
+  image: mediaPart, document: mediaPart, video: mediaPart, sticker: mediaPart, audio: mediaPart,
 });
 const status = z.object({ id: z.string().min(1), status: z.string() });
 const contact = z.object({ wa_id: z.string().optional(), profile: z.object({ name: z.string().optional() }).optional() });
@@ -268,9 +272,11 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
   // A tap is stored as the label of the button or list row (our own words), so the console can say "Tapped: …"; the chat wipe removes it
   // like any text, and the assistant never reads it (src/ai.ts leaves taps out).
   const tapLabel = (m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? m.button?.text)?.slice(0, 100) || null;
+  // A photo or file: only Meta's media id and its type (ticket 38), never the file; the chat wipe removes them with the text.
+  const media = mediaOf(m);
   await db
-    .prepare("INSERT OR IGNORE INTO messages (conversation_id, direction, wa_message_id, kind, body, status, created_at) VALUES (?1, 'IN', ?2, ?3, ?4, 'RECEIVED', ?5)")
-    .bind(conv.id, m.id, m.type, text ?? tapLabel, at)
+    .prepare("INSERT OR IGNORE INTO messages (conversation_id, direction, wa_message_id, kind, body, status, created_at, media_id, media_mime) VALUES (?1, 'IN', ?2, ?3, ?4, 'RECEIVED', ?5, ?6, ?7)")
+    .bind(conv.id, m.id, m.type, text ?? tapLabel, at, media?.id ?? null, media?.mime ?? null)
     .run();
   const mine = await db.prepare("SELECT id FROM messages WHERE wa_message_id = ?1").bind(m.id).first<{ id: number }>();
 
@@ -345,7 +351,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       return;
 
     case "HUMAN_WAIT": {
-      // Typed text waits for Rohit in /admin. A photo or file from someone with a booking may be a payment screenshot: he should know.
+      // Typed text waits for the team in the console. A photo or file from someone with a booking may be a payment screenshot: he should know.
       if (text === null && (await hasBookingContext(db, conv.id))) await raiseAttention(db, "MEDIA_FROM_CUSTOMER", `conv:${conv.id}`);
       // One short acknowledgement per handoff, so the person knows the message arrived: claimed by moving last_ack_at past human_since.
       const claim = await db
@@ -357,7 +363,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     }
 
     case "MEDIA": {
-      // Voice note, image, video, sticker, document, location, contact. Never downloaded.
+      // Voice note, image, video, sticker, document, location, contact. Never downloaded here: the team can view it on demand (src/media.ts).
       if (await hasBookingContext(db, conv.id)) {
         await raiseAttention(db, "MEDIA_FROM_CUSTOMER", `conv:${conv.id}`);
         await reply({ type: "text", text: cp.mediaNoticeCustomer }, "media");

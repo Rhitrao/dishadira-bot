@@ -1,7 +1,7 @@
 // Ticket 37: the owner's chat export. One JSON file of the conversations active in the last N days (1 to 30), for the owner to read
 // or to attach to a Claude chat for an analysis and an action plan (docs/ANALYSIS.md). Owner only (/admin, and /app for the owner).
 // What is in it, and what never is:
-//  - Each chat has a code ("C-0007", from the conversation id, the same number as /admin/conv/7) and the last 4 digits of the number.
+//  - Each chat has a code ("C-0007", from the conversation id, the same number as /app/people/7 and /admin/conv/7) and the last 4 digits of the number.
 //    Never the full number, never the WhatsApp name, never Meta's click id.
 //  - Message text only while it still exists: the chat wipe (src/wipe.ts) removes it CHAT_RETENTION_MINUTES after the person's last
 //    message, and this export never brings it back. Every text field is redacted first (redact() below): phone numbers, emails, UPI ids,
@@ -72,13 +72,13 @@ const OUT_KIND: Record<string, string> = { text: "text", buttons: "button", cta:
 const NOTES = [
   "One file of the conversations with activity in the last `days` days (WhatsApp). Times are India time (Asia/Kolkata).",
   "Message text is deleted automatically some days after a person's last message (`text_kept_for`), so older text is simply not here; counts, steps and outcomes come from booking and payment records and are complete.",
-  "code: a stable code for the chat (C-0007 is the person page /admin/conv/7). last4: the last 4 digits of their WhatsApp number. No full numbers and no names are in this file.",
+  "code: a stable code for the chat (C-0007 is the person page /app/people/7, or /admin/conv/7 on the old console). last4: the last 4 digits of their WhatsApp number. No full numbers and no names are in this file.",
   "source.kind: ad = came from a Click-to-WhatsApp ad (ad_id, ad_headline); instagram / messenger = opened from our Instagram or Messenger reply; tag = no ad data but their first message carried a tag such as (BLR) from an ad's prefilled text; organic_or_unknown = none of these. source.tag is shown whenever a tag was seen.",
   "language: the language they chose (en or hi), or not_chosen. mode: BOT (the bot answers), HUMAN (with the team), BLOCKED.",
   "furthest_step: the last booking step reached, in this order: " + STEPS.join(" > ") + ". summary.reached_step counts chats that got at least that far.",
   "outcome: paid_intro (the ₹99 call paid), intro_status (the latest call's state: PAID, CALLED_SESSION, CALLED_NOT_FIT, MISSED, RESCHEDULED, RUDE, EXPIRED, CANCELLED_BY_US, HELD), sessions and packages bought, refunds, money paid in rupees.",
   "followups: automatic follow-ups (stage 1 about 60 minutes, stage 2 about 20 hours after their last real message).",
-  "messages: from customer, bot or team; kind text, button (a tap, or our message with buttons), list, template or media. Phone numbers, emails, UPI ids, payment ids, other people's links and the person's name are replaced with [phone], [email], [upi], [id], [link], [number], [name].",
+  "messages: from customer, bot or team; kind text, button (a tap, or our message with buttons), list, template or media (a photo or file is named only, e.g. [photo]: never the file or a link to it). Phone numbers, emails, UPI ids, payment ids, other people's links and the person's name are replaced with [phone], [email], [upi], [id], [link], [number], [name].",
   "safety: true means the chat had a crisis or medical-emergency message; its text is withheld. Blocked numbers: counts only, no text.",
   "Do not share this file. Delete it after use.",
 ];

@@ -51,9 +51,10 @@ export const TABS: { id: TabId; href: string; action: Action }[] = [
   { id: "settings", href: "/app/settings", action: "business_settings" },
 ];
 
+// A customer's file (ticket 38, src/media.ts) brings its own stricter headers ("no-store, private", a CSP for the file): kept as they are.
 const secure = (res: Response) => {
-  res.headers.set("Cache-Control", "no-store");
-  res.headers.set("Content-Security-Policy", CONSOLE_CSP);
+  if (!(res.headers.get("Cache-Control") ?? "").includes("no-store")) res.headers.set("Cache-Control", "no-store");
+  if (!res.headers.has("Content-Security-Policy")) res.headers.set("Content-Security-Policy", CONSOLE_CSP);
   return res;
 };
 

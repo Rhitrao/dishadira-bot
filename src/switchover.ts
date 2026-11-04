@@ -19,6 +19,11 @@ export function appPathFor(oldPath: string, query = new URLSearchParams()): stri
   const conv = /^\/admin\/conv\/(\d+)$/.exec(path);
   if (conv) return `/app/people/${conv[1]}`;
   if (path === "/admin/payments") return "/app/payments";
+  // Ticket 38: the owner's chat export (ticket 37) keeps its day count.
+  if (path === "/admin/export") {
+    const days = query.get("days");
+    return `/app/people/export${days && /^\d{1,2}$/.test(days) ? `?days=${days}` : ""}`;
+  }
   if (path === "/admin/people") {
     const keep = new URLSearchParams();
     const q = (query.get("q") ?? "").trim();

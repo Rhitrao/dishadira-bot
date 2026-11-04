@@ -226,6 +226,12 @@ export const config = {
   // Sender for Rohit's emails: an address on the Disha Dira domain (public website domain), verified in Cloudflare Email Service by Rohit.
   mail: { from: "bot@disha-dira.com" },
   graphVersion: "v26.0",
+  // Ticket 38: viewing a customer's photo or file on demand (src/media.ts). Nothing of the file is stored; these bound the two Graph calls.
+  media: {
+    graphTimeoutMs: 5000, // GET /{media-id}: the short-lived link (a person is waiting in the console, not Meta's webhook)
+    downloadTimeoutMs: 20000, // fetching the file itself, whole (WhatsApp files are at most 100 MB, usually well under 1 MB)
+    playerMaxBytes: 16 * 1024 * 1024, // voice notes and videos up to this size open in a player page; larger ones download
+  },
   windowHours: 24,
   // Template registry. Flip approved to true only after Meta approves the template (owner decision).
   // `hi` is the Hindi version of the same template, with its own name and its own approved flag: a Hindi customer gets it
