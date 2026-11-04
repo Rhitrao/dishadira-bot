@@ -74,9 +74,14 @@ describe("colour tokens", () => {
     }
   });
 
-  it("keeps the PRD's token values", () => {
-    expect(TOKENS.light).toMatchObject({ paper: "#FBFAF7", surface: "#FFFFFF", ink: "#14302F", muted: "#5B6B69", accent: "#1B6F73", attention: "#A15C00", danger: "#B3261E", done: "#2E7D4F" });
-    expect(TOKENS.dark).toMatchObject({ paper: "#121615", surface: "#1A201F", ink: "#E8EEEC", muted: "#9FB0AD", accent: "#5CC2BE", attention: "#F0B35A", danger: "#FF8A80", done: "#7FD3A0" });
+  it("keeps the brand's token values (ticket 39: from the Disha Dira logo; the PRD's table is updated to match)", () => {
+    expect(TOKENS.light).toMatchObject({ paper: "#FAF9EE", ink: "#14343F", muted: "#4E6C6D", bronze: "#87622A", accent: "#1D556C", waiting: "#7A5607", attention: "#A04B2B", danger: "#A5322D", done: "#1D6857", gold: "#F2C84B" });
+    expect(TOKENS.dark).toMatchObject({ paper: "#0E1B20", ink: "#F2EFE1", muted: "#A9BFBB", bronze: "#E4C483", accent: "#80D0C7", waiting: "#F0C75A", attention: "#F4AA88", danger: "#FF9D92", done: "#88D9BE" });
+  });
+
+  it("gold, sun and water are decoration only: never a text colour on cream", () => {
+    for (const deco of ["gold", "sun", "water"] as const) expect(CONTRAST_PAIRS.some(([fg]) => fg === deco), deco).toBe(false);
+    expect(APP_CSS).not.toMatch(/[;{]color:var\(--(gold|sun|water)\)/);
   });
 
   it("the stylesheet uses every token in both themes", () => {
@@ -93,7 +98,8 @@ describe("type and spacing", () => {
     expect(Math.min(...sizes)).toBeGreaterThanOrEqual(16);
     expect(APP_CSS).not.toMatch(/font-size:[\d.]+(em|rem|%)/);
     expect(APP_CSS).toMatch(/\.btn\{[^}]*min-height:48px[^}]*min-width:48px/);
-    expect(APP_CSS).toMatch(/\.screen h1\{[^}]*font-size:26px/);
+    expect(APP_CSS).toMatch(/\[lang=hi\] \.screen h1\{[^}]*font-size:26px/); // the UI face for Hindi titles
+    expect(APP_CSS).toMatch(/\.screen h1\{font-family:"Cormorant Garamond"[^}]*font-size:34px[^}]*color:var\(--bronze\)/); // the serif, larger for its small letters
     expect(APP_CSS).toMatch(/\.num\{font-size:20px;font-weight:600\}/);
     expect(APP_CSS).toContain("tabular-nums");
     expect(APP_CSS).not.toMatch(/Inter|Arial|Helvetica/);
@@ -102,6 +108,7 @@ describe("type and spacing", () => {
   it("declares the self-hosted faces under /app/fonts/", () => {
     expect(FONT_FACES).toContain('font-family:"Jost"');
     expect(FONT_FACES).toContain('font-family:"Noto Sans Devanagari"');
+    expect(FONT_FACES).toContain('font-family:"Cormorant Garamond"');
     expect(FONT_FACES).not.toMatch(/url\((?!\/app\/fonts\/)/);
   });
 });
@@ -115,7 +122,7 @@ describe("the page frame", () => {
     expect(tabsFor("PRACTITIONER")).toEqual(["today", "calendar", "people"]);
     for (const role of CONSOLE_ROLES) {
       const page = frame(role);
-      const links = new Set(hrefs(page).filter((h) => h.startsWith("/app")));
+      const links = new Set(hrefs(page).filter((h) => h.startsWith("/app") && !/^\/app\/(brand\/|manifest\.webmanifest)/.test(h))); // not the icons and manifest
       const want = tabsFor(role).map((t) => tabHrefs[t]);
       expect([...links].sort(), role).toEqual([...want].sort());
       // The laptop rail lists every tab; the phone bar holds the first four and puts the rest under More.
@@ -190,8 +197,9 @@ describe("the page frame", () => {
     expect(open).toContain('<a class="ld-back" href="/app/inbox">← Back to the list</a>ITEM');
   });
 
-  it("the console CSP is today's plus self-hosted fonts, and no scripts", () => {
-    expect(CONSOLE_CSP).toBe("default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; form-action 'self'; frame-ancestors 'none'");
+  it("the console CSP is today's plus self-hosted fonts and the brand's own images and manifest, and no scripts", () => {
+    expect(CONSOLE_CSP).toBe("default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'");
+    expect(CONSOLE_CSP).not.toContain("script");
   });
 });
 
@@ -199,7 +207,8 @@ describe("components", () => {
   it("status chips are words from a fixed list, never a code", () => {
     expect(str(bookingChip("CREDIT_BOOKED"))).toBe('<span class="chip done">Confirmed</span>');
     expect(str(bookingChip("NO_SHOW", "hi"))).toBe('<span class="chip attention">छूट गया</span>');
-    expect(str(paymentChip("REFUND_PENDING"))).toBe('<span class="chip attention">Refund on its way</span>');
+    expect(str(paymentChip("REFUND_PENDING"))).toBe('<span class="chip waiting">Refund on its way</span>'); // waiting on the bank: gold
+    expect(str(bookingChip("HELD"))).toBe('<span class="chip waiting">Held</span>');
     expect(str(paymentChip("UNKNOWN"))).toContain("Check with Razorpay");
     expect(str(bookingChip("SOMETHING_NEW"))).toBe("");
   });
@@ -229,7 +238,7 @@ describe("fonts route", () => {
   const get = (path: string, on = "true") => app.fetch(new Request(`https://bot.example.test${path}`), { CONSOLE_V2: on } as never);
 
   it("serves every declared font as woff2 with a year-long immutable cache", async () => {
-    expect(files.length).toBe(7);
+    expect(files.length).toBe(9);
     for (const f of files) {
       const r = await get(`/app/fonts/${f}`);
       expect(r.status, f).toBe(200);
@@ -240,6 +249,38 @@ describe("fonts route", () => {
       expect(bytes.length).toBeGreaterThan(5000);
       expect(bytes.length).toBeLessThan(60000);
     }
+  });
+
+  it("serves the brand's images and the web app manifest, small, typed and cached; nothing else, nothing while CONSOLE_V2 is off", async () => {
+    const want: Record<string, [string, string]> = {
+      "mark-112.webp": ["image/webp", "RIFF"], "logo-328.webp": ["image/webp", "RIFF"],
+      "icon-192.png": ["image/png", "\x89PNG"], "icon-512.png": ["image/png", "\x89PNG"], "apple-touch-icon.png": ["image/png", "\x89PNG"],
+    };
+    for (const [f, [type, magic]] of Object.entries(want)) {
+      const r = await get(`/app/brand/${f}`);
+      expect(r.status, f).toBe(200);
+      expect(r.headers.get("content-type"), f).toBe(type);
+      expect(r.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+      expect(r.headers.get("x-content-type-options")).toBe("nosniff");
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      expect(String.fromCharCode(...bytes.slice(0, 4)), f).toBe(magic);
+      expect(bytes.length, f).toBeLessThan(40000);
+    }
+    expect((await get("/app/brand/logo.png")).status).toBe(404);
+    expect((await get("/app/brand/mark-112.webp", "false")).status).toBe(404);
+    const m = await get("/app/manifest.webmanifest");
+    expect(m.headers.get("content-type")).toBe("application/manifest+json");
+    expect(await m.json()).toEqual({
+      name: "Disha Dira", short_name: "Disha Dira", start_url: "/app", scope: "/app", display: "standalone", theme_color: "#1D556C", background_color: "#FAF9EE",
+      icons: [{ src: "/app/brand/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" }, { src: "/app/brand/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" }],
+    });
+    expect((await get("/app/manifest.webmanifest", "false")).status).toBe(404);
+    // Every console page links the icon, the home-screen icon and the manifest (with the Access cookie).
+    const page = frame("OWNER");
+    expect(page).toContain('<link rel="icon" type="image/png" href="/app/brand/icon-192.png">');
+    expect(page).toContain('<link rel="apple-touch-icon" href="/app/brand/apple-touch-icon.png">');
+    expect(page).toContain('<link rel="manifest" href="/app/manifest.webmanifest" crossorigin="use-credentials">');
+    expect(page).toContain('src="/app/brand/mark-112.webp"');
   });
 
   it("serves nothing else, and nothing while CONSOLE_V2 is off", async () => {

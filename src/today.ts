@@ -20,7 +20,7 @@ import { heartbeatStale } from "./mail";
 import { isOutcomeValue, recordOutcome, undoOutcome, type OutcomeValue } from "./outcomes";
 import { razorpay } from "./pay/razorpay";
 import { decideRequest, openRequests, REQUEST_ACTION, requestById, targetId, type Decided, type RequestRow } from "./requests";
-import { iso, istDay } from "./slots";
+import { iso, istDay, istMinutes } from "./slots";
 import { bookingsOpen } from "./switches";
 import {
   appointmentRow, banner, bookingChip, button, callLangText, clock, confirmStep, consoleFrame, dayName, emptyState, firstName,
@@ -216,7 +216,9 @@ const dayStartUtc = (ymd: string) => iso(Date.parse(`${ymd}T00:00:00+05:30`));
 // A few lines of layout the shared stylesheet doesn't have: rows wrapped for their anchors keep their dividers.
 const TODAY_CSS = raw(`<style>.ledger>.bk+.bk>.appt{border-top:1px solid var(--line)}.bk{scroll-margin-top:16px}.outq{font-weight:600;margin:8px 0 0}
 .saved{font-weight:600;margin:0}.saved+.acts{margin-top:8px}details.more{margin-top:8px}details.more>summary{list-style:none}details.more>summary::-webkit-details-marker{display:none}
-details.more[open]>summary{margin-bottom:8px}</style>`);
+details.more[open]>summary{margin-bottom:8px}
+@media (min-width:900px){.card:not(:has(details)):has(>.acts){display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:24px;align-items:center}
+.card:not(:has(details))>.acts{grid-column:2;grid-row:1/span 4;margin:0}}</style>`);
 
 // ---------- one booking row ----------
 async function bookingRow(c: ConsoleCtx, b: Booking, now: number) {
@@ -268,6 +270,23 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number) {
     action,
     extra,
   })}</div>`;
+}
+
+// The next booking, large: when it is ("Next · in 25 min", "Happening now"), the row itself with its Call and outcome buttons, and, before
+// the Call button's window opens, the time it will appear.
+async function heroCard(c: ConsoleCtx, b: Booking, now: number) {
+  const m = c.get("member");
+  const cc = consoleCopy(m.locale);
+  const start = startMs(b);
+  const end = Date.parse(b.endUtc);
+  const mins = Math.max(1, Math.round((start - now) / 60_000));
+  const when = now >= end ? cc.heroAfter : now >= start ? cc.heroNow : cc.heroNext;
+  const soon = now < start ? html` <span class="in">${cc.startsIn(cc.duration(Math.floor(mins / 60), mins % 60))}</span>` : "";
+  const later =
+    !callAllowed(m, b, now) && now < start - HOUR && can(m, "reveal_phone", { practitionerId: b.practitionerId, callStartMs: start, callEndMs: end, nowMs: start }) === "yes"
+      ? html`<p class="later">${cc.callFrom(clock(iso(start - HOUR), m.locale))}</p>`
+      : "";
+  return html`<div class="hero"><p class="when">${when}${soon}</p>${await bookingRow(c, b, now)}${later}</div>`;
 }
 
 // ---------- the page ----------
@@ -339,11 +358,14 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
   // 3. Approvals (owners only): one card per open "ask owner" request.
   const approvals = isOwner ? await approvalCards(c, await openRequests(env, m.workspaceId), now) : [];
 
-  // 4. Up next: today's calls and sessions in time order.
+  // 4. Up next: today's calls and sessions in time order. The one that needs the practitioner next (ticket 39) is drawn first and large,
+  // with its Call button: the first booking still on, not yet marked, and not more than an hour past its end (the Call button's window).
   const day = await bookingsBetween(env, dayStart, dayEnd, scope);
-  const dayRows = await Promise.all(day.map((b) => bookingRow(c, b, now)));
+  const live = (b: Booking) => (b.kind === "CALL" ? ["PAID", "RESCHEDULED"].includes(b.state) : ["CONFIRMED", "CREDIT_BOOKED"].includes(b.state));
+  const focus = day.find((b) => b.oid === null && live(b) && Date.parse(b.endUtc) + HOUR > now);
+  const dayRows = await Promise.all(day.filter((b) => b !== focus).map((b) => bookingRow(c, b, now)));
   let upNext: unknown;
-  if (day.length) upNext = ledger(dayRows);
+  if (day.length) upNext = html`${focus ? await heroCard(c, focus, now) : ""}${dayRows.length ? ledger(dayRows) : ""}`;
   else {
     const next = await nextBooking(env, dayEnd, scope);
     upNext = emptyState(next ? cc.noCallsToday(`${dayName(next, m.locale)}, ${clock(next, m.locale)}`) : cc.noCallsBooked, { label: cc.openCalendar, href: "/app/calendar" });
@@ -352,7 +374,6 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
   // 5. Later: tomorrow, with a link to the calendar.
   const tomorrowStart = dayEnd;
   const tomorrow = await bookingsBetween(env, tomorrowStart, iso(Date.parse(tomorrowStart) + DAY), scope);
-  const live = (b: Booking) => (b.kind === "CALL" ? ["PAID", "RESCHEDULED"].includes(b.state) : ["CONFIRMED", "CREDIT_BOOKED"].includes(b.state));
   const later = rowList(
     listRow({
       href: "/app/calendar",
@@ -392,7 +413,10 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
   const ws = await env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>();
   const nameTask = isOwner && !hasOwnName(ws?.name) ? html`<div class="setup">${taskCard({ title: cc.taskName, why: cc.taskNameWhy, primary: { label: cc.taskNameButton, href: "/app/settings#business", kind: "secondary" } })}</div>` : "";
 
-  const body = html`${TODAY_CSS}${screenHead("today", m.locale)}
+  // A gentle greeting by the hour in India, with the date, above the screen's question.
+  const hour = Math.floor(istMinutes(iso(now)) / 60);
+  const eyebrow = `${cc.greeting(hour, firstName(m.displayName, ""))} · ${dayName(iso(now), m.locale)}`;
+  const body = html`${TODAY_CSS}${screenHead("today", m.locale, { eyebrow })}
 ${safety.length ? section(cc.secSafety, safetyCards, safety.length) : ""}
 ${replies && waiting.length ? section(cc.secWaiting, waitingCards, waiting.length) : ""}
 ${approvals.length ? section(cc.secApprovals, approvals, approvals.length) : ""}

@@ -33,6 +33,9 @@ export const config = {
   },
   // Days off the owner or practitioner marks on /amma, /admin or /app Calendar (src/holidays.ts): no new bookings on them.
   holidays: { maxDaysAhead: 60 },
+  // The console's app identity (ticket 39, src/brand.ts): the name a phone shows under the home-screen icon, and its two colours
+  // (the brand's deep teal and cream, as in src/ui.ts TOKENS). The logo files are in images/.
+  brand: { name: "Disha Dira", shortName: "Disha Dira", tagline: "Healing Center", themeColor: "#1D556C", themeColorDark: "#0E1B20", background: "#FAF9EE" },
   holdMinutes: 20,
   undoMinutes: 10,
   limits: {
