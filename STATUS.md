@@ -1,7 +1,7 @@
 # STATUS
 Updated: 2026-11-04 (Ticket 39: the Disha Dira look for /app, and a Month view)
 
-## Ticket 39 (PR: see below, no migration; builds on #61, now merged)
+## Ticket 39 (PR https://github.com/Rhitrao/dishadira-bot/pull/63, no migration; builds on #61, now merged)
 Why: Rohit, 4 Nov 2026: "I need a UI that looks and feels good (go with the Disha Dira theme colours) … for the mobile responsive web app", and "make sure the most important things like calendar view by month, week, etc is there".
 - **The look, "sunrise calm"** (src/ui.ts): tokens from the logo, light and dark, every text pair AA (test/ui.test.ts): paper #FAF9EE / #0E1B20, surface #FFFEF9 / #14262D, ink #14343F / #F2EFE1, muted (slate) #4E6C6D / #A9BFBB, bronze (titles) #87622A / #E4C483, accent (deep teal, buttons) #1D556C / #80D0C7, waiting (gold) #7A5607 / #F0C75A, attention (terracotta) #A04B2B / #F4AA88, danger #A5322D / #FF9D92, done (teal on mint) #1D6857 / #88D9BE; gold #F2C84B, sun #F8E878 and water #2A9A9C are decoration only (the gold rule under titles, dots, the timeline), never text. Chips: paid teal/mint, waiting gold (a held booking, a payment or refund waiting), attention terracotta (missed, needs the team), danger red. A soft sunrise glow at the top of the page and mint at the foot; soft rounded cards; one CSS-only reveal on load (off under prefers-reduced-motion). Settings → Business "Teal" is now the brand's deep teal.
 - **Fonts**: Jost and Noto Sans Devanagari kept; **Cormorant Garamond** 500/600 (Latin, @fontsource 5.3.0, OFL, fonts/OFL-CormorantGaramond.txt, NOTICE) for screen titles, the brand name, a person's name and the calendar's period; Hindi titles stay in the UI face.
