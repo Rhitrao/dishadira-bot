@@ -99,7 +99,9 @@ async function showSessionTimes(env: Env, conv: Conv, sid: number, ymd: string, 
   await sendSessionDays(env, conv, sid, `${msgId}:again`);
 }
 
-export async function startSession(env: Env, provider: PaymentProvider, conv: Conv, ses: Session, startUtc: string, msgId: string): Promise<void> {
+// `template`: the 24-hour window has closed and the team sent this time from the console (ticket 40, src/sessionlink.ts): the link goes in
+// the approved `session_link` template instead of the pay button (the caller has checked that it is approved).
+export async function startSession(env: Env, provider: PaymentProvider, conv: Conv, ses: Session, startUtc: string, msgId: string, opts: { template?: boolean } = {}): Promise<void> {
   const db = env.DB;
   const cp = copyFor(conv.locale);
   const send = (out: Out, step: string) => sendMessage(env, conv.id, out, `${msgId}:${step}`);
@@ -152,7 +154,15 @@ export async function startSession(env: Env, provider: PaymentProvider, conv: Co
     await db.prepare("UPDATE payments SET state = 'PENDING', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();
     const p = formatIstLang(startUtc, langOf(conv.locale));
     const url = await customerPayLink(env, payId, link.url, hold.holdUntil); // our /p/ link, never Razorpay's own (src/paylink.ts)
-    await sendStep(env, conv.id, "pay", { type: "cta", body: cp.sessionPayBody(p.day, p.time, untilLabel(hold.holdUntil, conv.locale), url), label: cp.sessionPayLabel, url }, `${msgId}:pay`, { until: hold.holdUntil });
+    if (opts.template) {
+      const en = formatIstLang(startUtc, "en");
+      const hi = formatIstLang(startUtc, "hi");
+      await sendMessage(
+        env, conv.id,
+        { type: "template", name: "session_link", params: [en.day, en.time, untilLabel(hold.holdUntil, "en"), url], paramsHi: [hi.day, hi.time, untilLabel(hold.holdUntil, "hi"), url] },
+        `${msgId}:pay`,
+      );
+    } else await sendStep(env, conv.id, "pay", { type: "cta", body: cp.sessionPayBody(p.day, p.time, untilLabel(hold.holdUntil, conv.locale), url), label: cp.sessionPayLabel, url }, `${msgId}:pay`, { until: hold.holdUntil });
   } catch {
     await db.prepare("UPDATE payments SET state = 'FAILED', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();
     await db.prepare("UPDATE sessions SET state = 'OFFERED', updated_at = ?2 WHERE id = ?1 AND state = 'HELD'").bind(ses.id, nowIso()).run();

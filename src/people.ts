@@ -22,6 +22,7 @@ import { peopleCopy, type PeopleCopy } from "./people-copy";
 import { personState, quietActive, noSellActiveFor, ensureState } from "./noise";
 import { applyMoneyReceived } from "./requests";
 import { takeOverStmt } from "./handoff";
+import { sessionLinkButton } from "./sessionlink";
 import { iso } from "./slots";
 import {
   appointmentRow, bookingChip, bubble, callLangText, clock, consoleFrame, dayName, emptyState, firstName, forWhomText, last4, ledger, listDetail,
@@ -360,6 +361,10 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
       ? html`<div class="card"><p class="effect">${p.takeOverEffect}</p><div class="acts">${post(p.takeOver, `${base}/take-over`, await token(c, `people-takeover:${id}`), "primary")}</div></div>`
       : "";
 
+  // Send session link (ticket 40, src/sessionlink.ts): for someone with a paid ₹99 call, to whoever may book for them.
+  const slink = await sessionLinkButton(c.env, m, id);
+  const sessionLinkCard = slink ? html`<div class="card"><div class="acts">${slink}</div></div>` : "";
+
   // The next booking (a practitioner: the next one with them).
   const nb = await nextBooking(c.env, id, m, nowMs);
   const next = nb
@@ -479,7 +484,7 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
   }
   if (owner) more.push(confirmWith({ label: p.removeData, effect: p.removeDataEffect, confirm: p.removeDataYes, action: `${base}/remove-data`, csrf: await token(c, `people-remove:${id}`), fields: reasonField(p, "remove-reason", draft.form === "remove" ? draft.reason : "") }));
 
-  const detail = html`${head}${takeOver}${section(p.secNext, next)}${section(p.secPackage, packHtml)}${payHtml}<div id="chat">${section(p.secChat, chatHtml)}</div>${section(p.secSafety, safetyHtml)}${
+  const detail = html`${head}${takeOver}${sessionLinkCard}${section(p.secNext, next)}${section(p.secPackage, packHtml)}${payHtml}<div id="chat">${section(p.secChat, chatHtml)}</div>${section(p.secSafety, safetyHtml)}${
     more.length ? section(p.secMore, html`<div class="acts">${more}</div>`) : ""
   }`;
   const list = listHtml({ m, p, rows: await listPeople(c.env, m, q, f, nowMs), q, f, openId: id, nowMs });

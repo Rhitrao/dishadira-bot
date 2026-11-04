@@ -173,6 +173,25 @@ Thank you for your session with Shantha Rao. If the session helped, would you sh
 
 Inside the 24-hour window the same sentences go as a normal message, with line breaks; without a review link the review sentence is left out there, and outside the window nothing is sent (this template always has the link).
 
+## 11. session_link (ticket 40)
+
+Sent when someone on the team uses **Send session link → With a time** in the console (/app) for a customer whose 24-hour window has closed: the time agreed on the call is held for them and this carries the ₹799 payment link. Inside the window the bot's usual pay message goes instead. Until it is approved the console says "WhatsApp window closed: this needs the template "session_link" approved in Meta" and nothing is held or sent. ("Let them choose" outside the window uses the approved `session_offer`, template 2.) No buttons.
+
+**Category: Utility.** It is about a booking the customer asked for on their call: a time kept for them and how to pay for it.
+
+**Body**
+
+```
+Shantha Rao has kept {{1}} at {{2}} (India time) for your full session. To confirm it, please pay by {{3}}: {{4}} If the time doesn't suit you, just reply here.
+```
+
+| Variable | Meaning | Sample value |
+|---|---|---|
+| {{1}} | Day of the session | Wed, 7 Oct |
+| {{2}} | Time of the session (India time) | 3:00 pm |
+| {{3}} | Pay by (the hold's end, India time; 20 minutes after it is sent) | 2:20 pm |
+| {{4}} | The payment link (our own /p/ link) | https://bot.example.com/p/EXAMPLE |
+
 ---
 
 ## Hindi versions
@@ -259,4 +278,14 @@ One Quick reply button, text `विकल्प देखें`. No variables.
 शांता राव जी के साथ सेशन के लिए धन्यवाद। अगर सेशन से मदद मिली हो, तो क्या आप Google पर एक छोटा-सा रिव्यू लिखेंगे? {{1}} अगर आपके किसी जानने वाले को इससे फ़ायदा हो सकता है, तो आप उन्हें यह WhatsApp लिंक भेज सकते हैं: {{2}} शुभकामनाओं के साथ, दिशा दिरा
 ```
 
-Samples as the English one. Category Marketing. The Hindi of 9 and 10 is a draft for a native speaker to read before it is submitted.
+Samples as the English one. Category Marketing. 
+
+### 11. session_link_hi
+
+```
+शांता राव जी ने आपके पूरे सेशन के लिए {{1}} को {{2}} बजे (भारतीय समय) का समय रखा है। इसे पक्का करने के लिए कृपया {{3}} तक भुगतान करें: {{4}} अगर यह समय ठीक न हो, तो बस यहाँ जवाब दें।
+```
+
+Samples: {{1}} बुध, 7 अक्टूबर · {{2}} दोपहर 3:00 · {{3}} दोपहर 2:20 · {{4}} https://bot.example.com/p/EXAMPLE. Category Utility.
+
+The Hindi of 9, 10 and 11 is a draft for a native speaker to read before it is submitted.

@@ -13,6 +13,7 @@ import { iso } from "./slots";
 import { inbox } from "./inbox";
 import { payments } from "./payments";
 import { people } from "./people";
+import { sessionLink } from "./sessionlink";
 import { settings } from "./settings";
 import { team } from "./team";
 import { today } from "./today";
@@ -143,6 +144,7 @@ consoleApp.route("/inbox", inbox); // ticket 22: src/inbox.ts
 consoleApp.route("/calendar", calendar); // ticket 27: src/calendar.ts
 consoleApp.route("/people", people); // ticket 23: the list and /app/people/<id> (src/people.ts)
 consoleApp.route("/payments", payments); // ticket 24 (src/payments.ts)
+consoleApp.route("/session-link", sessionLink); // ticket 40: the team's ₹799 session link (src/sessionlink.ts)
 consoleApp.route("/settings/team", team);
 consoleApp.route("/settings", settings); // ticket 24 (src/settings.ts)
 

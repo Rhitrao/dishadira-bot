@@ -242,10 +242,12 @@ export const config = {
     session_booked: { approved: true, language: "en", hi: { name: "session_booked_hi", approved: true, language: "hi" } },
     // The Inbox's follow-up once the 24-hour window has closed (ticket 22; not yet in the CONTRACT's template list, see STATUS "Blocked").
     follow_up: { approved: true, language: "en", hi: { name: "follow_up_hind", approved: true, language: "hi" } },
-    // Ticket 40 (CONTRACT v10), both waiting for Rohit to create them in Meta (docs/TEMPLATES.md 9 and 10). Until then the bot skips the
+    // Ticket 40 (CONTRACT v10), waiting for Rohit to create them in Meta (docs/TEMPLATES.md 9 to 11). Until then the bot skips the
     // message when the 24-hour window has closed, and counts it in the digest.
     session_reminder: { approved: false, language: "en", hi: { name: "session_reminder_hi", approved: false, language: "hi" } },
     review_ask: { approved: false, language: "en", hi: { name: "review_ask_hi", approved: false, language: "hi" } },
+    // The team's "Send session link" with a time held, once the window has closed (ticket 40, docs/TEMPLATES.md 11). Utility.
+    session_link: { approved: false, language: "en", hi: { name: "session_link_hi", approved: false, language: "hi" } },
   },
   languages: ["en", "hi"],
   faqIds: ["what_is_this", "how_it_works", "price", "timings", "refund", "privacy"],

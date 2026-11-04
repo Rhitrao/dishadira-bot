@@ -161,6 +161,7 @@ const en = {
   tpl_follow_up: "follow-up",
   tpl_session_reminder: "session reminder",
   tpl_review_ask: "review and referral ask",
+  tpl_session_link: "session payment link",
   tplOther: "an update",
   showEarlier: "Show earlier messages",
 
@@ -355,6 +356,7 @@ const hi: ConsoleCopy = {
   tpl_follow_up: "फ़ॉलो-अप",
   tpl_session_reminder: "सेशन की याद",
   tpl_review_ask: "रिव्यू और रेफ़रल",
+  tpl_session_link: "सेशन का भुगतान लिंक",
   tplOther: "एक जानकारी",
   showEarlier: "पहले के संदेश देखें",
 
