@@ -137,6 +137,7 @@ async function message(convId: number, dir: "IN" | "OUT", body: string | null, o
 const state = (convId: number, sql: string, ...b: unknown[]) =>
   db.prepare(`INSERT OR IGNORE INTO person_state (conversation_id) VALUES (?1)`).bind(convId).run().then(() => db.prepare(sql).bind(convId, ...b).run());
 
+const DAYMS = 86_400_000;
 const A_NUM = "910000004821"; // the practitioner's customer
 const B_NUM = "910000007733"; // the second practitioner's customer
 const C_NUM = "910000001956"; // no booking, waiting for a person
@@ -157,15 +158,20 @@ const longPieces = (num: string) => {
   return out;
 };
 
+// A name in a list row, with the number beside it as this member sees it (ticket 46).
+const listed = (body: string, name: string) => body.includes(`${name} <span class="d">`);
+const fmt = (num: string) => `+91 ${num.slice(2, 7)} ${num.slice(7)}`;
+
 describe("People: the list", () => {
-  it("lists everyone for the owner and staff, last 4 digits only, with the Visible to line", async () => {
+  it("lists everyone for the owner (full numbers, ticket 46) and staff (last 4 digits only), with no developer's \"Visible to\" line", async () => {
     await three();
     for (const who of [OWNER, STAFF]) {
       const res = await get("/app/people", who);
       expect(res.status).toBe(200);
       const body = await res.text();
-      for (const n of ["Asha …4821", "Bina …7733", "Chetan …1956"]) expect(body).toContain(n);
-      expect(body).toContain("Visible to: Owner, Practitioner, Staff");
+      for (const [n, num] of [["Asha", A_NUM], ["Bina", B_NUM], ["Chetan", C_NUM]])
+        expect(body).toContain(`${n} <span class="d">${who === OWNER ? fmt(num) : `…${num.slice(-4)}`}</span>`);
+      expect(body).not.toContain("Visible to");
       expect(body).toContain("Waiting for a reply"); // Chetan's chip, in words
       expect(res.headers.get("Cache-Control")).toBe("no-store");
     }
@@ -174,7 +180,7 @@ describe("People: the list", () => {
   it("a practitioner sees only customers booked with them", async () => {
     const { a, b, c } = await three();
     const body = await (await get("/app/people", PRAC)).text();
-    expect(body).toContain("Asha …4821");
+    expect(body).toContain(`Asha <span class="d">${fmt(A_NUM)}</span>`); // her own customer's number
     expect(body).not.toContain("Bina");
     expect(body).not.toContain("Chetan");
     expect(body).toContain(`/app/people/${a}`);
@@ -183,7 +189,7 @@ describe("People: the list", () => {
     // A hold that expired is not a booking: nobody booked with them.
     const d = await person("910000005500", "Dev");
     await call(d, PRAC, NOW + 30 * HOUR, "EXPIRED");
-    expect(await (await get("/app/people", PRAC)).text()).not.toContain("Dev …5500");
+    expect(listed(await (await get("/app/people", PRAC)).text(), "Dev")).toBe(false);
     // The second practitioner sees only Bina.
     const second = await (await get("/app/people", PRAC2)).text();
     expect(second).toContain("Bina");
@@ -197,7 +203,7 @@ describe("People: the list", () => {
     await db.prepare("INSERT INTO credits (package_id, delta, reason, at, by) VALUES (?1, 10, 'PURCHASE', ?2, 'system')").bind(k.meta.last_row_id, iso(NOW - 86_400_000)).run();
     const names = async (f: string, who = OWNER) => {
       const body = await (await get(`/app/people?f=${f}`, who)).text();
-      return ["Asha", "Bina", "Chetan", "Esha"].filter((n) => body.includes(`${n} …`));
+      return ["Asha", "Bina", "Chetan", "Esha"].filter((n) => listed(body, n));
     };
     expect(await names("waiting")).toEqual(["Chetan"]);
     expect(await names("upcoming")).toEqual(["Asha", "Bina"]);
@@ -208,21 +214,28 @@ describe("People: the list", () => {
     expect((await (await get(`/app/people?f=upcoming`)).text())).toContain(`href="/app/people/${a}?f=upcoming"`);
   });
 
-  it("search by name or by the last 4 digits; a longer number only ever matches on its last 4", async () => {
+  it("search by name, by the full number (owner, practitioner) or the last 4 digits; for staff a longer number only ever matches on its last 4", async () => {
     await three();
     const names = async (q: string, who = OWNER) => {
       const body = await (await get(`/app/people?q=${encodeURIComponent(q)}`, who)).text();
-      return ["Asha", "Bina", "Chetan"].filter((n) => body.includes(`${n} …`));
+      return ["Asha", "Bina", "Chetan"].filter((n) => listed(body, n));
     };
     expect(await names("asha")).toEqual(["Asha"]);
     expect(await names("4821")).toEqual(["Asha"]);
-    expect(await names("+91 0000 04821")).toEqual(["Asha"]);
-    // Probing the middle of a number finds nothing: "00000" is cut to its last 4 ("0000"), which no number ends with.
+    expect(await names(fmt(A_NUM))).toEqual(["Asha"]); // the full number, as shown (ticket 46)
+    expect(await names("0000004821")).toEqual(["Asha"]); // without the country code
+    expect(await names("+91 0000 04821")).toEqual([]); // a different number
+    expect(await names(fmt(A_NUM), PRAC)).toEqual(["Asha"]);
+    expect(await names("4821", STAFF)).toEqual(["Asha"]);
+    expect(await names(fmt(A_NUM), STAFF)).toEqual(["Asha"]); // cut to its last 4 for staff
+    // Probing the middle of a number finds nothing: for staff "00000" is cut to its last 4 ("0000"), which no number ends with.
+    expect(await names("00000", STAFF)).toEqual([]);
     expect(await names("00000")).toEqual([]);
     expect(await names("9100")).toEqual([]);
     expect(await names("%")).toEqual([]); // LIKE wildcards are plain text
     expect(await names("4821", PRAC2)).toEqual([]); // still scoped
     expect(searchClause("12345678")).toEqual({ sql: "c.wa_id LIKE ?1", value: "%5678" });
+    expect(searchClause("+91 98000 01234", true)).toEqual({ sql: "c.wa_id LIKE ?1", value: "%919800001234" });
     expect((await (await get("/app/people?q=zz")).text())).toContain("Nobody matches that search.");
   });
 
@@ -250,7 +263,7 @@ describe("the person page", () => {
     const res = await get(`/app/people/${a}`);
     expect(res.status).toBe(200);
     const body = await res.text();
-    const order = ["Asha Devi", "…4821", "Speaks Hindi", "First message Sun, 20 Sep", 'Came from the ad "Calm in 15 minutes"', "Next booking", "Package", "6 of 10 left", "Payments", "Chat", "Safety", "More"];
+    const order = ["Asha Devi", fmt(A_NUM), "Speaks Hindi", "First message Sun, 20 Sep", 'Came from the ad "Calm in 15 minutes"', "Next booking", "Package", "6 of 10 left", "Payments", "Chat", "Safety", "More"];
     let at = -1;
     for (const s of order) {
       const i = body.indexOf(s, at + 1);
@@ -267,7 +280,7 @@ describe("the person page", () => {
     expect(body).toContain("For family");
     expect(body).toContain("Text deleted on Mon, 12 Oct"); // last message 2 hours ago + 7 days
     expect(body).toContain("Is the call on the phone?");
-    expect(body).not.toContain(A_NUM);
+    expect(body).toContain(`href="tel:+${A_NUM}"`); // ticket 46: the owner's one-tap Call
     const opened = await audits("PERSON_OPENED");
     expect(opened).toEqual([{ actor: OWNER, memberId: 1, target: `conv:${a}`, detail: "", reason: null }]);
   });
@@ -319,60 +332,51 @@ describe("check 9: staff never see more than the last 4 digits", () => {
       for (const num of [A_NUM, B_NUM, C_NUM]) for (const piece of longPieces(num)) expect(body.includes(piece), `${piece} near ${body.slice(body.indexOf(piece) - 80, body.indexOf(piece) + 20)}`).toBe(false);
     }
     expect(await (await get(`/app/people?q=${A_NUM}`, STAFF)).text()).toContain('name="q" value="4821"'); // the search box keeps only the last 4
-    // No reveal for staff: no button, and a hand-made POST is refused and recorded nowhere.
+    // No number for staff: no Call, no reveal; the old reveal POST is gone and nothing is recorded.
     const page = await (await get(`/app/people/${a}`, STAFF)).text();
     expect(page).not.toContain("/reveal");
-    expect(page).not.toContain("tel:");
+    expect(page).not.toContain("tel:+");
     const res = await post(`/app/people/${a}/reveal`, { csrf: await tokenFor(STAFF, `people-reveal:${a}`), reason: "need to call them" }, STAFF);
-    expect(res.status).toBe(403);
-    const refused = readable(await res.text());
-    for (const piece of longPieces(A_NUM)) expect(refused).not.toContain(piece);
+    expect(res.status).toBe(404);
+    const refusedBody = readable(await res.text());
+    for (const piece of longPieces(A_NUM)) expect(refusedBody).not.toContain(piece);
     expect(await audits("PERSON_REVEAL_NUMBER")).toEqual([]);
   });
 });
 
-describe("show the full number", () => {
-  it("needs a reason; with one, it is logged first and shown on that response only", async () => {
+describe("the full number (ticket 46, CONTRACT v15)", () => {
+  it("the owner sees it in the header as a tel: link with a Call button, with no reveal step", async () => {
     const { a } = await three();
     const page = await (await get(`/app/people/${a}`)).text();
-    const csrf = csrfIn(page, `/app/people/${a}/reveal`)!;
-    expect(csrf).toBeTruthy();
-    expect(page).not.toContain(A_NUM);
-    for (const reason of ["", "  ", "ok"]) {
-      const res = await post(`/app/people/${a}/reveal`, { csrf, reason });
-      expect(res.status).toBe(400);
-      const body = await res.text();
-      expect(body).toContain("Write a one-line reason first.");
-      expect(body).not.toContain(A_NUM);
-    }
+    expect(page).toContain(`<a class="tel" href="tel:+${A_NUM}">`);
+    expect(page).toContain(fmt(A_NUM));
+    expect(page).toContain(`<a class="btn call primary" href="tel:+${A_NUM}">`);
+    expect(page).not.toContain("/reveal");
+    expect(page).not.toContain("Show the full number");
+    expect((await post(`/app/people/${a}/reveal`, { csrf: await tokenFor(OWNER, `people-reveal:${a}`), reason: "Call back about the time" })).status).toBe(404);
     expect(await audits("PERSON_REVEAL_NUMBER")).toEqual([]);
-    const res = await post(`/app/people/${a}/reveal`, { csrf, reason: "Call back about the time" });
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(`href="tel:+${A_NUM}"`);
-    expect(body).toContain("Showing the number was recorded.");
-    expect(await audits("PERSON_REVEAL_NUMBER")).toEqual([{ actor: OWNER, memberId: 1, target: `conv:${a}`, detail: "", reason: "Call back about the time" }]);
-    expect(await (await get(`/app/people/${a}`)).text()).not.toContain(A_NUM); // the next page load is masked again
   });
 
-  it("a practitioner may only within an hour of their own call, as can() says; the button and the POST agree", async () => {
+  it("a practitioner sees her own customer's number at any time, never another practitioner's", async () => {
+    const { a, b } = await three();
+    const page = await (await get(`/app/people/${a}`, PRAC)).text();
+    expect(page).toContain(`href="tel:+${A_NUM}"`);
+    vi.setSystemTime(NOW + 10 * DAYMS); // long after the call
+    expect(await (await get(`/app/people/${a}`, PRAC)).text()).toContain(`href="tel:+${A_NUM}"`);
+    const other = await get(`/app/people/${b}`, PRAC);
+    expect(other.status).toBe(403);
+    const otherBody = readable(await other.text());
+    for (const piece of longPieces(B_NUM)) expect(otherBody).not.toContain(piece);
+  });
+
+  it("a name that is only a symbol shows as \"No name\"; a typed name with a letter is kept", async () => {
     await team();
-    const a = await person(A_NUM, "Asha");
-    await call(a, PRAC, NOW + 3 * HOUR);
-    const scope = `people-reveal:${a}`;
-    let page = await (await get(`/app/people/${a}`, PRAC)).text();
-    expect(page).not.toContain("/reveal");
-    expect((await post(`/app/people/${a}/reveal`, { csrf: await tokenFor(PRAC, scope), reason: "calling now" }, PRAC)).status).toBe(403);
-    vi.setSystemTime(NOW + 2 * HOUR + 5 * MIN); // 55 minutes before the call
-    page = await (await get(`/app/people/${a}`, PRAC)).text();
-    const csrf = csrfIn(page, `/app/people/${a}/reveal`);
-    expect(csrf).toBeTruthy();
-    const res = await post(`/app/people/${a}/reveal`, { csrf: csrf!, reason: "calling now" }, PRAC);
-    expect(res.status).toBe(200);
-    expect(await res.text()).toContain(`tel:+${A_NUM}`);
-    vi.setSystemTime(NOW + 4 * HOUR + 20 * MIN); // over an hour after it ended
-    expect((await post(`/app/people/${a}/reveal`, { csrf: csrf!, reason: "calling now" }, PRAC)).status).toBe(403);
-    expect((await audits("PERSON_REVEAL_NUMBER")).length).toBe(1);
+    const star = await person("910000006060", "*");
+    const page = await (await get(`/app/people/${star}`)).text();
+    expect(page).toContain("<h2>No name</h2>");
+    expect(page).not.toContain("<h2>*</h2>");
+    const list = await (await get("/app/people")).text();
+    expect(list).toContain(`No name <span class="d">`);
   });
 });
 
@@ -526,7 +530,8 @@ describe("remove their data", () => {
     expect(await one("SELECT COUNT(*) AS n FROM intros WHERE conversation_id = ?1", a)).toEqual({ n: 2 });
     expect(await audits("PERSON_DATA_REMOVED")).toEqual([{ actor: OWNER, memberId: 1, target: `conv:${a}`, detail: "name, message text, notes and gist", reason: "They asked by phone" }]);
     const after = await (await get(`/app/people/${a}`)).text();
-    expect(after).toContain("No name …4821");
+    expect(after).toContain("<h2>No name</h2>");
+    expect(after).toContain(fmt(A_NUM));
     expect(after).not.toContain("please delete me");
   });
 
@@ -599,9 +604,8 @@ describe("record money received outside Razorpay", () => {
 });
 
 describe("every POST refuses a role that can't do it, even sent by hand", () => {
-  // [route, scope, roles refused]. The owner can do all of them; the reveal for a practitioner is covered above (only near a call).
+  // [route, scope, roles refused]. The owner can do all of them. (Ticket 46 removed "reveal": the number is shown, or not at all.)
   const ROUTES: [string, string, string[]][] = [
-    ["reveal", "people-reveal", [STAFF, PRAC]],
     ["allow-bookings", "people-allow", [STAFF, PRAC]],
     ["clear-warnings", "people-clear", [STAFF, PRAC]],
     ["block", "people-block", [PRAC]],

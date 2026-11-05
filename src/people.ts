@@ -3,17 +3,18 @@
 // Origin of a POST. Here every screen, section and button asks can() (src/auth.ts), and every POST asks it again with its own
 // per-form token (memberCsrf), so a hidden button and a refused POST always agree.
 //  - A practitioner sees only customers booked with them, and nothing about money.
-//  - Phone numbers show as the last 4 digits everywhere; the full number only through the audited reveal, with a reason.
+//  - Ticket 46 (CONTRACT v15): the full number, formatted and as a tel: link, for the owner and for a practitioner's own customers;
+//    staff see the last 4 digits only (and search by them only).
 //  - Opening a person page is audited (PERSON_OPENED), as the PRD asks.
 //  - Staff never see the text of a safety message (crisis or emergency), the customer's or the bot's; and no chat text at all when the
 //    owner has turned "Staff read chats" off in Settings (src/business.ts chatTextHidden).
 //  - Practitioners read the chat of their own customers, read-only (CONTRACT v6, decided 27 Oct 2026); never anyone else's.
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
-import { can, canAny, memberCsrf, WORKSPACE_ID, type Member, type Target } from "./auth";
+import { can, canAny, memberCsrf, seesNumber, WORKSPACE_ID, type Member, type Target } from "./auth";
 import { config } from "./config";
 import { chatTextHidden } from "./business";
-import { auditStmt, languageCsrf, type ConsoleCtx, type ConsoleVars } from "./console";
+import { auditStmt, badgesOf, languageCsrf, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleCopy } from "./console-copy";
 import { rupees, serviceName } from "./copy";
 import type { Env } from "./env";
@@ -30,8 +31,8 @@ import { aboutHtml, aboutPerson, seesAbout } from "./intent";
 import { maySeeMedia, viewButton, viewMedia } from "./media";
 import { iso } from "./slots";
 import {
-  appointmentRow, avatar, bookingChip, bubble, callLangText, clock, consoleFrame, dayName, emptyState, firstName, forWhomText, last4, ledger, listDetail,
-  listRow, paymentChip, rows, screenHead, section, statusChip, thread, type From,
+  appointmentRow, avatar, bookingChip, bubble, callButton, callLangText, clock, consoleFrame, dayName, emptyState, firstName, formatNumber, forWhomText, last4,
+  ledger, listDetail, listRow, paymentChip, personName, phoneHtml, rows, screenHead, section, statusChip, thread, type From,
 } from "./ui";
 import { retentionMinutes, wipePersonStmts } from "./wipe";
 
@@ -83,18 +84,6 @@ async function personFor(c: ConsoleCtx, id: number): Promise<{ p: Person; target
   return { p, target: { practitionerId: own ? m.id : null } };
 }
 
-// For a practitioner's reveal: their call or session with this customer that is now within an hour of its start or end.
-async function callWindow(env: Env, convId: number, m: Member, nowMs: number): Promise<Target> {
-  if (!isPractitioner(m)) return {};
-  const row = await env.DB.prepare(
-    `SELECT s.start_utc AS startUtc, s.end_utc AS endUtc FROM slots s WHERE s.owner_id = ?1 AND s.state = 'BOOKED' AND s.practitioner_id = ?2
-       AND s.start_utc <= ?3 AND s.end_utc >= ?4 ORDER BY s.start_utc LIMIT 1`,
-  )
-    .bind(convId, m.id, iso(nowMs + HOUR), iso(nowMs - HOUR))
-    .first<{ startUtc: string; endUtc: string }>();
-  return row ? { callStartMs: Date.parse(row.startUtc), callEndMs: Date.parse(row.endUtc), nowMs } : { nowMs };
-}
-
 // ---------- small words ----------
 function agoText(p: PeopleCopy, utc: string, nowMs: number): string {
   const m = Math.max(0, Math.round((nowMs - Date.parse(utc)) / MIN));
@@ -112,28 +101,32 @@ const service = (s: string, locale: string) => serviceName(s, locale === "hi" ? 
 // A little layout the shared stylesheet doesn't have: the filter links, a search box inside the list (the laptop rail has its own),
 // and the fields inside a confirm panel. Inline <style> is allowed by the console's CSP.
 const PEOPLE_CSS = `
-.filters{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
-.filters a{display:inline-flex;align-items:center;min-height:48px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:500}
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.filters a{display:inline-flex;align-items:center;min-height:var(--tap);padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:500;font-size:var(--fs-in)}
+.filters a:hover{border-color:var(--muted)}
 .filters a.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .person{display:flex;align-items:flex-start;gap:16px}.person>div{min-width:0;flex:1}
 .people-find{margin:0 0 12px}
-.person h2{font-family:var(--serif);font-size:32px;line-height:1.15;font-weight:600;color:var(--bronze);margin:2px 0 0}
+.person h2{font-family:var(--serif);font-size:28px;line-height:1.15;font-weight:600;color:var(--bronze);margin:0}
 [lang=hi] .person h2{font-family:var(--sans);font-size:26px}
-.person h2 .d{font-family:var(--sans);font-size:20px;color:var(--muted);font-weight:400}
-.person p{margin:4px 0 0;color:var(--muted)}
+.person p{margin:4px 0 0;color:var(--muted);font-size:var(--fs-2)}
+.person p.pnum{margin:2px 0 4px;font-size:var(--fs)}
+.person .pcall{flex:none}
+@media (max-width:639px){.person{flex-wrap:wrap}.person .pcall{flex:1 1 100%}.person .pcall .btn{width:100%}}
 .person .chip{margin:12px 8px 0 0}
 .panel label{display:block;margin:0 0 8px;font-weight:500}
-.panel input[type=text]{width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px;margin:4px 0 12px}
+.panel input[type=text]{width:100%;min-height:var(--ctl);font:inherit;font-size:var(--fs-in);color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px;margin:4px 0 12px}
 .panel fieldset{border:0;margin:0 0 8px;padding:0}
-.panel fieldset label{display:flex;align-items:center;gap:12px;min-height:48px;font-weight:400}
+.panel fieldset label{display:flex;align-items:center;gap:12px;min-height:var(--tap);font-weight:400}
 .panel input[type=radio]{width:24px;height:24px;margin:0}
-.safety{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:4px 20px;margin:0 0 12px}
-.safety p{margin:12px 0}
+.safety{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:2px var(--pad);margin:0 0 12px}
+.safety p{margin:10px 0;font-size:var(--fs-2)}
 .safety p+p{border-top:1px solid var(--line);padding-top:12px}
 .callnum{margin:0 0 12px}
 details.confirm.calm>summary{color:var(--accent);border-color:var(--accent)}
 details.confirm.calm .panel{background:var(--accent-tint)}
 @media (min-width:900px){.people-find{display:none}}
+@media (min-width:1024px){.filters a{min-height:30px;padding:0 12px}.person h2{font-size:26px}}
 `;
 
 // ---------- the list ----------
@@ -147,28 +140,31 @@ const FILTERS: { id: Filter; label: keyof PeopleCopy; where: string }[] = [
 ];
 const filterOf = (v: string | undefined) => FILTERS.find((f) => f.id === v) ?? FILTERS[0];
 
-// Search by name, or by the last 4 digits of the number. A longer run of digits is cut to its last 4, so a search can never be used
-// to test a full number digit by digit: the answer only ever depends on the last 4, which everyone may see.
-export function searchClause(q: string): { sql: string; value: string } {
+// Search by name, or by the number: the full number (or its ending) for whoever sees numbers (ticket 46), the last 4 digits for staff.
+// For staff a longer run of digits is cut to its last 4, so a search can never be used to test a full number digit by digit: the answer
+// only ever depends on the last 4, which they may see.
+export function searchClause(q: string, full = false): { sql: string; value: string } {
   const t = q.trim();
   if (!t) return { sql: "?1 = ?1", value: "" };
   if (/^[\d\s+()-]+$/.test(t)) {
-    const d = t.replace(/\D/g, "").slice(-4);
+    const d = full ? t.replace(/\D/g, "").slice(-15) : t.replace(/\D/g, "").slice(-4);
     return d ? { sql: "c.wa_id LIKE ?1", value: `%${d}` } : { sql: "?1 = ?1", value: "" };
   }
   return { sql: "c.display_name LIKE ?1 ESCAPE '\\'", value: `%${t.replace(/[\\%_]/g, (x) => `\\${x}`)}%` };
 }
 
-// The query as used: a number is kept as its last 4 digits only, so even the search box never shows more (PRD check 9).
-export function cleanQuery(raw: string | undefined): string {
+// The query as used: for staff a number is kept as its last 4 digits only, so even the search box never shows more (PRD check 9).
+export function cleanQuery(raw: string | undefined, full = false): string {
   const t = (raw ?? "").trim().slice(0, 40);
-  return /^[\d\s+()-]+$/.test(t) ? t.replace(/\D/g, "").slice(-4) : t;
+  return /^[\d\s+()-]+$/.test(t) ? t.replace(/\D/g, "").slice(full ? -15 : -4) : t;
 }
+// Whether this member searches and sees full numbers on People: the owner; a practitioner (whose list holds only her own customers).
+const fullNumbers = (m: Member) => seesNumber(m, isPractitioner(m) ? m.id : null);
 
 type ListRow = { id: number; waId: string; name: string | null; mode: string; lastUserAt: string | null; nextAt: string | null };
 
 async function listPeople(env: Env, m: Member, q: string, f: Filter, nowMs: number): Promise<ListRow[]> {
-  const s = searchClause(q);
+  const s = searchClause(q, fullNumbers(m));
   const where = filterOf(f).where;
   const { results } = await env.DB.prepare(
     `SELECT c.id, c.wa_id AS waId, c.display_name AS name, c.mode, c.last_user_at AS lastUserAt,
@@ -198,11 +194,13 @@ function listHtml(o: { m: Member; p: PeopleCopy; rows: ListRow[]; q: string; f: 
   )}</nav>`;
   const find = html`<form class="find people-find" method="get" action="/app/people" role="search"><label class="vh" for="people-q">${cc.searchLabel}</label>${
     f !== "all" ? html`<input type="hidden" name="f" value="${f}">` : ""
-  }<input id="people-q" type="search" name="q" value="${q}" placeholder="${cc.searchPlaceholder}" autocomplete="off"><button class="btn" type="submit">${cc.searchButton}</button></form>`;
+  }<input id="people-q" type="search" name="q" value="${q}" placeholder="${fullNumbers(m) ? cc.searchPlaceholderFull : cc.searchPlaceholder}" autocomplete="off"><button class="btn" type="submit">${cc.searchButton}</button></form>`;
   const items = o.rows.map((r) => {
     const sub = [r.lastUserAt ? p.lastMessage(agoText(p, r.lastUserAt, o.nowMs)) : p.noMessageYet, r.nextAt ? p.nextShort(when(p, r.nextAt, loc)) : ""].filter(Boolean).join(" · ");
     const end = r.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : r.mode === "BLOCKED" ? statusChip(p.chipBlocked, "danger") : "";
-    return listRow({ href: `/app/people/${r.id}${qs(q, f)}`, title: `${nameOf(p, r.name)} ${last4(r.waId)}`, sub, end, on: r.id === o.openId });
+    // The row is a link, so the number in it is text (the person page has it as a tel: link).
+    const num = fullNumbers(m) ? formatNumber(r.waId) : last4(r.waId);
+    return listRow({ href: `/app/people/${r.id}${qs(q, f)}`, title: html`${nameOf(p, r.name)} <span class="d">${num}</span>`, sub, end, on: r.id === o.openId });
   });
   const empty =
     q || f !== "all"
@@ -219,7 +217,7 @@ async function frameFor(c: ConsoleCtx, o: { title: string; body: unknown; flash?
   const ws = await c.env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId ?? WORKSPACE_ID).first<{ name: string }>();
   return consoleFrame({
     role: m.role, locale: m.locale, active: "people", title: o.title, business: ws?.name ?? "", member: m.displayName ?? undefined,
-    flash: o.flash, query: o.q, language: { csrf: await languageCsrf(c.get("jwt"), m), back: o.back }, accent: c.get("accent"),
+    flash: o.flash, query: o.q, language: { csrf: await languageCsrf(c.get("jwt"), m), back: o.back }, accent: c.get("accent"), badges: badgesOf(c),
     body: html`<style>${raw(PEOPLE_CSS)}</style>${o.body}`,
   });
 }
@@ -237,7 +235,7 @@ people.get("/", async (c) => {
   const m = c.get("member");
   if (!canAny(m, "view_people")) return refusedPage(c);
   const p = peopleCopy(m.locale);
-  const q = cleanQuery(c.req.query("q"));
+  const q = cleanQuery(c.req.query("q"), fullNumbers(m));
   const f = filterOf(c.req.query("f")).id;
   const nowMs = Date.now();
   const list = listHtml({ m, p, rows: await listPeople(c.env, m, q, f, nowMs), q, f, nowMs });
@@ -261,7 +259,7 @@ people.get("/export", async (c) => {
 
 // ---------- the person page ----------
 type Draft = Record<string, string>;
-type PageOpts = { reveal?: boolean; flash?: string | null; draft?: Draft; status?: 200 | 400 | 500 };
+type PageOpts = { flash?: string | null; draft?: Draft; status?: 200 | 400 | 500 };
 
 const token = (c: ConsoleCtx, scope: string) => memberCsrf(c.get("jwt"), c.get("member"), scope);
 
@@ -368,15 +366,17 @@ async function personPage(c: ConsoleCtx, id: number, opts: PageOpts = {}) {
   if (can(m, "view_people", target) !== "yes") return refusedPage(c);
   const nowMs = Date.now();
   const base = `/app/people/${id}`;
-  const q = cleanQuery(c.req.query("q"));
+  const q = cleanQuery(c.req.query("q"), fullNumbers(m));
   const f = filterOf(c.req.query("f")).id;
   const draft = opts.draft ?? {};
 
-  // Header: name, last 4 digits, language, first contact, the ad.
+  // Header: name, the number (ticket 46: full and tappable for the owner and her own practitioner, else the last 4), language, first
+  // contact, the ad, and a one-tap Call.
   const ad = person.adHeadline ? p.cameFromAd(person.adHeadline) : person.sourceAd ? p.cameFromAdNoName : p.notFromAd;
-  const head = html`<div class="card person">${avatar(person.name)}<div><h2>${person.name?.trim() || p.noName} <span class="d">${last4(person.waId)}</span></h2>
+  const full = seesNumber(m, target.practitionerId);
+  const head = html`<div class="card person">${avatar(personName(person.name))}<div><h2>${personName(person.name, p.noName)}</h2><p class="pnum">${phoneHtml(person.waId, full)}</p>
 <p>${p.speaks(langName(person.locale, loc))} · ${p.firstContact(dayName(person.createdAt, loc))}</p><p>${ad}</p>
-${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person.mode === "BLOCKED" ? statusChip(p.chipBlocked, "danger") : ""}</div></div>`;
+${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person.mode === "BLOCKED" ? statusChip(p.chipBlocked, "danger") : ""}</div>${full ? html`<div class="pcall">${callButton(person.waId, cc.call, "primary")}</div>` : ""}</div>`;
 
   // Ticket 41: their work, what they'd like help with (from the questions after their ₹99 call), and an open "consider a refund" item.
   const about = (await seesAbout(c.env.DB, m, target.practitionerId ?? null)) ? await aboutPerson(c.env.DB, id) : null;
@@ -495,16 +495,9 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
   if (!lines.length) lines.push(p.safetyNormal);
   const safetyHtml = html`<div class="safety">${lines.map((l) => html`<p>${l}</p>`)}</div>${btns.length ? html`<div class="acts">${btns}</div>` : ""}`;
 
-  // More: show the full number (with a reason, logged), block, remove their data. Each only where can() says so.
+  // More: block, remove their data. Each only where can() says so. (Ticket 46: no "Show number" step any more: the owner and the
+  // practitioner see the number in the header; staff never do.)
   const more: unknown[] = [];
-  const revealTarget = { ...target, ...(await callWindow(c.env, id, m, nowMs)) };
-  if (can(m, "reveal_phone", revealTarget) === "yes") {
-    more.push(
-      opts.reveal
-        ? html`<p class="callnum"><a class="btn primary" href="tel:+${person.waId}">${p.callNumber(`+${person.waId}`)}</a></p><p class="muted">${p.numberShown}</p>`
-        : confirmWith({ label: p.showNumber, effect: p.showNumberEffect, confirm: p.showNumberYes, action: `${base}/reveal`, csrf: await token(c, `people-reveal:${id}`), fields: reasonField(p, "reveal-reason", draft.form === "reveal" ? draft.reason : "") }),
-    );
-  }
   const blk = can(m, "block");
   if (person.mode === "BLOCKED") {
     if (blk === "yes") more.push(post(p.unblock, `${base}/unblock`, await token(c, `people-unblock:${id}`)));
@@ -515,7 +508,8 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
   }
   if (owner) more.push(confirmWith({ label: p.removeData, effect: p.removeDataEffect, confirm: p.removeDataYes, action: `${base}/remove-data`, csrf: await token(c, `people-remove:${id}`), fields: reasonField(p, "remove-reason", draft.form === "remove" ? draft.reason : "") }));
 
-  const detail = html`${head}${aboutHtmlCard}${takeOver}${sessionLinkCard}${section(p.secNext, next)}${await notesCard(c, id, target.practitionerId ?? null)}${section(p.secPackage, packHtml)}${payHtml}${await gistCard(c, id, target.practitionerId ?? null, base)}<div id="chat">${section(p.secChat, chatHtml)}</div>${section(p.secSafety, safetyHtml)}${
+  // Ticket 47: the Gist right after the header; the Notes after the next booking they are about.
+  const detail = html`${head}${await gistCard(c, id, target.practitionerId ?? null, base)}${aboutHtmlCard}${takeOver}${sessionLinkCard}${section(p.secNext, next)}${await notesCard(c, id, target.practitionerId ?? null)}${section(p.secPackage, packHtml)}${payHtml}<div id="chat">${section(p.secChat, chatHtml)}</div>${section(p.secSafety, safetyHtml)}${
     more.length ? section(p.secMore, html`<div class="acts">${more}</div>`) : ""
   }`;
   const list = listHtml({ m, p, rows: await listPeople(c.env, m, q, f, nowMs), q, f, openId: id, nowMs });
@@ -570,22 +564,6 @@ const auditNow = (c: ConsoleCtx, act: string, target: string, detail: string, re
   c.env.DB.prepare("INSERT INTO audit_log (actor, action, target, detail, workspace_id, member_id, reason) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)").bind(
     c.get("email"), act, target, detail, c.get("member").workspaceId, c.get("member").id, reason,
   );
-
-// Show the full number: a reason is required, the reveal is logged first, and the number is shown on this response only.
-people.post(
-  "/:id/reveal",
-  action(
-    "people-reveal",
-    async (m, c, id, target) => can(m, "reveal_phone", { ...target, ...(await callWindow(c.env, id, m, Date.now())) }) === "yes",
-    async (c, id, f) => {
-      const reason = reasonOf(f);
-      if (reason.length < 3) return needReason(c, id, "reveal");
-      await auditNow(c, "PERSON_REVEAL_NUMBER", `conv:${id}`, "", reason).run();
-      return { page: { reveal: true } };
-    },
-    (f) => ({ form: "reveal", reason: String(f.reason ?? "") }),
-  ),
-);
 
 // Take over this chat (ticket 36): BOT -> HUMAN as "Talk to a person" does (src/handoff.ts takeOverStmt), with nothing sent to the customer
 // and no item; the member is given the chat, the audit row says who, and the Inbox opens on it (reply box, "Book or move for them").

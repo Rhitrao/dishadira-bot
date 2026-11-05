@@ -90,7 +90,7 @@ Three roles cover a solo practice and a small team. Each member has exactly one 
 | Set working hours and block time off | Anyone's | Own | No |
 | Mark a call outcome, offer a session | Yes | Own calls | No |
 | Reply to a handed-over chat | Yes | No (they speak on calls) | Yes |
-| See a customer's full phone number | Yes, logged | Own booked customers, from 1 hour before to 1 hour after the call, logged; the Call button shows only then | No (last 4 digits) |
+| See a customer's full phone number | Yes (ticket 46: shown, formatted, as a tel: link) | Own customers, at any time (ticket 46) | No (last 4 digits) |
 | Read a customer's chat | Yes | Own customers | Yes, except safety messages |
 | Move or cancel a booking | Yes | Own | Yes |
 | Record money received outside Razorpay | Yes | No | Yes, owner approves |
@@ -106,7 +106,7 @@ Three roles cover a solo practice and a small team. Each member has exactly one 
 
 - **Least access by default.** A new member sees nothing beyond their role, and a practitioner sees only customers booked with them.
 - **Ask, don't do.** "Ask owner" puts a request on the owner's Today with one-tap approve or decline; nothing happens until then. Refunds the published policy makes automatic, such as a call marked "not a fit" or a booking the business cancels, need no approval.
-- **Sensitive actions are logged:** revealing a number, refunds, blocks, role changes, data exports and deletions. The log records who, when and why, with a one-line reason for reveals and refunds, and opening a customer's page counts too. It's kept for at least a year, as India's data protection rules require.
+- **Sensitive actions are logged:** revealing a number (ticket 46: only /admin's reveal is left; the console shows the number to the owner and the practitioner for her own customers, and never to staff), refunds, blocks, role changes, data exports and deletions. The log records who, when and why, with a one-line reason for reveals and refunds, and opening a customer's page counts too. It's kept for at least a year, as India's data protection rules require.
 - **Safety items reach everyone who can act.** A crisis or emergency message alerts the workspace's chosen safety contact and shows at the top of Today for owners and the practitioner who has that customer. Staff see only that an owner is needed, not the message text.
 
 ## Information architecture
@@ -121,7 +121,7 @@ Each screen's title is the question in italics, and Today pulls the urgent part 
 
 - **Everything is two taps from Today at most.** A Today card opens the exact person, chat or payment it's about, and Back returns to the same scroll position.
 - **A person is the hub.** Every booking, payment and chat links to that customer's page, and the page links back to each one.
-- **Search is always there.** On the People tab, and at the top of the laptop rail: name, or the last 4 digits of the phone number.
+- **Search is always there.** On the People tab, and at the top of the laptop rail: name, the full number or its last 4 digits (staff: the last 4 only, ticket 46).
 - **No dead ends.** Every empty list says what would appear there and links to the next useful place.
 
 **Where today's pages go.**
@@ -141,9 +141,9 @@ Every screen follows the same order: urgent items, then the list, then the numbe
 ### Today: what needs me now?
 
 1. **Safety.** A red card for each crisis or emergency message not yet handled. It shows the time, the customer, "The safety message was sent", and **Open chat**.
-2. **Waiting for a reply.** One card per handed-over chat, oldest first: "Asked for a person, 2 h ago. Reply by 6:40 pm." Buttons: **Reply** and **Hand back to the bot**.
+2. **Waiting for a reply.** One card per handed-over chat, oldest first: "Asked for a person, 2 h ago. Reply within 22 h." (ticket 46: the time left in WhatsApp's window, not a clock time). Buttons: **Reply** and **Hand back to the bot**.
 3. **Approvals** (owners only). Refunds, blocks and money marked by staff, each with **Approve** and **Decline**, the amount and who asked.
-4. **Up next.** Today's calls and sessions in time order. Each row shows the time, first name and last 4 digits, service, who it's for, language, and a **Call** button. Ticket 39: the next one still to do (not yet marked, until an hour after it ends) is drawn first and large ("Next · in 25 min", "Happening now", "Just finished") with a full-width Call button, or, before the Call button's window, the time it appears; the screen opens with a gentle greeting by the hour and the date ("Good afternoon, Shantha · Wed, 4 Nov").
+4. **Up next.** Today's calls and sessions in time order. Each row shows the time, first name and the number (ticket 46: the full number as a tel: link for the owner and her own practitioner; staff the last 4), service, who it's for, language, and a one-tap **Call** (tel:) on every booking. Ticket 39: the next one still to do (not yet marked, until an hour after it ends) is drawn first and large ("Next · in 25 min", "Happening now", "Just finished") with a full-width Call button; the screen opens with a gentle greeting by the hour and the date ("Good afternoon, Shantha · Wed, 4 Nov") and, ticket 46, a slim strip of numbers: today's bookings, this week's, money received this week and this month (owner only), new enquiries today (owner and staff), each a link to where it comes from.
    - From the start time until 24 hours later, the row shows **How did it go?** with three buttons that say what happens next: "Book a session for them", "Not a fit (₹99 refunded)" and "Didn't pick up (offer a new time)".
    - After a tap, the row shows "Saved. Undo until 4:15 pm": a clock time 10 minutes after the tap, rather than a countdown. "Report behaviour" sits under More, away from the outcome buttons.
    Ticket 47: each card has **Add note** (the booking chosen, the phase from the time); the next booking also shows its Before notes, the person's About note and the After notes of their booking before it, for the owner and the practitioner.
@@ -165,6 +165,7 @@ The same Today on both screens: urgent cards first, then the day in time order. 
 
 ### Calendar: when am I booked or free?
 
+- **Ticket 46: Day | Week | Month | List.** Desktop (1024 px and up): the Week is a time grid (a gutter of hours from opening to closing from config, half-hour lines, one column per day Monday to Saturday and a slim hatched Sunday, bookings as blocks placed by start and sized by length, teal a call and gold a session, dashed while held, with time, first name and last 4 digits and the status when not confirmed; a Now line and a tinted column on today; "Wed 4" headers with a count and the free time); the Day is the same grid for one day with the free gaps, beside the day's timeline; the Month puts up to three bookings in each day ("4:00 Asha · Call", then "+2 more") with a thin bar for how full the day is, Sundays hatched with no words, holidays labelled, days outside the month faint, today ringed. Phones: a dense agenda by day (the row opens the person, a round Call button beside it); the Month keeps its grid of dots with the month's agenda under it. List: the next 30 days of bookings grouped by day. The bar with ‹ Today › and the views stays at the top while scrolling.
 - **Day, week and month views** for one practitioner, or all of them from Phase 2, showing bookings, held times and free times. Ticket 39: the Day view is a timeline of the working hours from opening to closing, the bookings with the free gaps between them (and the time already gone, and a Now line on today); the Week view is a list of days on a phone and seven columns on a wide screen; the Month view is a Monday-to-Sunday grid with each day's count and a dot per booking (teal a call, gold a session), holidays and today marked, past days quieter, and each day opening its Day view. Links only: `?view=day|week|month&d=YYYY-MM-DD`.
 - **Working hours** per practitioner, per weekday, defaulting to Monday to Saturday, 2 to 7 pm (owner, 29 Oct 2026). Phase 2; until then the hours stay as they are today.
 - **Time off:** "Away from Mon 2 Nov to Wed 4 Nov". The bot stops offering those times at once. The screen lists only the bookings that clash, and lets you move or refund each one. Phase 2. (Ticket 30 brought whole days off forward: "Mark a day off" on the Calendar, /admin and /amma, stored as `settings` rows `holiday:<date>`; the bookings on that day are listed with a warning.)
@@ -172,11 +173,11 @@ The same Today on both screens: urgent cards first, then the day in time order. 
 
 ### People: who is this customer?
 
-- **Search** by name or the last 4 digits. Filters: Waiting, Upcoming, Has a package, Blocked.
+- **Search** by name, the full number or its last 4 digits (staff: the last 4 only). Filters: Waiting, Upcoming, Has a package, Blocked.
 - **Export chats** (ticket 37, owner only): a link under the list to /app/people/export?days=7 (days 1 to 30), the same file as /admin/export (src/export.ts; how to use it: docs/GO-LIVE.md §16). Audited `EXPORT_CHATS` with the counts; staff and practitioners don't see the link and are refused.
 - **Customer photos and files** (ticket 38, CONTRACT v11): in the chat on the person page and in the Inbox, a photo, document, video, voice note or sticker the customer sent reads "Photo", "Document"… with a **View** button while its Meta id is kept (it is wiped with the text). View is a POST (the chat's form token, the Origin check) to /app/people/<id>/media/<message>, audited `VIEW_MEDIA` (the chat and the kind), and opens the file in a new tab straight from WhatsApp, never stored (src/media.ts). Owner always; staff while Settings → Privacy lets them read chats; a practitioner for their own customers; a chat that had a safety message, the owner only. Older than ~30 days, WhatsApp no longer has it: "This file is no longer available from WhatsApp."
 - **Person page, top to bottom:**
-  - Name, last 4 digits, language, first contact date and the ad they came from.
+  - Name (ticket 46: a WhatsApp name with no letter in it, such as "*", shows as "No name"), the number (the full number as a tel: link with a Call button for the owner and her own practitioner; staff the last 4), language, first contact date and the ad they came from. Ticket 47's Gist and Notes cards come right after this header.
   - **Take over this chat** (ticket 36), while the bot has the chat (not blocked, not already with the team), for anyone who may reply in the Inbox (owner and staff; a chat with an open safety item: owner only). One POST button with its own token; it moves the chat to the team exactly as "Talk to a person" does (HUMAN mode from now, the open booking step closed, the chat given to that member), sends the customer nothing, raises no item and no email, writes `INBOX_TAKE_OVER` to the audit log, and opens the chat in the Inbox. The bot then stays quiet (typed messages get the one "with our team" note; taps still work), follow-ups skip the chat, and Hand back returns it. With no team reply in 24 hours it goes back to the bot quietly (no "sorry we couldn't reply"). /admin has the same button on the person page (`ADMIN_TAKE_OVER`) and a **Hand back to the bot** button while the chat is with the team.
   - The next booking.
   - Package: "6 of 10 left", with a ledger of bought, used, returned and refunded sessions.
@@ -222,7 +223,7 @@ Each check is written as a test before the screen is built, and the release pass
 6. **Inbox claim.** Given a chat assigned to someone else less than 30 minutes ago, Reply shows a warning naming them. After 30 minutes without a reply, the claim lapses.
 7. **Reply window.** Given a chat whose 24-hour window closed, the reply box is replaced by the approved follow-up message, ready to send.
 8. **Stale booking.** A past call with no outcome never blocks a new booking. It shows under Loose ends instead.
-9. **Masking.** Staff never see more than the last 4 digits anywhere, including CSV exports.
+9. **Masking.** Staff never see more than the last 4 digits anywhere, including CSV exports. (Ticket 46: the owner and the practitioner for her own customers see the full number; exports, emails, the digest, alerts and logs keep the last 4 or nothing.)
 
 **Failure states.**
 
@@ -264,15 +265,16 @@ Each text colour has a tint for its chip (paid teal on mint, waiting gold, atten
 
 **Type and spacing.**
 
-- **Typeface:** Jost, self-hosted from the Worker (the CSP adds `font-src 'self'`), with tabular figures for times and amounts. System sans is the fallback. Hindi uses Noto Sans Devanagari, also self-hosted. Screen titles, the brand name and a person's name use Cormorant Garamond (500/600, self-hosted, ticket 39), drawn at 34–40 px because its letters are small; Hindi titles stay in the UI face at 26–28 px.
+- **Typeface:** Jost, self-hosted from the Worker (the CSP adds `font-src 'self'`), with tabular figures for times and amounts. System sans is the fallback. Hindi uses Noto Sans Devanagari, also self-hosted. Screen titles, the brand name and a person's name use Cormorant Garamond (500/600, self-hosted, ticket 39), drawn at 30 px (ticket 46) because its letters are small; Hindi titles stay in the UI face at 24 px.
 - **Brand files (ticket 39):** the sun-and-path mark in the top bar and the rail, the full logo on sign-in and refusal pages, the home-screen icons and a web app manifest (`/app/manifest.webmanifest`, name and colours from config.brand), served by the Worker with a year-long cache; the CSP adds `img-src 'self'` and `manifest-src 'self'` (still no scripts). One CSS-only reveal on load, off under prefers-reduced-motion. Every console string lives in one catalogue with English and Hindi from Phase 1.
-- **Sizes:** body 19 px on every screen, with nothing below 16 px; times and amounts 20 px semibold; screen titles 26 px. Line height 1.45.
-- **Spacing:** steps of 4 px (8, 12, 16, 24, 32). Tap targets are at least 48 by 48 px, with 8 px between them.
+- **Sizes (ticket 46, two densities):** on phones (under 1024 px, how the practitioner works) body 17 px with nothing below 16 px, times and amounts 18 px semibold, tap targets at least 48 by 48 px (44 px for a calendar's round Call button and the view switch) with 8 px between them. On desktop (1024 px and up, the owner's laptop) the density of a good SaaS app: body 15 px, secondary text 13–14 px, controls 36 px tall, tighter cards (16 px padding, 10 px gaps), a 236 px rail, screen titles 30 px in the serif; the calendar grid's blocks and labels may go to 12 px, never smaller. The sizes are CSS variables set once per density (src/ui.ts), so every screen's own styles follow them. Line height 1.45.
+- **Spacing:** steps of 4 px (8, 12, 16, 24, 32).
+- **Words for people, not for developers (ticket 46):** no "Visible to: …" lines and no "comes in a later release" notes on screens; rights come from the permission table, never from the page's words.
 
 **Components.**
 
 - **Task card:** what to do (title), why and how long it has waited (one line), one primary button, at most one secondary link.
-- **Appointment row:** time, customer first name and last 4 digits, the service, status in words, and a Call or Open action.
+- **Appointment row:** time, customer first name and the number (full and tappable, or the last 4), the service, status in words, and a Call (tel:) and/or Open action.
 - **Status chip:** a word plus a colour, from a fixed list per object (for example a booking is Held, Confirmed, Done, Missed or Cancelled).
 - **Conversation bubble:** customer, bot, assistant and team member messages, each labelled. Assistant answers show the question type in small text.
 - **Confirm step:** a `details` panel that opens in place, with the effect in one sentence and a red confirm button. It needs no script.
@@ -282,7 +284,7 @@ Each text colour has a tint for its chip (paid teal on mint, waiting gold, atten
 **Layout.**
 
 - **Phone (under 900 px):** one column, a bottom tab bar with four tabs (Today, Inbox, Calendar, People) and a More tab holding Payments and Settings. Primary buttons sit within thumb reach at the bottom of each card.
-- **Laptop (900 px and up):** a left rail with the same tabs, and a list-and-detail layout. Inbox, People and Payments show the list on the left and the open item on the right, so you never lose your place. Content width is capped at 1,200 px.
+- **Laptop (900 px and up):** a left rail with the same tabs, and a list-and-detail layout. Inbox, People and Payments show the list on the left and the open item on the right, so you never lose your place. Content width is capped at 1,240 px. The Inbox badge shows the same count (chats nobody is replying to) on every screen (ticket 46).
 
 ## Backend and data
 

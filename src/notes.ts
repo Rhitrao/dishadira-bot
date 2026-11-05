@@ -112,32 +112,33 @@ function flashLine(c: ConsoleCtx, n: NotesCopy, where?: string) {
 
 export const NOTES_CSS = raw(`<style>
 .nts .lbl{display:block;font-weight:500;margin:0 0 8px}
-.nts textarea{display:block;width:100%;min-height:112px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:12px;resize:vertical}
-.nts select{display:block;width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:8px 12px}
-.nts fieldset{border:0;margin:16px 0 0;padding:0;min-width:0}.nts legend{font-weight:500;padding:0;margin:0 0 8px}
+.nts textarea{display:block;width:100%;min-height:96px;font:inherit;font-size:var(--fs-in);color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:12px;resize:vertical}
+.nts select{display:block;width:100%;min-height:var(--ctl);font:inherit;font-size:var(--fs-in);color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:6px 12px}
+.nts fieldset{border:0;margin:12px 0 0;padding:0;min-width:0}.nts legend{font-weight:500;padding:0;margin:0 0 8px}
 .nts .opts{display:flex;flex-wrap:wrap;gap:8px}
-.nts .opts label{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:8px 16px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);cursor:pointer}
+.nts .opts label{display:inline-flex;align-items:center;gap:8px;min-height:var(--tap);padding:4px 14px;font-size:var(--fs-in);border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);cursor:pointer}
 .nts .opts label:has(input:checked){border-color:var(--accent);background:var(--accent-tint)}
-.nts .opts input{width:20px;height:20px;margin:0;accent-color:var(--accent);flex:none}
-.nts .help{color:var(--muted);font-size:16px;margin:8px 0 0}
-.nts .field+.field{margin-top:16px}
-.nts .acts{margin-top:16px}
-.nts h3{font-size:20px;font-weight:600;margin:0}
-.nts .ph{font-size:16px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--bronze);margin:16px 0 0}
+.nts .opts input{width:18px;height:18px;margin:0;accent-color:var(--accent);flex:none}
+.nts .help{color:var(--muted);font-size:var(--fs-3);margin:6px 0 0}
+.nts .field+.field{margin-top:12px}
+.nts .acts{margin-top:12px}
+.nts h3{font-size:var(--fs-h3);font-weight:600;margin:0}
+.nts .ph{font-size:var(--fs-3);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--bronze);margin:14px 0 0}
 [lang=hi] .nts .ph{letter-spacing:0}
-.nts .note{padding:12px 0 0;margin:8px 0 0;border-top:1px solid var(--line)}
+.nts .note{padding:10px 0 0;margin:6px 0 0;border-top:1px solid var(--line)}
 .nts .ph+.note{border-top:0;margin-top:0;padding-top:4px}
 .nb{white-space:pre-line;overflow-wrap:anywhere;margin:0}
-.nm{color:var(--muted);font-size:16px;margin:4px 0 0}
+.nm{color:var(--muted);font-size:var(--fs-3);margin:2px 0 0}
 .nflash{font-weight:600;color:var(--done);margin:0 0 12px}
 details.nx>summary{list-style:none;cursor:pointer}details.nx>summary::-webkit-details-marker{display:none}
 details.nx[open]>summary{margin-bottom:8px}
 .nx-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:flex-start}
 .nx-row>details{flex:0 0 auto}.nx-row>details[open]{flex:1 1 100%}
-.nx-row details.confirm>summary{min-height:48px;padding:10px 12px;border-color:transparent;background:transparent}
+.nx-row details.confirm>summary{min-height:var(--tap);padding:0 12px;border-color:transparent;background:transparent}
 details.nx[open]>summary.btn.primary{background:transparent;border-color:transparent;color:var(--accent);box-shadow:none;padding-left:0;font-weight:600}
-.tnotes{border-top:1px solid var(--line);margin:4px 0 12px;padding-top:4px}
-.tnotes .ph{margin-top:12px}
+.tnotes{border-top:1px solid var(--line);margin:4px 0 10px;padding-top:2px}
+.tnotes .ph{margin-top:10px}
+.tnotes .nb{font-size:var(--fs-2)}
 </style>`);
 
 // The form's fields: the text, which booking it is about, and when (Before / During / After), chosen from the time and changeable.

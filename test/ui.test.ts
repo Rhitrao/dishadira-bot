@@ -91,16 +91,36 @@ describe("colour tokens", () => {
 });
 
 describe("type and spacing", () => {
-  it("19 px body in Jost, nothing under 16 px, 48 px tap targets, tabular figures", () => {
-    expect(APP_CSS).toMatch(/body\{[^}]*font:400 19px\/1\.45 Jost,"Noto Sans Devanagari",system-ui,sans-serif/);
-    const sizes = [...APP_CSS.matchAll(/font-size:(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]));
-    expect(sizes.length).toBeGreaterThan(10);
-    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(16);
+  // Ticket 46: two densities. Phones (under 1024 px): body 17 px, nothing under 16 px, 48 px tap targets. Desktop: body 15 px,
+  // secondary 13–14 px, 36 px controls, 30 px serif titles; the calendar's small blocks and labels go to 12 px, never smaller.
+  it("phone: 17 px body in Jost, nothing under 16 px, 48 px targets; desktop: 15 px body, 13–14 px secondary, 36 px controls", () => {
+    const vars = (block: string) => Object.fromEntries([...block.matchAll(/--(fs[\w-]*|ctl|tap):(\d+)px/g)].map((m) => [m[1], Number(m[2])]));
+    const phone = vars(APP_CSS.slice(APP_CSS.indexOf(":root{"), APP_CSS.indexOf("}", APP_CSS.indexOf(":root{"))));
+    const deskAt = APP_CSS.indexOf("@media (min-width:1024px){:root{");
+    const desk = vars(APP_CSS.slice(deskAt, APP_CSS.indexOf("}}", deskAt)));
+    expect(phone).toMatchObject({ fs: 17, "fs-2": 16, "fs-3": 16, ctl: 48, tap: 48 });
+    expect(Math.min(...Object.entries(phone).filter(([k]) => k.startsWith("fs")).map(([, v]) => v))).toBeGreaterThanOrEqual(16);
+    expect(desk).toMatchObject({ fs: 15, "fs-2": 14, "fs-3": 13, ctl: 36, "fs-h1": 30 });
+    expect(APP_CSS).toMatch(/body\{[^}]*font:400 var\(--fs\)\/1\.45 Jost,"Noto Sans Devanagari",system-ui,sans-serif/);
+    // Literal sizes: 16 px or more outside the desktop blocks; 12 px or more inside them.
+    const desktopBlocks = [...APP_CSS.matchAll(/@media \(min-width:1024px\)\{/g)].map((m) => m.index!);
+    const blockEnd = (d: number) => {
+      let depth = 0;
+      for (let i = APP_CSS.indexOf("{", d); i < APP_CSS.length; i++) {
+        if (APP_CSS[i] === "{") depth++;
+        else if (APP_CSS[i] === "}" && --depth === 0) return i;
+      }
+      return APP_CSS.length;
+    };
+    const inDesktop = (i: number) => desktopBlocks.some((d) => i > d && i < blockEnd(d));
+    for (const m of APP_CSS.matchAll(/font-size:(\d+(?:\.\d+)?)px/g)) expect(Number(m[1]), m[0]).toBeGreaterThanOrEqual(inDesktop(m.index!) ? 12 : 16);
     expect(APP_CSS).not.toMatch(/font-size:[\d.]+(em|rem|%)/);
-    expect(APP_CSS).toMatch(/\.btn\{[^}]*min-height:48px[^}]*min-width:48px/);
-    expect(APP_CSS).toMatch(/\[lang=hi\] \.screen h1\{[^}]*font-size:26px/); // the UI face for Hindi titles
-    expect(APP_CSS).toMatch(/\.screen h1\{font-family:"Cormorant Garamond"[^}]*font-size:34px[^}]*color:var\(--bronze\)/); // the serif, larger for its small letters
-    expect(APP_CSS).toMatch(/\.num\{font-size:20px;font-weight:600\}/);
+    expect(APP_CSS).toMatch(/\.btn\{[^}]*min-height:48px[^}]*min-width:48px/); // phones
+    expect(APP_CSS).toMatch(/@media \(min-width:1024px\)\{\n\.btn\{min-height:var\(--ctl\);min-width:var\(--ctl\)/); // desktop
+    expect(APP_CSS).toMatch(/\[lang=hi\] \.screen h1\{[^}]*font-size:24px/); // the UI face for Hindi titles
+    expect(APP_CSS).toMatch(/\.screen h1\{font-family:"Cormorant Garamond"[^}]*font-size:var\(--fs-h1\)[^}]*color:var\(--bronze\)/);
+    expect(APP_CSS).toMatch(/\.num\{font-size:var\(--fs-num\);font-weight:600\}/);
+    expect(APP_CSS).toMatch(/\.shell\{display:grid;grid-template-columns:236px/); // a narrower rail
     expect(APP_CSS).toContain("tabular-nums");
     expect(APP_CSS).not.toMatch(/Inter|Arial|Helvetica/);
   });
@@ -183,10 +203,11 @@ describe("the page frame", () => {
     expect(page).toContain('<span class="badge"><span class="vh">3 waiting: </span>3</span>');
   });
 
-  it("titles each screen with its question and who can see it", () => {
+  it("titles each screen with its question, and no developer's \"Visible to\" line (ticket 46)", () => {
     expect(rolesFor("payments")).toEqual(["OWNER"]);
     expect(rolesFor("inbox")).toEqual(["OWNER", "STAFF"]);
-    expect(str(screenHead("inbox"))).toContain("<h1>Who is waiting for a reply?</h1><p class=\"visible\">Visible to: Owner, Staff</p>");
+    expect(str(screenHead("inbox"))).toBe('<header class="screen"><h1>Who is waiting for a reply?</h1></header>');
+    expect(str(screenHead("settings", "en", { roles: ["OWNER"] }))).not.toContain("Visible");
     expect(str(screenHead("today", "hi"))).toContain("अभी मुझे क्या करना है?");
   });
 

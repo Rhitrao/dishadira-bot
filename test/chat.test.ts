@@ -152,14 +152,13 @@ describe("every /app page on the console's look", () => {
     expect(team).not.toContain("system-ui,-apple-system");
   });
 
-  it("the seeded business name is never shown; the owner gets one quiet task until it is set", async () => {
+  it("the seeded business name is never shown: the frame shows the brand from config instead, with no set-up card (ticket 46)", async () => {
     const owner = await text("/app");
     expect(owner).not.toContain("My business");
-    expect(owner).toContain("Booking console");
-    expect(owner).toContain("Add your business name in Settings");
-    expect(owner).toContain('href="/app/settings#business"');
+    expect(owner).toContain('<span class="bn">Disha Dira</span><span class="bt">Healing Center</span>');
+    expect(owner).not.toContain("Booking console");
+    expect(owner).not.toContain("Add your business name");
     expect(await text("/app", STAFF)).not.toContain("Add your business name");
-    expect(await text("/app", PRAC)).not.toContain("Add your business name");
     await h.db.prepare("UPDATE workspaces SET name = 'Calm Practice' WHERE id = 1").run();
     const named = await text("/app");
     expect(named).toContain("Calm Practice");

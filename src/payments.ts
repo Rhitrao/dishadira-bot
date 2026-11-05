@@ -13,7 +13,7 @@ import { razorpay } from "./pay/razorpay";
 import { retryFailedRefund } from "./pay/refund";
 import { iso } from "./slots";
 import { agoText, ownerPage, rupeesText, whenText } from "./settings";
-import { confirmStep, emptyState, firstName, last4, listDetail, listRow, paymentChip, rows, screenHead, section, statusChip, taskCard } from "./ui";
+import { confirmStep, emptyState, firstName, formatNumber, last4, listDetail, listRow, paymentChip, phoneHtml, rows, screenHead, section, statusChip, taskCard } from "./ui";
 
 // ---------- words (English and Hindi, in the shape of src/console-copy.ts) ----------
 const en = {
@@ -221,7 +221,8 @@ export async function monthTotals(env: Env, ym: string): Promise<MonthTotals> {
 }
 
 const forText = (r: PayRow, w: Words) => (r.purpose === "INTRO" ? w.forCall : r.purpose === "PACKAGE" ? w.forPackage(r.size) : w.forSession);
-const whoText = (r: PayRow, w: Words) => `${firstName(r.name, w.noName)}${r.waId ? ` ${last4(r.waId)}` : ""}`;
+// Payments is the owner's alone (see_money), so the number is the full one (ticket 46, CONTRACT v15); the CSV keeps the last 4.
+const whoText = (r: PayRow, w: Words) => `${firstName(r.name, w.noName)}${r.waId ? ` · ${formatNumber(r.waId)}` : ""}`;
 // Razorpay's own page for the payment (only an id we stored; nothing about the account).
 const razorpayHref = (r: PayRow) => (r.providerPaymentId && /^pay_[A-Za-z0-9]+$/.test(r.providerPaymentId) ? `https://dashboard.razorpay.com/app/payments/${r.providerPaymentId}` : null);
 
@@ -313,7 +314,7 @@ async function detailCard(c: ConsoleCtx, r: PayRow) {
   const kv = (k: string, v: unknown) => html`<dt>${k}</dt><dd>${v}</dd>`;
   return html`<div class="card" id="pay-${r.id}"><h3>${forText(r, w)} · ${rupeesText(r.amount)}</h3>${paymentChip(r.state, lang)}
 <dl class="kv" style="margin-top:16px">${kv(w.detailFor, forText(r, w))}${kv(w.detailAmount, r.paid != null && r.paid !== r.asked ? w.mismatchWhy(rupeesText(r.paid), rupeesText(r.asked)) : rupeesText(r.amount))}
-${kv(w.detailCustomer, r.convId ? html`<a href="/app/people/${r.convId}">${whoText(r, w)}</a>` : whoText(r, w))}
+${kv(w.detailCustomer, html`${r.convId ? html`<a href="/app/people/${r.convId}">${firstName(r.name, w.noName)}</a>` : firstName(r.name, w.noName)}${r.waId ? html` · ${phoneHtml(r.waId, true)}` : ""}`)}
 ${kv(w.detailWhen, whenText(r.at, lang))}${r.updatedAt ? kv(w.detailUpdated, `${whenText(r.updatedAt, lang)} (${agoText(r.updatedAt, lang)})`) : ""}
 ${r.refundState ? kv(w.detailRefund, `${w.refundWords[r.refundState] ?? ""} · ${rupeesText(r.refundPaise ?? r.amount)}`) : ""}</dl>
 <div class="acts">${

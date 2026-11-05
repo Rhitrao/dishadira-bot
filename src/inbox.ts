@@ -8,7 +8,7 @@
 // The cron's nudgeWaitingChats() emails the team once per handoff when a chat has waited 2 working hours with no reply.
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
-import { can, canAny, memberCsrf, sha256Hex, WORKSPACE_ID, type Member } from "./auth";
+import { can, canAny, memberCsrf, seesNumber, sha256Hex, WORKSPACE_ID, type Member } from "./auth";
 import { bookingChoice, SERVICES, WHO } from "./booking";
 import { chatTextHidden, prices } from "./business";
 import { config } from "./config";
@@ -30,7 +30,8 @@ import { sendMessage, sendOrTemplate, templateVariant, type Out } from "./send";
 import { availableSlots, formatIstLang, generateSlots, holdSlot, isHoliday, iso, istDay, istMinutes, nextWorkingDays, PRACTITIONER_SQL, spreadTimes, type Slot, type SlotKind } from "./slots";
 import { bookingsOpen } from "./switches";
 import { collapseWiped, describe, earlierLink, keptFor, SHOWN_SQL, THREAD_ALL, THREAD_LATEST, wipedLine } from "./chat";
-import { avatar, bubble, clock, keep4, consoleFrame, dayName, firstName, forWhomText, last4, listDetail, listRow, rows, screenHead, section, statusChip, emptyState, thread, type From } from "./ui";
+import { avatar, bubble, clock, consoleFrame, dayName, firstName, formatNumber, forWhomText, last4, listDetail, listRow, personName, phoneHtml, rows, screenHead, section, statusChip, emptyState, thread, type From } from "./ui";
+import { timeLeft } from "./today";
 
 const MIN = 60_000;
 const HOUR = 3_600_000;
@@ -60,6 +61,13 @@ const since = (ch: Chat) => ch.humanSince ?? ch.safetyAt ?? ch.lastUserAt ?? "";
 export async function waitingChats(env: Env): Promise<Chat[]> {
   const { results } = await env.DB.prepare(`${CHAT_SQL} WHERE ${IN_INBOX} LIMIT 200`).all<Chat>();
   return results.sort((a, b) => since(a).localeCompare(since(b)) || a.id - b.id); // oldest first
+}
+// The Inbox tab's badge on every screen (ticket 46: the same number everywhere): the chats waiting that nobody is replying to now.
+export async function unassignedCount(env: Env, nowMs: number): Promise<number> {
+  const r = await env.DB.prepare(`SELECT COUNT(*) AS n FROM conversations c WHERE ${IN_INBOX} AND NOT (c.claimed_by IS NOT NULL AND c.claimed_at IS NOT NULL AND c.claimed_at > ?1)`)
+    .bind(iso(nowMs - config.inbox.claimMinutes * MIN))
+    .first<{ n: number }>();
+  return r?.n ?? 0;
 }
 const chatById = (env: Env, id: number) => env.DB.prepare(`${CHAT_SQL} WHERE c.id = ?1`).bind(id).first<Chat>();
 
@@ -104,26 +112,32 @@ function why(ch: Chat, ic: InboxCopy): string {
   if (k.includes("FREE_TEXT")) return ic.whyQuestion;
   return ch.mode === "HUMAN" && !k.length ? ic.whyTakenOver : ic.whyPerson; // no item at all: the team took it over (ticket 36)
 }
+// "Reply within 3 h" (ticket 46: the time left, in plain words, rather than a clock time that may be past midnight).
 const replyLine = (ch: Chat, locale: string, nowMs: number) => {
   const ic = inboxCopy(locale);
-  return inWindow(ch, nowMs) ? ic.replyBy(when(iso(windowEnd(ch)), locale, nowMs)) : ic.windowClosed;
+  return inWindow(ch, nowMs) ? consoleCopy(locale).replyWithin(timeLeft(windowEnd(ch) - nowMs, locale)) : ic.windowClosed;
 };
-const customerName = (ch: Chat, locale: string) => `${firstName(ch.name, consoleCopy(locale).fromCustomer)} ${last4(ch.waId)}`;
+const customerName = (ch: Chat, locale: string) => firstName(ch.name, consoleCopy(locale).fromCustomer);
+// The number: full for the owner (ticket 46), the last 4 for staff. In a list row (itself a link) it is text.
+const numberText = (ch: Chat, m: Member) => (seesNumber(m, null) ? formatNumber(ch.waId) : last4(ch.waId));
 
 // ---------- the page ----------
 const INBOX_CSS = `
 .views{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
-.views a{display:inline-flex;align-items:center;min-height:48px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:500}
+.views a{display:inline-flex;align-items:center;min-height:var(--tap);padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:500;font-size:var(--fs-in)}
+.views a:hover{border-color:var(--muted)}
 .views a.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .ph{display:flex;align-items:flex-start;gap:16px}.ph>div{min-width:0;flex:1}
 .views .n{margin-left:8px;color:inherit;opacity:.85}
+@media (min-width:1024px){.views a{min-height:30px;padding:0 12px}}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}
-.ibx .chip{white-space:normal;border-radius:14px}
+.ibx .chip{white-space:nowrap}
 .ibx .row{display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
 .ibx .row .chips{margin:4px 0 0}
-.who-h{font-size:20px;font-weight:600;margin:0}
+.who-h{font-size:var(--fs-h3);font-weight:600;margin:0}
+.who-h .tel{font-size:var(--fs-2);margin-left:6px}
 .field{display:block;font-weight:500;margin:0 0 8px}
-.ibx textarea,.ibx input[type=text]{display:block;width:100%;min-height:48px;font:inherit;font-size:18px;color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:12px}
+.ibx textarea,.ibx input[type=text]{display:block;width:100%;min-height:var(--ctl);font:inherit;font-size:var(--fs-in);color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:12px}
 .ibx textarea{min-height:120px;resize:vertical}
 .quote{border-left:4px solid var(--accent);background:var(--sunk);border-radius:var(--r-sm);padding:12px 16px;margin:8px 0 0}
 details.done>summary{list-style:none;cursor:pointer}
@@ -134,7 +148,7 @@ details.done .panel .btn{width:100%;margin-top:12px}
 .pick fieldset{border:0;margin:0 0 16px;padding:0;min-width:0}
 .pick legend{font-weight:600;padding:0;margin:0 0 8px}
 .opts{display:flex;flex-wrap:wrap;gap:8px}
-.opts label{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:8px 16px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);cursor:pointer}
+.opts label{display:inline-flex;align-items:center;gap:8px;min-height:var(--tap);padding:8px 16px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);cursor:pointer}
 .opts.stack label{display:flex;width:100%}
 .opts input{width:20px;height:20px;margin:0;accent-color:var(--accent);flex:none}
 .opts label:has(input:checked){border-color:var(--accent);background:var(--accent-tint)}
@@ -189,7 +203,7 @@ async function renderScreen(c: ConsoleCtx, o: { view: View; openId?: number; det
         : statusChip(ic.nobodyYet, "attention");
     return listRow({
       href: `/app/inbox/${ch.id}${o.view === "all" ? "" : `?v=${o.view}`}`,
-      title: customerName(ch, locale),
+      title: html`${customerName(ch, locale)} <span class="d">${numberText(ch, m)}</span>`,
       sub: `${why(ch, ic)} · ${ic.waited(ago(now - Date.parse(since(ch)), ic))}`,
       end: html`<div class="chips">${statusChip(inWindow(ch, now) ? replyLine(ch, locale, now) : ic.windowClosedShort, inWindow(ch, now) ? "plain" : "attention")}${claim}</div>`,
       on: ch.id === o.openId,
@@ -291,7 +305,8 @@ async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: st
   const live = claimLive(ch, now);
   // Owner and staff only reach the Inbox; a practitioner's own-customer rule doesn't apply here (no target).
   const mediaCsrf = (await maySeeMedia(c.env.DB, m, {}, ch.id)) ? await memberCsrf(c.get("jwt"), m, `people-media:${ch.id}`) : null;
-  const head = html`<article class="card ph${isSafety(ch) ? " danger" : ""}">${avatar(ch.name)}<div><h2 class="who-h">${keep4(customerName(ch, locale))}</h2>
+  // Ticket 47's Gist card goes right after this header, above the reply box and the thread.
+  const head = html`<article class="card ph${isSafety(ch) ? " danger" : ""}">${avatar(personName(ch.name))}<div><h2 class="who-h">${customerName(ch, locale)} ${phoneHtml(ch.waId, seesNumber(m, null))}</h2>
 <p class="why">${why(ch, ic)} · ${ic.waited(ago(now - Date.parse(since(ch)), ic))}</p>
 <div class="chips">${statusChip(replyLine(ch, locale, now), inWindow(ch, now) ? "plain" : "attention")}${isSafety(ch) ? statusChip(ic.whySafety, "danger") : ""}</div></div></article>`;
   const notes: unknown[] = [];
@@ -332,7 +347,8 @@ async function detailHtml(c: ConsoleCtx, ch: Chat, o: { text?: string; note?: st
 <label class="field" for="done-note">${ic.doneNote}</label><input id="done-note" type="text" name="note" maxlength="200" required placeholder="${ic.donePlaceholder}" value="${o.note ?? ""}"><p class="muted">${ic.doneWhy}</p><button class="btn primary" type="submit">${ic.doneButton}</button></form></details>`,
     );
   const all = c.req.query("all") === "1";
-  return html`${head}${notes}${reply}${acts.length ? html`<div class="acts nextsteps" aria-label="${ic.secMore}">${acts}</div>` : ""}${await notesLink(c, ch.id)}${await gistCard(c, ch.id, null, `/app/inbox/${ch.id}`)}<div id="chat">${section(ic.secChat, await threadHtml(c.env, ch, m, now, all, mediaCsrf))}</div>`;
+  // Ticket 47's Gist right under the header (the slot ticket 46 left), the notes link after the actions.
+  return html`${head}${await gistCard(c, ch.id, null, `/app/inbox/${ch.id}`)}${notes}${reply}${acts.length ? html`<div class="acts nextsteps" aria-label="${ic.secMore}">${acts}</div>` : ""}${await notesLink(c, ch.id)}<div id="chat">${section(ic.secChat, await threadHtml(c.env, ch, m, now, all, mediaCsrf))}</div>`;
 }
 
 // ---------- book or move for them ----------

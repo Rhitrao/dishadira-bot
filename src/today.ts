@@ -10,10 +10,10 @@ import type { D1Result } from "@cloudflare/workers-types";
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { FIRST_BUY } from "./amma";
-import { can, canAny, memberById, memberCsrf, type Member } from "./auth";
-import { chatTextHidden, hasOwnName } from "./business";
+import { can, canAny, memberById, memberCsrf, seesNumber, type Member } from "./auth";
+import { chatTextHidden } from "./business";
 import { config } from "./config";
-import { auditStmt, languageCsrf, refused, S, type ConsoleCtx, type ConsoleVars } from "./console";
+import { auditStmt, badgesOf, languageCsrf, refused, S, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleCopy, consoleLang, type ConsoleLang } from "./console-copy";
 import { rupees, serviceName, type ForWhom } from "./copy";
 import type { Env } from "./env";
@@ -25,8 +25,8 @@ import { decideRequest, openRequests, REQUEST_ACTION, requestById, targetId, typ
 import { iso, istDay, istMinutes } from "./slots";
 import { bookingsOpen } from "./switches";
 import {
-  appointmentRow, banner, bookingChip, button, callLangText, clock, confirmStep, consoleFrame, dayName, emptyState, firstName,
-  forWhomText, last4, ledger, listRow, roleName, rows as rowList, screenHead, section, statusChip, taskCard, keep4,
+  appointmentRow, banner, bookingChip, button, callButton, callLangText, clock, confirmStep, consoleFrame, dayName, emptyState, firstName,
+  forWhomText, ledger, listRow, phoneHtml, roleName, rows as rowList, screenHead, section, statusChip,
 } from "./ui";
 
 // ---------- Today's words, English and Hindi, in the shape of src/console-copy.ts (a later review moves them into the catalogue) ----------
@@ -82,6 +82,7 @@ const en = {
   flashAlready: "Someone already decided this. Nothing was changed.",
   flashGone: "Nothing changed: this was already done.",
   ago: (min: number) => (min < 1 ? "just now" : min < 60 ? `${min} min ago` : min < 48 * 60 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} days ago`),
+  flashSaved: "Saved.",
 };
 type TodayCopy = { [K in keyof typeof en]: (typeof en)[K] extends (...a: infer A) => string ? (...a: A) => string : string };
 
@@ -135,6 +136,7 @@ const hi: TodayCopy = {
   flashAlready: "किसी ने पहले ही फ़ैसला कर दिया। कुछ नहीं बदला।",
   flashGone: "कुछ नहीं बदला: यह पहले ही हो चुका था।",
   ago: (min) => (min < 1 ? "अभी" : min < 60 ? `${min} मिनट पहले` : min < 48 * 60 ? `${Math.round(min / 60)} घंटे पहले` : `${Math.round(min / 1440)} दिन पहले`),
+  flashSaved: "सेव हो गया।",
 };
 
 export const TODAY_COPY: Record<ConsoleLang, TodayCopy> = { en, hi };
@@ -203,10 +205,8 @@ const mayMark = (m: Member, b: Booking) => can(m, "mark_outcome", { practitioner
 const outcomeOpen = (b: Booking, now: number) => now >= startMs(b) && now < startMs(b) + OUTCOME_HOURS * HOUR;
 const outcomesFor = (b: Booking): OutcomeValue[] =>
   b.kind === "CALL" ? (["PAID", "RESCHEDULED"].includes(b.state) ? ["SESSION", "NOT_FIT", "MISSED", "RUDE"] : []) : ["CONFIRMED", "CREDIT_BOOKED"].includes(b.state) && b.firstBuy === 1 ? ["NOT_FIT"] : [];
-// The Call button (an audited reveal of the number) only from 1 hour before the start to 1 hour after the end, for everyone.
-export const callAllowed = (m: Member, b: Booking, now: number) =>
-  now >= startMs(b) - HOUR && now <= Date.parse(b.endUtc) + HOUR &&
-  can(m, "reveal_phone", { practitionerId: b.practitionerId, callStartMs: startMs(b), callEndMs: Date.parse(b.endUtc), nowMs: now }) === "yes";
+// Ticket 46 (CONTRACT v15): the number, and a one-tap Call (tel:) on every booking, for the owner and the booking's own practitioner.
+const seesNumberOf = (m: Member, b: Booking) => seesNumber(m, b.practitionerId);
 // Who sees what: an owner or staff member sees every booking (null), a practitioner their own.
 const scopeOf = (m: Member) => (can(m, "view_today") === "yes" ? null : m.id);
 // Safety text: owners, and the practitioner whose customer it is. Staff see only that an owner is needed.
@@ -216,7 +216,8 @@ const kindKey = (b: Booking) => (b.kind === "CALL" ? "intro" : "session");
 const outScope = (b: Booking, v: string) => `outcome:${kindKey(b)}:${b.id}:${v}`;
 
 // ---------- small text helpers ----------
-const who = (name: string | null, waId: string, t: TodayCopy) => `${firstName(name, t.noName)} ${last4(waId)}`;
+// The name on a card's title; the number goes on its own line, as phoneHtml() draws it for this member.
+const who = (name: string | null, t: TodayCopy) => firstName(name, t.noName);
 const agoText = (utc: string, now: number, t: TodayCopy) => t.ago(Math.max(0, Math.round((now - Date.parse(utc)) / 60_000)));
 const at = (utc: string, now: number, locale: string) => (istDay(Date.parse(utc)) === istDay(now) ? clock(utc, locale) : `${dayName(utc, locale)}, ${clock(utc, locale)}`);
 const outWord = (v: string, t: TodayCopy) => (isOutcomeValue(v) ? (t[`out${v}`] as string) : "");
@@ -230,7 +231,7 @@ details.more[open]>summary{margin-bottom:8px}
 .card:not(:has(details))>.acts{grid-column:2;grid-row:1/span 4;margin:0}}</style>`);
 
 // ---------- one booking row ----------
-async function bookingRow(c: ConsoleCtx, b: Booking, now: number) {
+async function bookingRow(c: ConsoleCtx, b: Booking, now: number, hero = false) {
   const m = c.get("member");
   const jwt = c.get("jwt");
   const cc = consoleCopy(m.locale);
@@ -240,9 +241,7 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number) {
     b.kind === "CALL" ? t.kindCall(config.slots.callMinutes) : b.origin === "CREDIT" && b.packSize ? t.kindSessionPackage(b.packNo ?? 0, b.packSize) : t.kindSession;
   const details = [kindText, forWhomText(b.forWhom, m.locale), callLangText(b.callLang ?? b.locale, m.locale)];
   if (istDay(startMs(b)) !== istDay(now)) details.unshift(dayName(b.startUtc, m.locale));
-  const action = callAllowed(m, b, now)
-    ? { label: cc.call, kind: "primary" as const, post: { action: "/app/today/call", csrf: await memberCsrf(jwt, m, `call:${kindKey(b)}:${b.id}`), fields: { kind: kindKey(b), id: String(b.id) } } }
-    : undefined;
+  const full = seesNumberOf(m, b);
 
   let extra: unknown = "";
   const nowStr = iso(now);
@@ -275,17 +274,16 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number) {
   return html`<div class="bk" id="b-${kindKey(b)}-${b.id}">${appointmentRow({
     time: clock(b.startUtc, lang),
     name: firstName(b.name, t.noName),
-    waId: b.waId,
+    phone: phoneHtml(b.waId, full),
     service: serviceName(b.service, lang),
     details,
     status: b.oid === null ? bookingChip(b.state, m.locale) : "",
-    action,
+    call: full ? callButton(b.waId, cc.call, hero ? "primary" : "secondary") : "",
     extra,
   })}</div>`;
 }
 
-// The next booking, large: when it is ("Next · in 25 min", "Happening now"), the row itself with its Call and outcome buttons, and, before
-// the Call button's window opens, the time it will appear.
+// The next booking, large: when it is ("Next · in 25 min", "Happening now"), the row itself with its Call and outcome buttons.
 async function heroCard(c: ConsoleCtx, b: Booking, now: number) {
   const m = c.get("member");
   const cc = consoleCopy(m.locale);
@@ -294,11 +292,50 @@ async function heroCard(c: ConsoleCtx, b: Booking, now: number) {
   const mins = Math.max(1, Math.round((start - now) / 60_000));
   const when = now >= end ? cc.heroAfter : now >= start ? cc.heroNow : cc.heroNext;
   const soon = now < start ? html` <span class="in">${cc.startsIn(cc.duration(Math.floor(mins / 60), mins % 60))}</span>` : "";
-  const later =
-    !callAllowed(m, b, now) && now < start - HOUR && can(m, "reveal_phone", { practitionerId: b.practitionerId, callStartMs: start, callEndMs: end, nowMs: start }) === "yes"
-      ? html`<p class="later">${cc.callFrom(clock(iso(start - HOUR), m.locale))}</p>`
-      : "";
-  return html`<div class="hero"><p class="when">${when}${soon}</p>${await bookingRow(c, b, now)}${later}${await todayNotes(c, b)}</div>`;
+  return html`<div class="hero"><p class="when">${when}${soon}</p>${await bookingRow(c, b, now, true)}${await todayNotes(c, b)}</div>`;
+}
+
+// "Reply within 3 h" / "Reply within 25 min": the time left in WhatsApp's 24-hour window, in plain words (ticket 46).
+export const timeLeft = (ms: number, locale: string | null | undefined) => {
+  const cc = consoleCopy(locale);
+  const min = Math.max(1, Math.floor(ms / 60_000));
+  return min >= 60 ? cc.duration(Math.floor(min / 60), 0) : cc.duration(0, min);
+};
+
+// ---------- the stats strip (ticket 46) ----------
+// Five numbers at the top of Today, each a link to where it comes from: today's bookings, this week's (Monday to Sunday), money received
+// this week and this month (only for whoever may see money), and new enquiries today (owner and staff; a practitioner sees her own
+// bookings only). Counts are the same bookings the rest of Today lists.
+async function statsStrip(env: Env, m: Member, o: { now: number; todayYmd: string; day: Booking[]; scope: number | null; live: (b: Booking) => boolean }) {
+  const cc = consoleCopy(m.locale);
+  const dayStart = dayStartUtc(o.todayYmd);
+  const dow = (new Date(Date.parse(`${o.todayYmd}T00:00:00Z`)).getUTCDay() + 6) % 7; // Monday 0
+  const weekStart = iso(Date.parse(dayStart) - dow * DAY);
+  const monthStart = dayStartUtc(`${o.todayYmd.slice(0, 8)}01`);
+  const week = await bookingsBetween(env, weekStart, iso(Date.parse(weekStart) + 7 * DAY), o.scope);
+  const calls = o.day.filter((b) => b.kind === "CALL").length;
+  const stat = (x: { k: string; v: string; s: string; href: string; money?: boolean }) =>
+    html`<a class="stat${x.money ? " money" : ""}" href="${x.href}"><span class="k">${x.k}</span><span class="v">${x.v}</span><span class="s">${x.s}</span></a>`;
+  const items = [
+    stat({ k: cc.stToday, v: String(o.day.length), s: o.day.length ? [calls ? cc.calCalls(calls) : "", o.day.length - calls ? cc.calSessions(o.day.length - calls) : ""].filter(Boolean).join(" · ") : cc.stTodayNone, href: "/app/calendar?view=day" }),
+    stat({ k: cc.stWeek, v: String(week.length), s: cc.stStillToCome(week.filter((b) => o.live(b) && startMs(b) > o.now).length), href: "/app/calendar" }),
+  ];
+  if (can(m, "see_money") === "yes") {
+    const money = (from: string) =>
+      env.DB.prepare(`SELECT COALESCE(SUM(COALESCE(paid_paise, amount_paise)), 0) AS paise, COUNT(*) AS n FROM payments WHERE state IN ${PAID} AND created_at >= ?1`).bind(from).first<{ paise: number; n: number }>();
+    const [w, mo] = await Promise.all([money(weekStart), money(monthStart)]);
+    const month = cc.calMonthNames.split(" ")[Number(o.todayYmd.slice(5, 7)) - 1];
+    items.push(stat({ k: cc.stWeekMoney, v: rupees(w?.paise ?? 0), s: cc.stPayments(w?.n ?? 0), href: "/app/payments", money: true }));
+    items.push(stat({ k: cc.stMonthMoney(month), v: rupees(mo?.paise ?? 0), s: cc.stPayments(mo?.n ?? 0), href: "/app/payments", money: true }));
+  }
+  if (o.scope === null) {
+    const e = await env.DB.prepare(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN EXISTS (SELECT 1 FROM intros i WHERE i.conversation_id = c.id AND i.state NOT IN ('HELD','EXPIRED')) THEN 1 ELSE 0 END), 0) AS booked
+       FROM conversations c WHERE c.created_at >= ?1`,
+    ).bind(dayStart).first<{ n: number; booked: number }>();
+    items.push(stat({ k: cc.stEnquiries, v: String(e?.n ?? 0), s: cc.stBookedCall(e?.booked ?? 0), href: "/app/people" }));
+  }
+  return html`<div class="stats n${items.length}" role="group" aria-label="${cc.statsLabel}">${items}</div>`;
 }
 
 // ---------- the page ----------
@@ -307,7 +344,7 @@ type Waiting = { convId: number; name: string | null; waId: string; since: strin
 
 const FLASH: Record<string, keyof TodayCopy> = {
   undone: "flashUndone", handback: "flashHandedBack", approved: "flashApproved", declined: "flashDeclined", recorded: "flashRecorded",
-  nothing: "flashNothing", gone: "flashGone", late: "flashLate",
+  nothing: "flashNothing", gone: "flashGone", late: "flashLate", saved: "flashSaved",
 };
 
 export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; status?: 200 | 403 | 409 | 503 } = {}) {
@@ -334,12 +371,13 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
     ).bind(scope).all<SafetyItem>()
   ).results;
   const safetyCards = safety.map((s) => {
-    const person = who(s.name, s.waId, t);
+    const person = who(s.name, t);
+    const num = phoneHtml(s.waId, seesNumber(m, scope));
     if (!seesSafety(m))
-      return html`<article class="card danger"><h3>${cc.safetyHidden}</h3><p class="why">${keep4(person)} · ${at(s.createdAt, now, m.locale)}</p><div class="acts">${button({ label: t.openPage, href: `/app/people/${s.convId}`, kind: "primary" })}</div></article>`;
+      return html`<article class="card danger"><h3>${cc.safetyHidden}</h3><p class="why">${person} ${num} · ${at(s.createdAt, now, m.locale)}</p><div class="acts">${button({ label: t.openPage, href: `/app/people/${s.convId}`, kind: "primary" })}</div></article>`;
     const href = canAny(m, "reply_chat") ? `/app/inbox/${s.convId}` : `/app/people/${s.convId}`;
-    return html`<article class="card danger"><h3>${keep4(s.kind === "CRISIS" ? t.safetyCrisis(person) : t.safetyEmergency(person))}</h3>
-<p class="why">${at(s.createdAt, now, m.locale)} · ${cc.safetySent}</p><div class="acts">${button({ label: cc.openChat, href, kind: "danger" })}</div></article>`;
+    return html`<article class="card danger"><h3>${s.kind === "CRISIS" ? t.safetyCrisis(person) : t.safetyEmergency(person)}</h3>
+<p class="why">${num} · ${at(s.createdAt, now, m.locale)} · ${cc.safetySent}</p><div class="acts">${button({ label: cc.openChat, href, kind: "danger" })}</div></article>`;
   });
 
   // 2. Waiting for a reply: every chat handed to the team, oldest first (owners and staff, who reply).
@@ -356,13 +394,13 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
   const waitingCards = await Promise.all(
     waiting.map(async (w) => {
       const end = w.lastUserAt ? Date.parse(w.lastUserAt) + config.windowHours * HOUR : 0;
-      const windowLine = end > now ? cc.replyBy(at(iso(end), now, m.locale)) : cc.windowClosed;
+      const windowLine = end > now ? cc.replyWithin(timeLeft(end - now, m.locale)) : cc.windowClosed;
       const why = w.since ? `${cc.askedForPerson(agoText(w.since, now, t))}. ${windowLine}.` : `${windowLine}.`;
       const handBack =
         can(m, "reply_chat") === "yes"
           ? button({ label: cc.handBack, post: { action: "/app/today/handback", csrf: await memberCsrf(c.get("jwt"), m, `handback:${w.convId}`), fields: { conv: String(w.convId) } } })
           : "";
-      return html`<article class="card attention"><h3>${keep4(t.replyTo(who(w.name, w.waId, t)))}</h3><p class="why">${why}</p>${textHidden ? html`<p class="muted">${cc.chatTextHidden}.</p>` : ""}
+      return html`<article class="card attention"><h3>${t.replyTo(who(w.name, t))} ${phoneHtml(w.waId, seesNumber(m, null))}</h3><p class="why">${why}</p>${textHidden ? html`<p class="muted">${cc.chatTextHidden}.</p>` : ""}
 <div class="acts">${button({ label: cc.reply, href: `/app/inbox/${w.convId}`, kind: "primary" })}${handBack}</div></article>`;
     }),
   );
@@ -403,7 +441,7 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
   const dayClosed = day.every((b) => Date.parse(b.endUtc) <= now);
   if (dayClosed) {
     for (const b of day.filter((b) => b.oid === null && outcomesFor(b).length))
-      looseLinks.push(listRow({ href: `#b-${kindKey(b)}-${b.id}`, title: `${clock(b.startUtc, m.locale)} · ${who(b.name, b.waId, t)}`, sub: t.noOutcomeYet }));
+      looseLinks.push(listRow({ href: `#b-${kindKey(b)}-${b.id}`, title: `${clock(b.startUtc, m.locale)} · ${who(b.name, t)}`, sub: t.noOutcomeYet }));
     if (scope === null && canAny(m, "move_booking")) {
       const unpaid = (await env.DB.prepare("SELECT COUNT(*) AS n FROM payments WHERE state IN ('CREATING','PENDING') AND created_at >= ?1").bind(dayStart).first<{ n: number }>())!.n;
       if (unpaid) looseLinks.push(listRow({ href: isOwner ? "/app/payments" : "/app/people", title: t.unpaidLinks(unpaid) }));
@@ -421,18 +459,18 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
     if (await heartbeatStale(env, now)) banners.push(banner({ text: cc.bannerBot, fix: { label: cc.fixBot, href: "/app/settings" }, tone: "danger" }));
   }
 
-  // The owner's one quiet set-up task while the workspace still has the seeded name.
+  // Ticket 46: no "Add your business name" card any more: without one, the frame shows the brand (config.brand); Settings → Business
+  // still sets it.
   const ws = await env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>();
-  const nameTask = isOwner && !hasOwnName(ws?.name) ? html`<div class="setup">${taskCard({ title: cc.taskName, why: cc.taskNameWhy, primary: { label: cc.taskNameButton, href: "/app/settings#business", kind: "secondary" } })}</div>` : "";
+  const stats = await statsStrip(env, m, { now, todayYmd, day, scope, live });
 
   // A gentle greeting by the hour in India, with the date, above the screen's question.
   const hour = Math.floor(istMinutes(iso(now)) / 60);
   const eyebrow = `${cc.greeting(hour, firstName(m.displayName, ""))} · ${dayName(iso(now), m.locale)}`;
-  const body = html`${TODAY_CSS}${screenHead("today", m.locale, { eyebrow })}
+  const body = html`${TODAY_CSS}${screenHead("today", m.locale, { eyebrow })}${stats}
 ${safety.length ? section(cc.secSafety, safetyCards, safety.length) : ""}
 ${replies && waiting.length ? section(cc.secWaiting, waitingCards, waiting.length) : ""}
 ${approvals.length ? section(cc.secApprovals, approvals, approvals.length) : ""}
-${nameTask}
 ${section(cc.secUpNext, upNext, day.length)}
 ${section(cc.secLater, later)}
 ${loose.length + looseLinks.length ? section(cc.secLooseEnds, looseBody, loose.length + looseLinks.length) : ""}`;
@@ -451,7 +489,7 @@ ${loose.length + looseLinks.length ? section(cc.secLooseEnds, looseBody, loose.l
       member: m.displayName ?? undefined,
       flash,
       banners,
-      badges: replies && waiting.length ? { inbox: waiting.length } : undefined,
+      badges: badgesOf(c),
       language: { csrf: await languageCsrf(c.get("jwt"), m), back: "/app" },
       accent: c.get("accent"),
     }),
@@ -491,11 +529,11 @@ async function approvalCards(c: ConsoleCtx, reqs: RequestRow[], now: number) {
     reqs.map(async (r) => {
       if (can(m, REQUEST_ACTION[r.kind]) !== "yes") return "";
       const subject = await requestSubject(c.env, r);
-      const person = subject ? who(subject.name, subject.waId, t) : t.noName;
+      const person = subject ? who(subject.name, t) : t.noName;
       const amount = rupees(r.amountPaise ?? subject?.paise ?? 0);
       const asker = await memberById(c.env, r.askedBy, m.workspaceId);
       const askerName = asker ? (asker.id === m.id ? cc.byYou : asker.displayName || asker.email) : t.someone;
-      const why = html`${t.askedBy(askerName, agoText(r.createdAt, now, t))}${r.reason ? html`<br>${t.reasonLine(r.reason)}` : ""}`;
+      const why = html`${subject ? html`${phoneHtml(subject.waId, seesNumber(m, null))} · ` : ""}${t.askedBy(askerName, agoText(r.createdAt, now, t))}${r.reason ? html`<br>${t.reasonLine(r.reason)}` : ""}`;
       const title = r.kind === "REFUND" ? t.refundTitle(amount, person) : r.kind === "BLOCK" ? t.blockTitle(person) : t.markPaidTitle(amount, person);
       const effect = r.kind === "REFUND" ? t.refundEffect(amount, person) : r.kind === "BLOCK" ? t.blockEffect(person) : t.markPaidEffect(amount);
       const yes = r.kind === "REFUND" ? t.refundYes(amount) : r.kind === "BLOCK" ? t.blockYes(person) : t.markPaidYes(amount);
@@ -504,7 +542,7 @@ async function approvalCards(c: ConsoleCtx, reqs: RequestRow[], now: number) {
         csrf: await memberCsrf(c.get("jwt"), m, `decide:${r.id}:${decision}`),
         fields: { request: String(r.id), decision },
       });
-      return html`<article class="card attention"><h3>${keep4(title)}</h3><p class="why">${why}</p>
+      return html`<article class="card attention"><h3>${title}</h3><p class="why">${why}</p>
 <div class="acts">${confirmStep({ label: `${cc.approve}…`, effect, confirm: yes, post: await post("APPROVED") })}${button({ label: cc.decline, post: await post("DECLINED") })}</div></article>`;
     }),
   ).then((cards) => cards.filter(Boolean));
@@ -554,7 +592,7 @@ today.post("/today/outcome", async (c) => {
     return notSaved(c);
   }
   if (oid === null) return todayPage(c, { flash: await alreadyMarked(c, (await bookingOf(c.env, kind, id)) ?? b), status: 409 });
-  return back(c, null, `#b-${target.replace(":", "-")}`);
+  return back(c, "saved", `#b-${target.replace(":", "-")}`);
 });
 
 // "Already marked: Not a fit, by you at 4:05 pm": the outcome, who tapped it (from the audit log) and when.
@@ -592,37 +630,6 @@ today.post("/today/undo", async (c) => {
   }
   if (!ok) return todayPage(c, { flash: cc.tooLateToUndo, status: 409 });
   return back(c, "undone", `#b-${target.replace(":", "-")}`);
-});
-
-// Call: the number is shown (and the reveal recorded) only from 1 hour before to 1 hour after the call, for whoever may see it.
-today.post("/today/call", async (c) => {
-  const m = c.get("member");
-  const f = await formOf(c);
-  const kind = f.kind === "intro" ? "CALL" : f.kind === "session" ? "SESSION" : null;
-  const id = Number(f.id);
-  if (!kind || !Number.isInteger(id)) return c.text("Bad request", 400);
-  if (!(await tokenOk(c, f.csrf, `call:${f.kind}:${id}`))) return forbidden(c);
-  const b = await bookingOf(c.env, kind, id);
-  const now = Date.now();
-  if (!b || !callAllowed(m, b, now)) return refused(c);
-  const target = `${kindKey(b)}:${b.id}`;
-  try {
-    await c.env.DB.prepare("INSERT INTO audit_log (actor, action, target, detail, workspace_id, member_id, reason) VALUES (?1, 'PHONE_REVEAL', ?2, 'call', ?3, ?4, 'call')")
-      .bind(c.get("email"), target, m.workspaceId, m.id)
-      .run();
-  } catch {
-    return notSaved(c);
-  }
-  const t = todayCopy(m.locale);
-  const cc = consoleCopy(m.locale);
-  const lang = consoleLang(m.locale);
-  const digits = b.waId.replace(/\D/g, "");
-  const ws = await c.env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>();
-  const body = html`<article class="card"><h3>${t.callTitle(firstName(b.name, t.noName))}</h3>
-<p class="why">${clock(b.startUtc, lang)} · ${serviceName(b.service, lang)} · ${callLangText(b.callLang ?? b.locale, m.locale)}</p>
-<div class="acts"><a class="btn primary" href="tel:+${digits}">${cc.call} +${digits}</a><a class="link" href="/app#b-${target.replace(":", "-")}">${t.backToday}</a></div>
-<p class="muted">${t.callLogged}</p></article>`;
-  return c.html(consoleFrame({ role: m.role, locale: m.locale, active: "today", title: cc.call, body, business: ws?.name ?? "", member: m.displayName ?? undefined, accent: c.get("accent") }));
 });
 
 // Hand back to the bot: the chat leaves the team's queue (its "talk to a person" item is resolved). A safety item stays open.

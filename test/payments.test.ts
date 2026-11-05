@@ -93,8 +93,9 @@ describe("the month: money in, refunded, net and sessions owed", () => {
     expect(w).toContain("Refund on its way");
     expect(w).toContain("Check with Razorpay");
     expect(w).not.toMatch(/\b(REFUND_FAILED|REFUND_PENDING|UNKNOWN|PAID|INTRO|SESSION|PACKAGE)\b/);
-    expect(html).not.toMatch(/9198000\d{5}/); // never a whole number
-    expect(html).toContain("…5555");
+    // Ticket 46 (CONTRACT v15): Payments is the owner's, so the number is the full one, formatted; the CSV keeps the last 4 (below).
+    expect(html).toMatch(/\+91 98000 \d{5}/);
+    expect(html).not.toContain("…5555");
   });
   it("a month in the future shows this month; month boundaries are India time", async () => {
     expect(monthOf(Date.parse("2026-10-31T19:00:00Z"))).toBe("2026-11"); // 12:30 am on 1 Nov in India

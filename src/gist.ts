@@ -322,17 +322,18 @@ export async function gistFacts(env: Env, m: Member, convId: number, practitione
 
 // ---------- the card ----------
 const GIST_CSS = raw(`<style>
-.gist h3{font-size:20px;font-weight:600;margin:0}
-.gist dl{display:grid;grid-template-columns:minmax(0,1fr);gap:0 16px;margin:8px 0 0}
-.gist dt{color:var(--muted);font-size:16px;margin:12px 0 0}.gist dd{margin:0;overflow-wrap:anywhere}
-.gist .gchips{display:flex;flex-wrap:wrap;gap:8px}.gist .gchips .chip{margin:0;white-space:normal}
-.gai{margin:16px 0 0;padding:16px;border-radius:var(--r-sm);background:var(--sunk)}
+.gist{box-shadow:inset 3px 0 0 var(--water),0 1px 2px var(--shade)}
+.gist h3{font-size:var(--fs-h3);font-weight:600;margin:0}
+.gist dl{display:grid;grid-template-columns:minmax(0,1fr);gap:0 16px;margin:6px 0 0}
+.gist dt{color:var(--muted);font-size:var(--fs-3);margin:10px 0 0}.gist dd{margin:0;overflow-wrap:anywhere;font-size:var(--fs-2)}
+.gist .gchips{display:flex;flex-wrap:wrap;gap:6px}.gist .gchips .chip{margin:0;white-space:normal}
+.gai{margin:12px 0 0;padding:12px 14px;border-radius:var(--r-sm);background:var(--sunk);font-size:var(--fs-2)}
 .gai .gl{font-weight:600;margin:0}
 .gai ul{margin:8px 0 0;padding-left:22px}.gai li+li{margin-top:6px}
-.gai .gw{color:var(--muted);font-size:16px;margin:8px 0 0}
-.gist .gflash{font-weight:600;margin:12px 0 0}
-.gist form{margin-top:12px}
-@media (min-width:900px){.gist dl{grid-template-columns:7.5em minmax(0,1fr)}.gist dt,.gist dd{margin:10px 0 0}}
+.gai .gw{color:var(--muted);font-size:var(--fs-3);margin:6px 0 0}
+.gist .gflash{font-weight:600;margin:10px 0 0}
+.gist form{margin-top:10px}
+@media (min-width:900px){.gist dl{grid-template-columns:8em minmax(0,1fr)}.gist dt,.gist dd{margin:6px 0 0}.gist dt{padding-top:1px}}
 </style>`);
 
 type Row = { summary: string | null; madeAt: string | null; held: number };

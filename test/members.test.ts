@@ -102,7 +102,7 @@ const PRD: Record<string, [Action, string, string, string]> = {
   "Set working hours and block time off": ["set_hours", "yes", "own", "no"],
   "Mark a call outcome, offer a session": ["mark_outcome", "yes", "own", "no"],
   "Reply to a handed-over chat": ["reply_chat", "yes", "no", "yes"],
-  "See a customer's full phone number": ["reveal_phone", "yes", "window", "no"],
+  "See a customer's full phone number": ["reveal_phone", "yes", "own", "no"], // ticket 46: own customers, at any time
   "Read a customer's chat": ["read_chat", "yes", "own", "not-safety"],
   "Move or cancel a booking": ["move_booking", "yes", "own", "yes"],
   "Record money received outside Razorpay": ["record_payment", "yes", "no", "ask"],
@@ -274,11 +274,9 @@ describe("tabs and screens follow the role", () => {
     });
   }
 
-  it("each screen says who can see it, in words", async () => {
+  it("no screen carries a developer's \"Visible to\" line any more (ticket 46); the rights are the permission table's", async () => {
     await withStaff();
-    expect(await (await get("/app/inbox")).text()).toContain("Visible to: Owner, Staff");
-    expect(await (await get("/app/settings/team")).text()).toContain("Visible to: Owner");
-    expect(await (await get("/app/settings")).text()).toContain("Visible to: Owner</p>"); // the business's settings: the owner's alone
+    for (const path of ["/app/inbox", "/app/settings/team", "/app/settings", "/app", "/app/calendar", "/app/people", "/app/payments"]) expect(await (await get(path)).text(), path).not.toContain("Visible to");
     expect(await (await get("/app/settings")).text()).toContain('href="/app/settings/team"');
   });
 });
