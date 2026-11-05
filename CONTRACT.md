@@ -1,5 +1,5 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-11-04 (v14: ticket 45, the owner's request of 4 Nov 2026: a phone alert (Web Push) to the owner and the practitioner when a customer books and pays; v13: ticket 41, the owner's requests of 4 Nov 2026: calls and sessions are voice calls only, the three questions after a paid ₹99 call, out-of-scope concerns, the media reply, and safety-chat photos for the practitioner; v12: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v11: ticket 38: customer photos and files viewed on demand, never stored, and /app the live console; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-11-04 (v16: ticket 47, the owner's requests of 4 Nov 2026: the team's notes for each customer (before, during and after a call or session) and a gist above each chat; v15: reserved for ticket 46; v14: ticket 45, the owner's request of 4 Nov 2026: a phone alert (Web Push) to the owner and the practitioner when a customer books and pays; v13: ticket 41, the owner's requests of 4 Nov 2026: calls and sessions are voice calls only, the three questions after a paid ₹99 call, out-of-scope concerns, the media reply, and safety-chat photos for the practitioner; v12: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v11: ticket 38: customer photos and files viewed on demand, never stored, and /app the live console; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
   read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
@@ -25,7 +25,8 @@ One TypeScript Worker (Hono) + D1 + Cron Triggers + Cloudflare Access + Cloudfla
 DIGEST_TO, and member addresses the owner has verified in Cloudflare Email Routing). Invites are never emailed: the team page
 shows the one-time link, with a "Send on WhatsApp" link and a field to copy it. Static site is separate (Cloudflare Pages). Native fetch/Web Crypto. Runtime libs: hono, zod, jose.
 Vitest + wrangler in GitHub Actions. Pin versions, commit the lockfile.
-AI: Anthropic API (Claude Haiku) answers typed questions only, behind the AI_REPLIES flag, grounded only in docs/KNOWLEDGE.md.
+AI: Anthropic API (Claude Haiku) answers typed questions only, behind the AI_REPLIES flag, grounded only in docs/KNOWLEDGE.md
+  (v16: and, behind the same flag, writes the team's chat gist, which never goes to the customer).
 Not in v1: voice, broadcasts, marketing templates (v12 exception below), queues, Durable Objects, ORMs, React frameworks,
 vector DBs, third-party CRMs, Supabase, Next.js. Official Meta WhatsApp Cloud API only; no WhatsApp Web automation.
 Reference only: github.com/ArnasDon/wacrm (MIT) for webhook verification, dedupe, template-status and handoff patterns.
@@ -58,7 +59,7 @@ PAID and REFUNDED never move backwards. A verified later success supersedes FAIL
 Data (D1)
 Tables: conversations, events, messages, slots, intros, sessions, payments, refunds, blocks, outcomes, attention, audit_log, settings,
   person_state (strikes, quiet_until, AI reply counters, no_sell_until, opt-out), packages (buyer, size, price, payment),
-  credits (ledger: +N on purchase, -1 per booking, +1 on timely cancel, refunds).
+  credits (ledger: +N on purchase, -1 per booking, +1 on timely cancel, refunds); v16: notes, gists.
 conversations: unique wa_id, display name, locale, mode, last_user_at, source_ad_id, ad_click_id, ad_headline (first ad only, ticket 15), consent_at.
 events: unique(provider, event_key); minimal payload; status; error. Receipt is not processing.
 slots: kind (CALL|SESSION), UNIQUE(kind, start_utc), owner id, hold_until. Availability by conditional SQL only.
@@ -80,6 +81,9 @@ Console v4 (ticket 19, docs/CONSOLE-PRD.md): workspaces, members (one role each:
   v14 (ticket 45): push_subs (a team member's device: its push-service endpoint, https on the known push-service hosts only, its keys, a
   "Chrome on Android" label, dates; deleted on 404/410, Turn off or Remove) and push_outbox (one alert per booking and member: ids,
   times, state; deleted after 30 days). Never customer data.
+  v16 (ticket 47): notes (person, optional booking CALL|SESSION + id, phase BEFORE | DURING | AFTER | ABOUT (one pinned per person), text up
+  to config.notes.maxChars = 2,000, author member, created, edited) and gists (per chat: the AI lines as JSON in English and Hindi, made at,
+  last message id and count, held-for-safety flag, last try).
 
 Flow invariants
 Bot is button-led: max 3 reply buttons, lists max 10 rows, CTA URL label max 20 chars. The AI may only choose a reply and one
@@ -107,6 +111,13 @@ A second payment for the same target is refunded automatically (reason DUPLICATE
 Late payment after hold expiry never takes another slot; it raises attention for Rohit (new slot or refund).
 Outcome taps: Session -> send session_offer; Not right fit -> refund ₹99 after 10-min undo (once per person, daily cap 5);
   Missed -> one reschedule offer; Rude -> block immediately, refund waits for Rohit's approval.
+Notes and the gist (v16, owner's decision 4 Nov 2026): notes are the practice's own record, written and read by the owner and the practitioner
+  for her own customers (permission row `notes`), never staff; the author or the owner edits or deletes; audited NOTE_ADD / NOTE_EDIT /
+  NOTE_DELETE with ids only. The gist above a chat (person page, Inbox) shows facts from our own records to whoever may read that chat's
+  text, plus a few AI lines (what they ask, concerns, anything promised, a next step) made from the stored chat text only by the 2-minute cron
+  (new messages, 5 quiet minutes, 2+ customer messages, at most every 10 minutes, config.gist.dailyCap a day) or Refresh (owner,
+  practitioner); a page never calls the AI. Only while AI_REPLIES is on and not paused, and the owner's "Chat gist (AI)" switch is on
+  (default on, audited GIST_SWITCH); otherwise facts only.
 Amma not tapping within 3 hours of a call -> attention item. "Amma away" switch: pause new bookings and raise attention
   for every affected booking (offer new time or refund).
 Duplicates/reordered events never duplicate bookings, money, links, refunds or outbound messages.
@@ -155,7 +166,7 @@ v14 (owner, 4 Nov 2026): a phone alert (Web Push, from the home-screen app) for 
 
 Privacy and safety
 Never store or send: home address, private phone numbers, medical advice, diagnoses, cure claims, "black magic"/"evil eye" (full banned list: docs/KNOWLEDGE.md §8).
-Never send to the AI: phone numbers, names, payment ids, emails, links, digit runs of 6+. First message and privacy page
+Never send to the AI: phone numbers, names, payment ids, emails, links, digit runs of 6+; never notes (v16), never media. First message and privacy page
   disclose the automated assistant and the AI provider.
 Never ask for health details (v13 exception, the owner's decision of 4 Nov 2026: the "what would you like help with" list after a paid
   ₹99 call, above). Inbound media is never stored (v11: only Meta's media id and type, wiped with the text); the team may view
@@ -167,7 +178,8 @@ Never ask for health details (v13 exception, the owner's decision of 4 Nov 2026:
   automated assistant, and that messages are processed by the AI provider (docs/KNOWLEDGE.md §10).
 Safety messages (crisis, medical emergency) are sent to everyone, including blocked, quiet and HUMAN chats, and even when
   the SENDS switch is paused (never when the SENDS env flag is "false").
-Store only name, WhatsApp number, bookings, payments (v13: and the work and help area given after paying, wiped with the name). Wipe message text (and media ids, v11) CHAT_RETENTION_MINUTES after the person's last message (live 10080 = 7 days,
+Store only name, WhatsApp number, bookings, payments (v13: and the work and help area given after paying, wiped with the name; v16: the
+  team's notes and the chat gist, as below). Wipe message text (and media ids, v11) CHAT_RETENTION_MINUTES after the person's last message (live 10080 = 7 days,
   test 10) and
 personal fields 90 days after last booking; keep dedupe keys, payment, refund and audit rows.
 Secrets, real phone numbers and customer data stay out of git, PRs, logs, fixtures and coding prompts.
@@ -176,6 +188,12 @@ Secrets, real phone numbers and customer data stay out of git, PRs, logs, fixtur
   chats active in the last 1-30 days, a code and the last 4 digits (never the number or the name), text only while the wipe keeps it,
   every text redacted as above plus UPI ids and the person's name; crisis/emergency chats and blocked numbers counts only. The owner may
   analyse it (e.g. in a Claude chat) once the privacy page says so; the file never goes into git, PRs, logs, tickets or coding prompts.
+  v16: the gist's AI lines go to the AI provider through src/ai.ts (the same client, redacted as the export: names, numbers, emails, links,
+  UPI and payment ids), leaving out messages kept from the AI for safety (crisis or emergency, a sexual-health concern, a threat, a sexual
+  message) and the bot's replies to them; each call audited with its token counts and cost (GIST_MADE / GIST_FAILED, never text). The
+  gist is wiped with the chat text (CHAT_RETENTION_MINUTES) and by People → Remove their data. Notes are not wiped with the chat text;
+  they are deleted by Remove their data. Neither goes into the export, the AI (notes), emails, the digest, notifications or logs. The
+  privacy page must say both before AI_REPLIES is turned on in live (wording: STATUS.md, docs/GO-LIVE.md §19).
 Test and live credentials and data never mix; going live switches the Worker to a fresh live D1.
 
 Release and process

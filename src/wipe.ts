@@ -23,6 +23,8 @@ export async function wipeChats(env: Env, nowMs = Date.now()): Promise<number> {
     )
     .bind(iso(nowMs), cutoff)
     .run();
+  // Ticket 47: the chat's gist is made from its text, so it goes with it (notes are the practice's record and stay).
+  await env.DB.prepare("DELETE FROM gists WHERE conversation_id IN (SELECT id FROM conversations WHERE last_user_at < ?1)").bind(cutoff).run();
   await removeOldNames(env, nowMs);
   return res.meta.changes;
 }
@@ -43,9 +45,12 @@ export async function removeOldNames(env: Env, nowMs = Date.now()): Promise<numb
 
 // One person's data, now, when the owner removes it (People → Remove their data): every message text and their name, by the same rule
 // as the timed wipe above (and the first-message question kept for the bot's reply). Bookings, payments, refunds, credits, blocks, dedupe
-// keys and the audit log stay, as the law requires. Returned unrun, so the caller batches them with the audit row.
+// keys and the audit log stay, as the law requires. Ticket 47: the team's notes about them and the chat's gist go too.
+// Returned unrun, so the caller batches them with the audit row.
 export const wipePersonStmts = (db: Env["DB"], convId: number, nowIso: string) => [
   db.prepare("UPDATE messages SET body = NULL, media_id = NULL, media_mime = NULL, wiped_at = ?2 WHERE conversation_id = ?1 AND (body IS NOT NULL OR media_id IS NOT NULL)").bind(convId, nowIso),
   db.prepare("UPDATE conversations SET display_name = NULL, name_given_at = NULL, first_question_msg = NULL WHERE id = ?1").bind(convId),
   db.prepare("UPDATE intros SET profession = NULL, help_area = NULL WHERE conversation_id = ?1 AND (profession IS NOT NULL OR help_area IS NOT NULL)").bind(convId),
+  db.prepare("DELETE FROM notes WHERE conversation_id = ?1").bind(convId),
+  db.prepare("DELETE FROM gists WHERE conversation_id = ?1").bind(convId),
 ];

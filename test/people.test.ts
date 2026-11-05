@@ -290,7 +290,7 @@ describe("the person page", () => {
     expect(body).toContain("Asha Devi");
     expect(body).toContain("my private worry");
     expect(body).not.toContain("Practitioners speak to customers on calls");
-    expect(body).not.toMatch(/<textarea|\/reply"/); // nothing to reply with
+    expect(body.replace(/<form method="post" action="\/app\/notes[^]*?<\/form>/g, "")).not.toMatch(/<textarea|\/reply"/); // nothing to reply with (ticket 47: only the notes forms)
     expect(body).not.toContain("Payments</span>");
     expect(body).not.toContain('chip attention">Waiting<'); // the unpaid link's status
     expect(body).not.toContain("/money");
@@ -524,7 +524,7 @@ describe("remove their data", () => {
     expect(await one("SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ?1 AND wiped_at IS NOT NULL", a)).toEqual({ n: 2 });
     expect(await one("SELECT COUNT(*) AS n FROM payments WHERE id = ?1", paymentId)).toEqual({ n: 1 });
     expect(await one("SELECT COUNT(*) AS n FROM intros WHERE conversation_id = ?1", a)).toEqual({ n: 2 });
-    expect(await audits("PERSON_DATA_REMOVED")).toEqual([{ actor: OWNER, memberId: 1, target: `conv:${a}`, detail: "name and message text", reason: "They asked by phone" }]);
+    expect(await audits("PERSON_DATA_REMOVED")).toEqual([{ actor: OWNER, memberId: 1, target: `conv:${a}`, detail: "name, message text, notes and gist", reason: "They asked by phone" }]);
     const after = await (await get(`/app/people/${a}`)).text();
     expect(after).toContain("No name …4821");
     expect(after).not.toContain("please delete me");

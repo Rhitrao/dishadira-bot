@@ -10,7 +10,9 @@ import { calendar } from "./calendar";
 import { consoleCopy } from "./console-copy";
 import type { Env } from "./env";
 import { iso } from "./slots";
+import { gist } from "./gist";
 import { inbox } from "./inbox";
+import { notes } from "./notes";
 import { payments } from "./payments";
 import { people } from "./people";
 import { sessionLink } from "./sessionlink";
@@ -148,6 +150,8 @@ consoleApp.route("/payments", payments); // ticket 24 (src/payments.ts)
 consoleApp.route("/session-link", sessionLink); // ticket 40: the team's ₹799 session link (src/sessionlink.ts)
 consoleApp.route("/settings/team", team);
 consoleApp.route("/settings", settings); // ticket 24 (src/settings.ts)
+consoleApp.route("/notes", notes); // ticket 47: notes for each customer (src/notes.ts)
+consoleApp.route("/gist", gist); // ticket 47: the chat gist's Refresh and its Settings switch (src/gist.ts)
 
 // ---- the language switch in the page frame (ticket 20): every member may choose English or Hindi for their own console ----
 // The frame's form sends csrf (languageCsrf below), locale (the language to switch to) and back (the page it was on).

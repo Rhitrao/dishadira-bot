@@ -24,6 +24,8 @@ import { applyMoneyReceived } from "./requests";
 import { takeOverStmt } from "./handoff";
 import { buildExport, EXPORT_LIMITS, exportDays, exportFileName } from "./export";
 import { sessionLinkButton } from "./sessionlink";
+import { notesCard } from "./notes";
+import { gistCard } from "./gist";
 import { aboutHtml, aboutPerson, seesAbout } from "./intent";
 import { maySeeMedia, viewButton, viewMedia } from "./media";
 import { iso } from "./slots";
@@ -513,7 +515,7 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
   }
   if (owner) more.push(confirmWith({ label: p.removeData, effect: p.removeDataEffect, confirm: p.removeDataYes, action: `${base}/remove-data`, csrf: await token(c, `people-remove:${id}`), fields: reasonField(p, "remove-reason", draft.form === "remove" ? draft.reason : "") }));
 
-  const detail = html`${head}${aboutHtmlCard}${takeOver}${sessionLinkCard}${section(p.secNext, next)}${section(p.secPackage, packHtml)}${payHtml}<div id="chat">${section(p.secChat, chatHtml)}</div>${section(p.secSafety, safetyHtml)}${
+  const detail = html`${head}${aboutHtmlCard}${takeOver}${sessionLinkCard}${section(p.secNext, next)}${await notesCard(c, id, target.practitionerId ?? null)}${section(p.secPackage, packHtml)}${payHtml}${await gistCard(c, id, target.practitionerId ?? null, base)}<div id="chat">${section(p.secChat, chatHtml)}</div>${section(p.secSafety, safetyHtml)}${
     more.length ? section(p.secMore, html`<div class="acts">${more}</div>`) : ""
   }`;
   const list = listHtml({ m, p, rows: await listPeople(c.env, m, q, f, nowMs), q, f, openId: id, nowMs });
@@ -691,7 +693,7 @@ people.post(
       const reason = reasonOf(f);
       if (reason.length < 3) return needReason(c, id, "remove");
       const now = iso(Date.now());
-      await c.env.DB.batch([...wipePersonStmts(c.env.DB, id, now), auditNow(c, "PERSON_DATA_REMOVED", `conv:${id}`, "name and message text", reason)]);
+      await c.env.DB.batch([...wipePersonStmts(c.env.DB, id, now), auditNow(c, "PERSON_DATA_REMOVED", `conv:${id}`, "name, message text, notes and gist", reason)]);
       return { to: "removed" };
     },
     (f) => ({ form: "remove", reason: String(f.reason ?? "") }),
