@@ -674,3 +674,15 @@ Rohit, 20 Nov 2026: the business is becoming "Karmic Coaching with Shantha Rao":
 5. Nothing customer-facing changes: the bot's menus, replies, templates, AI knowledge and Instagram/Messenger replies are untouched; existing tests pass unchanged except where they set prices in their old place.
 - Rules: no merge or deploy; no Cloudflare, Meta or Razorpay changes; synthetic data only; screenshots never committed.
 - Tests: the seed and the carry-over; the back-fill; readPrices and the fallback; the bot's words unchanged; lengths 15/30/60/90 in the generator; overlap across lengths; the sessions cap and a daily cap; Services rights, token, Origin, edit, add, the locked length; the calendar's blocks and Today.
+
+### Ticket 49: the 14-day CARD test on the existing WhatsApp bot (CONTRACT v18)
+Rohit, 20 Nov 2026, after the research and council on a gamified tarot app: do not build the app yet; test with no new app and no new Worker whether a free daily three-card message brings in paid ₹99 calls. Its gates (Amma's yes, her certificate, the foundation's answer) are done. The pass bar, Rohit's choice: 5 paid ₹99 calls from people who used CARD in the 14 days. Migration 0022.
+1. **The word**: the bare word CARD (also cards, tarot, tarot card, daily card, my card, कार्ड, टैरो) typed alone, or as the first message (answered after the language tap). Inside a longer message it is not the word.
+2. **Reply**: three theme buttons; a theme tap gives three different Major Arcana cards (Web Crypto, upright) as Past, Present and Next step with a short pre-written line each, a question for the theme and the footer. English and Hindi (Hindi to be read by a native speaker).
+3. **One draw a day**: `card_draws` (0022), key person and IST day; the same day returns the same cards; another theme the same day is refused with the day's theme.
+4. **Soft line**: after a person's 1st, 3rd and 5th draw only, "a 15-minute phone call is ₹99" with the existing Book button.
+5. **Rules**: no AI; no streaks, countdowns or "you missed"; never unprompted (24-hour window only); no Pranic Healing or healing words; banned-word list passes; safety, blocks and the noise rules run first; no cards while nothing may be sold.
+6. **Keeping**: deleted 90 days after the draw and by Remove their data; never in the export, emails or notifications.
+7. **Numbers**: `cardStats(db, since)`: people who tried CARD, people on 3+ days, paid ₹99 calls from them, and all paid ₹99 calls in the same time. (A page for them is a later ticket if Rohit wants one.)
+- Rules: no merge or deploy; no Cloudflare, Meta or Razorpay changes; synthetic data only.
+- Tests: the word; three different cards over 1,000 draws; the same day, another theme; the soft line's days; Hindi; CARD as the first message; no cards after a crisis message; a crisis message with CARD; a blocked chat; the assistant never called; no banned word in any text; the wipe and Remove their data; the counts.
