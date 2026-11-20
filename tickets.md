@@ -709,3 +709,10 @@ Rohit, 21 Nov 2026: the business is being repositioned as "Disha Dira · Karmic 
 7. **Docs**: this ticket, CONTRACT v20, docs/AGENT.md, STATUS.md (every new Hindi string under "Needs a native Hindi read").
 - Rules: no merge or deploy; no Cloudflare, Meta or Razorpay changes; synthetic data only; screenshots and the chat sample never committed.
 - Tests: the flag off byte for byte; the list and its limits (EN/HI); each topic's recommendation; "Or book directly" per pathway with NEW_SERVICES; needs_call_first; the menu, Sessions & packages, Help, free text, crisis and reading safety first; a ₹99 call end to end with the topic; the console by role; the wipe; booking_confirmed approved or not; Instagram/Messenger replies; the words' limits and banned list.
+### Ticket 53: the CARD test's numbers on Today and in the 9 pm summary (CONTRACT v21)
+Rohit, 20 Nov 2026: "do the next ticket"; the open question of Ticket 49 (show `cardStats` on Today or in the digest): both. No migration.
+1. `cardTestLine(db, lang)`: "CARD test (last 14 days): N tried it, N on 3+ days, N paid ₹99 calls from them (all paid ₹99 calls: N). Pass bar: 5." in English and Hindi; null when nobody has tried CARD in the last 14 days, and on a database without the table.
+2. Today: one muted line under the stats strip, the owner only (a practitioner and staff see nothing). The strip itself is unchanged (its grid has no room for a sixth tile).
+3. The 9 pm summary: the same line before "Worth a follow-up", only while it is not null.
+- Rules: counts only, never a name or number; no merge or deploy; synthetic data only.
+- Tests: null before and after the window; the counts in English and Hindi; the summary with and without draws; Today for the owner and not for the practitioner; no digits run in the line.
