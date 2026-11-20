@@ -686,3 +686,11 @@ Rohit, 20 Nov 2026, after the research and council on a gamified tarot app: do n
 7. **Numbers**: `cardStats(db, since)`: people who tried CARD, people on 3+ days, paid ₹99 calls from them, and all paid ₹99 calls in the same time. (A page for them is a later ticket if Rohit wants one.)
 - Rules: no merge or deploy; no Cloudflare, Meta or Razorpay changes; synthetic data only.
 - Tests: the word; three different cards over 1,000 draws; the same day, another theme; the soft line's days; Hindi; CARD as the first message; no cards after a crisis message; a crisis message with CARD; a blocked chat; the assistant never called; no banned word in any text; the wipe and Remove their data; the counts.
+
+### Ticket 50: the CARD test's numbers on Today and in the 9 pm summary (CONTRACT v19)
+Rohit, 20 Nov 2026: "do the next ticket"; the open question of Ticket 49 (show `cardStats` on Today or in the digest): both. No migration.
+1. `cardTestLine(db, lang)`: "CARD test (last 14 days): N tried it, N on 3+ days, N paid ₹99 calls from them (all paid ₹99 calls: N). Pass bar: 5." in English and Hindi; null when nobody has tried CARD in the last 14 days, and on a database without the table.
+2. Today: one muted line under the stats strip, the owner only (a practitioner and staff see nothing). The strip itself is unchanged (its grid has no room for a sixth tile).
+3. The 9 pm summary: the same line before "Worth a follow-up", only while it is not null.
+- Rules: counts only, never a name or number; no merge or deploy; synthetic data only.
+- Tests: null before and after the window; the counts in English and Hindi; the summary with and without draws; Today for the owner and not for the practitioner; no digits run in the line.

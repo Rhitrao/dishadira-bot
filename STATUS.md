@@ -1,5 +1,12 @@
 # STATUS
-Updated: 2026-11-20 (Ticket 49: the 14-day CARD test)
+Updated: 2026-11-20 (Ticket 50: the CARD test numbers)
+
+## Ticket 50 (branch card-numbers, no migration, CONTRACT v19; based on main with #69)
+Rohit, 20 Nov 2026: "do the next ticket" (he chose all three listed; this is the first, 43 and 44 follow as their own tickets). Answers Ticket 49's open question 1: the CARD numbers on Today and in the 9 pm summary.
+- **src/cardtest.ts** `cardTestLine`; **src/today.ts** one muted line under the strip for the owner only; **src/report.ts** the same line in the summary. Nothing shows until someone has tried CARD in the last 14 days, and it disappears again after the test.
+- Checks: `npm run typecheck` clean; test/cardnumbers.test.ts 4/4; today, admin, cardtest and health test files rerun green one at a time. The whole suite was not rerun.
+- Open questions for Rohit: (1) The line says "Pass bar: 5" (your choice of 20 Nov); change the number in src/cardtest.ts if you change the bar. (2) Today's line is English or Hindi by the member's language.
+- Next: Rohit merges, runs Actions → Deploy → live; the line appears after the first CARD draw.
 
 ## Ticket 49 (branch card-test, migration 0022_card_test, CONTRACT v18; based on main with #68)
 Rohit, 20 Nov 2026: run the 14-day CARD test (no app, no new Worker) after the tarot research and council; Amma's yes, her certificate and the foundation's answer are done (Rohit, in chat). Pass bar: 5 paid ₹99 calls from CARD users.
