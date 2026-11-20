@@ -80,6 +80,8 @@ Reminder: your {{1}} with Shantha Rao is tomorrow, {{2}} at {{3}} (India time). 
 | {{2}} | Day | Tue, 6 Oct |
 | {{3}} | Time (India time) | 2:00 pm |
 
+Ticket 49: for a catalogue service (a Tarot reading, guided hypnosis …, only while `NEW_SERVICES` is "true") {{1}} is the service's name ("Tarot reading" / "टैरो रीडिंग"), which reads right in both wordings, so no new template is needed for the reminder. The paid confirmation of such a service goes as free text inside the 24-hour window only (`session_confirmed` says "session" and "distance session"); outside it nothing is sent and the team gets an item.
+
 ## 5. payment_update
 
 Sent when a refund has been started and the 24-hour window has closed: the ₹99 after "not right fit", a whole purchase after "not right fit" on a first session, or the unused sessions of a package.

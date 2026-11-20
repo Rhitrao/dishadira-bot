@@ -1,5 +1,5 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-11-20 (v17: ticket 48: services and their price and length come from a catalogue the owner edits in /app Settings; seeded with today's ₹99 call and ₹799 session; new services stay off and unoffered until a later ticket and Rohit's go-ahead; v16: ticket 47, the owner's requests of 4 Nov 2026: the team's notes for each customer (before, during and after a call or session) and a gist above each chat; v15: ticket 46, the owner's decision of 4 Nov 2026: customers' numbers visible in /app to the owner and to the practitioner for her own customers; v14: ticket 45, the owner's request of 4 Nov 2026: a phone alert (Web Push) to the owner and the practitioner when a customer books and pays; v13: ticket 41, the owner's requests of 4 Nov 2026: calls and sessions are voice calls only, the three questions after a paid ₹99 call, out-of-scope concerns, the media reply, and safety-chat photos for the practitioner; v12: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v11: ticket 38: customer photos and files viewed on demand, never stored, and /app the live console; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-11-20 (v18: ticket 49: the bot may offer catalogue services behind the NEW_SERVICES env flag, with a question after payment and two health questions before booking; two fixed reading-safety replies on every bot; v17: ticket 48: services and their price and length come from a catalogue the owner edits in /app Settings; seeded with today's ₹99 call and ₹799 session; new services stay off and unoffered until a later ticket and Rohit's go-ahead; v16: ticket 47, the owner's requests of 4 Nov 2026: the team's notes for each customer (before, during and after a call or session) and a gist above each chat; v15: ticket 46, the owner's decision of 4 Nov 2026: customers' numbers visible in /app to the owner and to the practitioner for her own customers; v14: ticket 45, the owner's request of 4 Nov 2026: a phone alert (Web Push) to the owner and the practitioner when a customer books and pays; v13: ticket 41, the owner's requests of 4 Nov 2026: calls and sessions are voice calls only, the three questions after a paid ₹99 call, out-of-scope concerns, the media reply, and safety-chat photos for the practitioner; v12: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v11: ticket 38: customer photos and files viewed on demand, never stored, and /app the live console; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
   read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
@@ -22,6 +22,19 @@ Hours, copy, FAQ answers, limits and the default prices live in one config modul
   v17 (ticket 48): services and their price and length come from a catalogue the owner edits in /app Settings (`services`; slots, intros and
   sessions record their service_key); seeded with today's ₹99 call and ₹799 session; new services stay off and unoffered until a later ticket
   and Rohit's go-ahead.
+  v18 (ticket 49, Rohit 20 Nov 2026): behind the env flag NEW_SERVICES (top level and live "false", test "true"; only Rohit changes it, after
+  Razorpay's written approval) the bot offers a catalogue service that is active and public ("Offered by the bot" in Settings → Services, only
+  while the flag is "true"); with the flag "false" its menus and replies are exactly as before. Book then shows one list (the ₹99 call, the
+  ₹799 session, then the offered services by pathway, max 10 rows), and a service books through the session's own steps and rules (day,
+  time, guarded hold, link naming it, paid, confirmation, move/cancel/refund as a single session) at its own length, price and daily cap;
+  "only after the first call" needs a ₹99 call that took place. Per service, the owner may set one question asked after payment (its typed answer
+  kept on the session, shown to the owner and the practitioner only, wiped with the name) and two yes/no health questions before the hold
+  (a mental-health condition under treatment now; seizures or epilepsy ever): any "yes" ends the booking with a kind fixed reply
+  recommending the ₹99 call, and no answer is stored, only an audited outcome code (SCREENED_TO_CALL; the owner's decision, a second
+  exception to "never ask for health details"). On every bot, whatever the flag: before any AI, the gatekeeper answers "someone did
+  something to me" (black magic, nazar, jadoo, tona, bhoot-pret …) and asks to predict death, illness, pregnancy, exam or court results
+  or exact dates with fixed calm replies (English and Hindi; nothing confirmed, removed or predicted; a doctor for health; no strike or
+  block); crisis and emergency come first (docs/AGENT.md §3.2 step 11c).
 
 Stack
 One TypeScript Worker (Hono) + D1 + Cron Triggers + Cloudflare Access + Cloudflare email (send only to verified addresses:
@@ -206,7 +219,7 @@ Test and live credentials and data never mix; going live switches the Worker to 
 
 Release and process
 Release-test families: inventory/holds; money/refunds; replay/recovery; access; window/templates; switches/blocks.
-Runtime flags default safe: OWNER_APPROVED=false, NEW_BOOKINGS=false, SENDS=false, AI_REPLIES=false, PAYMENT_MODE=test.
+Runtime flags default safe: OWNER_APPROVED=false, NEW_BOOKINGS=false, SENDS=false, AI_REPLIES=false, NEW_SERVICES=false (v18), PAYMENT_MODE=test.
 Only Rohit changes flags, outside a coding session.
 One small PR per ticket; honest commits, no squash, no backdating; never merge or deploy without Rohit's direction.
 Each session: read CONTRACT.md, STATUS.md, the assigned ticket and only the files it needs. Stop at ticket scope.

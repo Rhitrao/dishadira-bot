@@ -24,7 +24,7 @@ export type EvalCase = {
   history?: { role: "user" | "assistant"; content: string }[]; // earlier turns, oldest first
   step?: string; // a booking step that is open when the message arrives
   fake?: FakeOutput; // what the fake assistant answers in CI
-  codeFirst?: string; // in a real chat the gate decides this first, so CI checks the gate instead; the live run still asks the model
+  codeFirst?: string; // in a real chat the gate decides this first (a person; ticket 49: the reading-safety replies), so CI checks the gate instead; the live run still asks the model
   // code cases (decided by code, never by the assistant)
   gate?: string;
   alsoInput?: string[];

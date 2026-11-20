@@ -273,7 +273,9 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
   }
   // A tap is stored as the label of the button or list row (our own words), so the console can say "Tapped: …"; the chat wipe removes it
   // like any text, and the assistant never reads it (src/ai.ts leaves taps out).
-  const tapLabel = (m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? m.button?.text)?.slice(0, 100) || null;
+  // Ticket 49: the answer to a health question before a booking (src/offer.ts) is never kept, not even as the button's word.
+  const screenAnswer = /^scr_/.test(m.interactive?.button_reply?.id ?? "");
+  const tapLabel = screenAnswer ? null : (m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? m.button?.text)?.slice(0, 100) || null;
   // A photo or file: only Meta's media id and its type (ticket 38), never the file; the chat wipe removes them with the text.
   const media = mediaOf(m);
   await db
@@ -639,6 +641,8 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
 
   // ---- a button or list tap, or a template quick reply ----
   async function tapped(choice: string | null): Promise<void> {
+    // Ticket 49: "no", "haan", "ok" typed as the answer to a health question before a booking: its words are not kept either.
+    if (/^scr_/.test(choice ?? "") && typed && mine) await db.prepare("UPDATE messages SET body = NULL WHERE id = ?1").bind(mine.id).run();
     await clearStep(db, conv!.id); // a tap moves on; the step sent next (if any) becomes the open one
     // lang_kn: a language button from before Hindi replaced the third language; those chats continue in English.
     if (choice === "lang_en" || choice === "lang_hi" || choice === "lang_kn") {

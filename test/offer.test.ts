@@ -245,6 +245,10 @@ describe("NEW_SERVICES 'true' (test): Book lists the offered services, and a Tar
     expect(bodyOf(w.last())).toBe(allCopy.en.chooseDay);
     expect(await w.count("SELECT COUNT(*) AS n FROM sessions WHERE service_key = 'tarot_reading'")).toBe(1);
     expect(w.aiCalls()).toHaveLength(0);
+    // No answer is kept anywhere: not the button's word, not the typed "no".
+    const conv = (await w.conv(from)).id;
+    const inbound = (await w.db.prepare("SELECT body FROM messages WHERE conversation_id = ?1 AND direction = 'IN' ORDER BY id DESC LIMIT 4").bind(conv).all<{ body: string | null }>()).results;
+    expect(inbound.map((r) => r.body)).toEqual([null, null, "cat_tarot_reading", null]); // nahi, no, the row's tap, the "yes" tap
   });
 
   it("the day-before reminder names it: free text in the window, the approved reminder template (its name as {{1}}) outside", async () => {

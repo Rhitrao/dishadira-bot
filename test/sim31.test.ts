@@ -331,7 +331,7 @@ describe("I16: non-genuine messages", () => {
   it("'someone did black magic on my family': the calm answer, no strike", async () => {
     const from = await w.greeted();
     await w.typed(from, "someone did black magic on my family");
-    expect(body(w.last())).toBe(EN.answerConcern);
+    expect(body(w.last())).toBe(EN.readingSpell); // ticket 49: the gatekeeper's fixed reading-safety reply (was the router's answerConcern)
     expect((await w.state(from)).strikes).toBe(0);
   });
 
