@@ -13,7 +13,7 @@ import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { can, canAny, memberCsrf, seesNumber, WORKSPACE_ID, type Member, type Target } from "./auth";
 import { config } from "./config";
-import { chatTextHidden } from "./business";
+import { chatTextHidden, prices } from "./business";
 import { auditStmt, badgesOf, languageCsrf, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleCopy } from "./console-copy";
 import { rupees, serviceName } from "./copy";
@@ -333,7 +333,7 @@ async function paymentsOf(env: Env, convId: number): Promise<PayRow[]> {
   ).results;
 }
 const whatPaid = (p: PeopleCopy, r: { purpose: string; size: number | null }) =>
-  r.purpose === "INTRO" ? p.payCall(rupees(config.prices.intro)) : r.purpose === "PACKAGE" ? p.payPackage(r.size ?? 0) : p.paySession;
+  r.purpose === "INTRO" ? p.payCall(rupees(prices().intro)) : r.purpose === "PACKAGE" ? p.payPackage(r.size ?? 0) : p.paySession;
 // Money received outside Razorpay can be recorded only for a link sent and not paid (waiting, or expired unpaid), when nothing else has
 // been paid for the same booking, and no request for it is already waiting.
 const canRecord = (r: PayRow) => (r.state === "PENDING" || r.state === "FAILED") && r.linkId !== null && r.paidSiblings === 0 && !r.asked;
@@ -399,7 +399,7 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
     ? ledger(
         appointmentRow({
           time: clock(nb.startUtc, loc), name: dayName(nb.startUtc, loc),
-          service: `${nb.kind === "CALL" ? p.callKind(rupees(config.prices.intro)) : p.sessionKind} · ${service(nb.service, loc)}`,
+          service: `${nb.kind === "CALL" ? p.callKind(rupees(prices().intro)) : p.sessionKind} · ${service(nb.service, loc)}`,
           details: [forWhomText(nb.forWhom, loc), callLangText(nb.callLang, loc)], status: bookingChip(nb.state, loc),
         }),
       )

@@ -1,5 +1,6 @@
 // Settings (/app/settings), owner only: how the business runs. Business name, accent and default language; the prices the bot quotes
-// (the settings table, read by the bot through src/business.ts with config as the fallback); the bot's switches (moved from /admin, the
+// (read by the bot through src/business.ts with config as the fallback: the first call's and the single session's in the service
+// catalogue, ticket 48, whose own page is Settings → Services, src/services-page.ts; the packages' in the settings table); the bot's switches (moved from /admin, the
 // same rule: the env flag in wrangler.toml is the master, a setting can only pause); who gets the daily summary and the crisis email;
 // privacy; Razorpay's connection (status words only, never a key); the system's health; and the audit log (/app/settings/audit).
 // Team (/app/settings/team) is src/team.ts. Every change is one batch with its audit row, and every POST asks can() and its own token.
@@ -10,7 +11,8 @@ import { gistSettingsCard } from "./gist";
 import { AFTER_SWITCHES, afterKey, afterSwitches, isAfterSwitch, setAfterSwitchStmt } from "./aftercall";
 import { ALERTS_CSP, alertRoutes, alertsCopy, alertsFlash, alertsSection, alertsTitle } from "./alerts";
 import { makeVapidPair, pushOn } from "./push";
-import { ACCENTS, accentOf, chosenIds, DEFAULT_PRICES, isAccent, KEYS, loadPrices, PRICE_NAMES, pricePaise, readPrices, staffReadsChat, validPrice, type AccentName, type PriceName, type Prices } from "./business";
+import { ACCENTS, accentOf, chosenIds, DEFAULT_PRICES, isAccent, KEYS, loadPrices, PRICE_NAMES, pricePaise, readPrices, SERVICE_OF_PRICE, staffReadsChat, validPrice, type AccentName, type PriceName, type Prices } from "./business";
+import { catalogue, minutesFor, seedRowStmt } from "./catalogue";
 import { config } from "./config";
 import { appPage, auditStmt, badgesOf, languageCsrf, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleLang } from "./console-copy";
@@ -51,6 +53,8 @@ const en = {
   savePrices: "Save prices",
   badPrice: "Whole rupees from ₹1 to ₹1,00,000.",
   badPack: (n: number) => `Whole rupees from ₹1 to ₹1,00,000 that divide into ${n} whole-rupee sessions.`,
+  servicesLink: "Services",
+  servicesWhy: (n: number) => `${n} services: names in English and Hindi, lengths, daily limits, and new services.`,
   // Team
   secTeam: "Team",
   teamWhy: "Invite people, set their roles, remove members.",
@@ -193,6 +197,8 @@ const hi: Words = {
   savePrices: "दाम सेव करें",
   badPrice: "₹1 से ₹1,00,000 तक, पूरे रुपये में।",
   badPack: (n) => `₹1 से ₹1,00,000 तक, पूरे रुपये में, जो ${n} सेशन में पूरे रुपये में बँट सके।`,
+  servicesLink: "सेवाएँ",
+  servicesWhy: (n) => `${n} सेवाएँ: अंग्रेज़ी और हिन्दी में नाम, समय, रोज़ की सीमा, और नई सेवाएँ।`,
   secTeam: "टीम",
   teamWhy: "लोगों को बुलाएँ, उनका रोल तय करें, सदस्य हटाएँ।",
   auditLink: "ऑडिट लॉग",
@@ -304,6 +310,8 @@ const W = (m: Member): Words => SETTINGS_COPY[consoleLang(m.locale)];
 // What each audit action means, in words. An action not listed shows in plain lower case, never as a code.
 const ACTION_WORDS: Record<string, { en: string; hi: string }> = {
   PRICE_CHANGED: { en: "Changed a price", hi: "दाम बदला" },
+  SERVICE_UPDATE: { en: "Changed a service", hi: "सेवा बदली" },
+  SERVICE_ADD: { en: "Added a service", hi: "नई सेवा जोड़ी" },
   SWITCH_CHANGED: { en: "Changed a bot switch", hi: "बॉट का स्विच बदला" },
   ADMIN_SWITCH: { en: "Changed a bot switch", hi: "बॉट का स्विच बदला" },
   AFTER_SWITCH: { en: "Changed an after-call message switch", hi: "कॉल के बाद वाले संदेश का स्विच बदला" },
@@ -357,6 +365,8 @@ const KEY_WORDS: Record<string, { en: string; hi: string }> = {
 function targetText(target: string, locale: string) {
   const l = consoleLang(locale);
   if (KEY_WORDS[target]) return html`${KEY_WORDS[target][l]}`;
+  const svc = target.startsWith("service:") ? catalogue().find((s) => `service:${s.key}` === target) : undefined; // ticket 48
+  if (svc) return html`<a class="tap" href="/app/settings/services#svc-${svc.key}">${l === "hi" ? svc.nameHi : svc.nameEn}</a>`;
   const m = /^([a-z]+):(\d+)$/.exec(target);
   const t = m ? TARGET_WORDS[m[1]] : undefined;
   if (!m || !t) return html`${target}`;
@@ -510,7 +520,7 @@ ${bForm?.bad ? html`<span class="err">${w.badName}</span>` : html`<span class="h
   // Prices
   const pf = o.prices;
   const label = (n: PriceName) =>
-    n === "intro" ? w.priceIntro(config.slots.callMinutes) : n === "single" ? w.priceSingle(config.slots.sessionMinutes) : w.pricePack(DEFAULT_PRICES[n].sessions);
+    n === "intro" ? w.priceIntro(minutesFor("CALL")) : n === "single" ? w.priceSingle(minutesFor("SESSION")) : w.pricePack(DEFAULT_PRICES[n].sessions);
   const priceField = (n: PriceName) => {
     const bad = pf?.bad.includes(n);
     const value = pf?.values[n] ?? String(pricePaise(P, n) / 100);
@@ -520,7 +530,8 @@ ${bForm?.bad ? html`<span class="err">${w.badName}</span>` : html`<span class="h
 <span class="${bad ? "err" : "help"}" id="help-${n}">${bad ? (pack ? w.badPack(pack.sessions) : w.badPrice) : help}</span></label>`;
   };
   const pricesCard = html`<div class="card" id="prices"><p class="why">${w.pricesWhy}</p><form method="post" action="/app/settings/prices">${hidden("csrf", await token(c, "prices"))}
-<p class="note">${w.rupeesOnly}</p>${PRICE_NAMES.map(priceField)}<div class="acts"><button class="btn primary" type="submit">${w.savePrices}</button></div></form></div>`;
+<p class="note">${w.rupeesOnly}</p>${PRICE_NAMES.map(priceField)}<div class="acts"><button class="btn primary" type="submit">${w.savePrices}</button></div></form></div>
+${rows(html`<a class="row" href="/app/settings/services"><div><p class="t">${w.servicesLink}</p><p class="s">${w.servicesWhy(catalogue().length)}</p></div><span aria-hidden="true">›</span></a>`)}`;
 
   // Team and audit log
   const team = rows(html`<a class="row" href="/app/settings/team"><div><p class="t">${w.secTeam}</p><p class="s">${w.teamWhy}</p></div><span aria-hidden="true">›</span></a>
@@ -702,7 +713,9 @@ settings.post("/prices", async (c) => {
   const values: Partial<Record<PriceName, string>> = {};
   const bad: PriceName[] = [];
   const next: Partial<Record<PriceName, number>> = {};
+  // A price left out of the form stays as it is (ticket 48: Settings → Services sends the first call's and the single session's alone).
   for (const n of PRICE_NAMES) {
+    if (f[n] === undefined) continue;
     const raw = one(f[n]).trim();
     values[n] = raw;
     const clean = raw.replace(/[₹,\s]/g, "");
@@ -714,8 +727,17 @@ settings.post("/prices", async (c) => {
   const db = c.env.DB;
   const now: Prices = await readPrices(db);
   const at = iso(Date.now());
-  const stmts = PRICE_NAMES.filter((n) => next[n] !== pricePaise(now, n)).flatMap((n) => [
-    db.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT (key) DO UPDATE SET value = ?2, updated_at = ?3").bind(KEYS[n], String(next[n]), at),
+  // The first call's and the single session's price live in their catalogue rows (ticket 48), the packages' in the settings table.
+  const write = (n: PriceName, paise: number) => {
+    const key = SERVICE_OF_PRICE[n];
+    if (!key) return [db.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT (key) DO UPDATE SET value = ?2, updated_at = ?3").bind(KEYS[n], String(paise), at)];
+    return [
+      seedRowStmt(db, key),
+      db.prepare("UPDATE services SET price_paise = ?2, updated_at = ?3, updated_by = ?4 WHERE key = ?1").bind(key, paise, at, c.get("member").id),
+    ];
+  };
+  const stmts = PRICE_NAMES.filter((n) => next[n] !== undefined && next[n] !== pricePaise(now, n)).flatMap((n) => [
+    ...write(n, next[n]!),
     auditStmt(c, "PRICE_CHANGED", KEYS[n], `${pricePaise(now, n)} -> ${next[n]}`),
   ]);
   if (!stmts.length) return back(c, "nothingChanged", "prices");

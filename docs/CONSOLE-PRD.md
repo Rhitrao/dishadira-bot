@@ -198,7 +198,7 @@ The same Today on both screens: urgent cards first, then the day in time order. 
 ### Settings: how does the business run? (owners only)
 
 - **Business:** name, accent colour, default language, time zone.
-- **Services and prices:** call, session and package prices, as the bot quotes them.
+- **Services and prices:** call, session and package prices, as the bot quotes them. Ticket 48 (CONTRACT v17): **Settings → Services** (/app/settings/services, owner only) is the service catalogue: each service's name in English and Hindi, pathway (Entry, Release, Understand, Rewire), length (15, 30, 60 or 90 min), price, own daily limit and whether it can be booked, with "Edit" on each and "Add a service" (a new one starts off and unoffered: "Offered by the bot after launch"). The two the bot offers (the first call, the single session) keep their length and stay on. The call's and the session's price live in their catalogue rows (the prices form edits the same rows); packages stay tied to the session, their prices in the settings table. Audited SERVICE_UPDATE / SERVICE_ADD. The Calendar and Today draw a booking of any length by its start and end, and name a newer service ("Tarot reading · 30 min").
 - **Hours and time off** for each practitioner (Phase 2).
 - **Team:** invite by email, set roles, remove members.
 - **Bot:**

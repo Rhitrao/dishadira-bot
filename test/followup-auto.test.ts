@@ -249,12 +249,12 @@ describe("WhatsApp", () => {
   }, 60_000);
 
   it("the price in force (Settings), never a fixed one", async () => {
-    await setSetting(db, "price.intro_paise", "14900");
+    await db.prepare("UPDATE services SET price_paise = 14900 WHERE key = 'first_call'").run(); // ticket 48: the catalogue row
     await waPerson();
     fetchMock.mockClear();
     await tick(T0 + 60 * MIN);
     expect(waBody(waSent()[0])).toContain("₹149 15-minute voice call");
-    await setSetting(db, "price.intro_paise", "9900");
+    await db.prepare("UPDATE services SET price_paise = 9900 WHERE key = 'first_call'").run();
     await loadPrices(env());
   }, 60_000);
 

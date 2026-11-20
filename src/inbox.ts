@@ -11,6 +11,7 @@ import { html, raw } from "hono/html";
 import { can, canAny, memberCsrf, seesNumber, sha256Hex, WORKSPACE_ID, type Member } from "./auth";
 import { bookingChoice, SERVICES, WHO } from "./booking";
 import { chatTextHidden, prices } from "./business";
+import { CALL_KEY } from "./catalogue";
 import { config } from "./config";
 import { languageCsrf, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleCopy, consoleLang } from "./console-copy";
@@ -677,8 +678,8 @@ inbox.post("/:id{[0-9]+}/book", async (c) => {
   if (!hold.ok) return answer(hold.reason === "ALREADY_HOLDING" ? ic.alreadyHolding : ic.taken, 409);
   const intro = await c.env.DB
     .prepare(
-      `INSERT INTO intros (conversation_id, slot_id, service, for_whom, call_lang, practitioner_id)
-       SELECT ?1, id, ?2, ?3, ?4, ${PRACTITIONER_SQL} FROM slots WHERE kind = 'CALL' AND start_utc = ?5 AND owner_id = ?1 AND state = 'HELD'`,
+      `INSERT INTO intros (conversation_id, slot_id, service, for_whom, call_lang, practitioner_id, service_key)
+       SELECT ?1, id, ?2, ?3, ?4, ${PRACTITIONER_SQL}, '${CALL_KEY}' FROM slots WHERE kind = 'CALL' AND start_utc = ?5 AND owner_id = ?1 AND state = 'HELD'`,
     )
     .bind(ch.id, service, who, langOf(ch.locale), startUtc)
     .run();

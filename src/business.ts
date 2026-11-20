@@ -1,11 +1,15 @@
-// The business's own settings that the bot reads (ticket 24): prices, who gets the daily summary and the crisis email, whether staff
+// The business's own settings that the bot reads (ticket 24): prices (ticket 48: the first call's and the single session's from the service
+// catalogue, src/catalogue.ts; the packages' from the settings table), who gets the daily summary and the crisis email, whether staff
 // read chat text, and the console's accent colour. They live in the `settings` key/value table, written only from Settings (/app/settings,
 // owner only). A missing or bad row falls back to config, so with no rows the bot behaves exactly as before.
 import type { D1Database } from "@cloudflare/workers-types";
+import { CALL_KEY, loadCatalogue, SESSION_KEY } from "./catalogue";
 import { config } from "./config";
 import type { Env } from "./env";
 
 // ---- the keys in the settings table ----
+// intro and single are no longer stored here (ticket 48: the services table, rows first_call and single_session); the keys stay as the
+// names of those two prices in the audit log (PRICE_CHANGED), which priceAt() reads.
 export const KEYS = {
   intro: "price.intro_paise",
   single: "price.single_paise",
@@ -47,12 +51,23 @@ function withPrice(p: Prices, name: PriceName, paise: number): Prices {
   return { ...p, [name]: paise };
 }
 
-// One read of the four price rows; each one falls back to config on its own.
+// The catalogue row that holds a price, for the two that are services.
+export const SERVICE_OF_PRICE: Partial<Record<PriceName, string>> = { intro: CALL_KEY, single: SESSION_KEY };
+
+// One read of the prices: the first call and the single session from their catalogue rows, the packages from the settings table; each
+// one falls back to config on its own (a missing or bad row, or no services table yet).
 export async function readPrices(db: D1Database): Promise<Prices> {
-  const { results } = await db.prepare("SELECT key, value FROM settings WHERE key LIKE 'price.%'").all<{ key: string; value: string }>();
+  const { results } = await db.prepare("SELECT key, value FROM settings WHERE key IN (?1, ?2)").bind(KEYS.pack10, KEYS.pack20).all<{ key: string; value: string }>();
+  const svc = await db
+    .prepare("SELECT key, price_paise AS paise FROM services WHERE key IN (?1, ?2)")
+    .bind(CALL_KEY, SESSION_KEY)
+    .all<{ key: string; paise: number }>()
+    .then((r) => r.results)
+    .catch(() => [] as { key: string; paise: number }[]);
   let p = DEFAULT_PRICES;
   for (const name of PRICE_NAMES) {
-    const v = Number(results.find((r) => r.key === KEYS[name])?.value);
+    const key = SERVICE_OF_PRICE[name];
+    const v = key ? Number(svc.find((r) => r.key === key)?.paise) : Number(results.find((r) => r.key === KEYS[name])?.value);
     if (validPrice(name, v)) p = withPrice(p, name, v);
   }
   return p;
@@ -60,13 +75,15 @@ export async function readPrices(db: D1Database): Promise<Prices> {
 
 // The prices in force. Read from the database at the start of every request and cron run (src/index.ts), so copyFor() and the
 // payment-link code, which are synchronous, quote the owner's prices. If the read fails the last good prices (or config) stay.
+// The service catalogue (each service's length, for the slot generator) is read at the same moment.
 let current: Prices = DEFAULT_PRICES;
 export const prices = (): Prices => current;
 export async function loadPrices(env: Pick<Env, "DB">): Promise<Prices> {
   try {
     current = await readPrices(env.DB);
+    await loadCatalogue(env.DB);
   } catch {
-    // keep the last good prices
+    // keep the last good prices (and catalogue)
   }
   return current;
 }

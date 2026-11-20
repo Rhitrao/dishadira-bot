@@ -11,7 +11,8 @@ import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { FIRST_BUY } from "./amma";
 import { can, canAny, memberById, memberCsrf, seesNumber, type Member } from "./auth";
-import { chatTextHidden } from "./business";
+import { chatTextHidden, prices } from "./business";
+import { minutesFor, otherServiceLabel } from "./catalogue";
 import { config } from "./config";
 import { auditStmt, badgesOf, languageCsrf, refused, S, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleCopy, consoleLang, type ConsoleLang } from "./console-copy";
@@ -153,6 +154,7 @@ export type Booking = {
   practitionerId: number | null; origin: string | null; packSize: number | null; packNo: number | null; firstBuy: number; amount: number | null;
   oid: number | null; value: string | null; tappedAt: string | null; undoUntil: string | null; appliedAt: string | null;
   profession: string | null; helpArea: string | null; outOfScope: number; // ticket 41 (src/intent.ts)
+  serviceKey: string | null; // ticket 48: the catalogue row (NULL before 0021)
 };
 
 const PAID = "('PAID','REFUND_PENDING','REFUNDED','REFUND_FAILED')";
@@ -161,9 +163,9 @@ const SCOPE = (target: string) => `EXISTS (SELECT 1 FROM attention a WHERE a.kin
 // The same calls and sessions /amma lists, plus whose they are. `where` narrows to a time range or one row; ?3 is the practitioner (NULL = all).
 const CALLS_SQL = (where: string) => `SELECT 'CALL' AS kind, i.id, i.slot_id AS slotId, s.start_utc AS startUtc, s.end_utc AS endUtc, i.state,
     c.id AS convId, c.display_name AS name, c.wa_id AS waId, c.locale, i.service, i.call_lang AS callLang, i.for_whom AS forWhom,
-    i.practitioner_id AS practitionerId, NULL AS origin, NULL AS packSize, NULL AS packNo, 0 AS firstBuy, ${config.prices.intro} AS amount,
+    i.practitioner_id AS practitionerId, NULL AS origin, NULL AS packSize, NULL AS packNo, 0 AS firstBuy, ${prices().intro} AS amount,
     o.id AS oid, o.value, o.tapped_at AS tappedAt, o.undo_until AS undoUntil, o.applied_at AS appliedAt,
-    i.profession, i.help_area AS helpArea, ${SCOPE("'intro:' || i.id")} AS outOfScope
+    i.profession, i.help_area AS helpArea, ${SCOPE("'intro:' || i.id")} AS outOfScope, COALESCE(i.service_key, s.service_key) AS serviceKey
   FROM intros i JOIN slots s ON s.id = i.slot_id JOIN conversations c ON c.id = i.conversation_id
   LEFT JOIN outcomes o ON o.intro_id = i.id AND o.slot_id = i.slot_id
   WHERE s.kind = 'CALL' AND i.state IN ('PAID','RESCHEDULED','CALLED_SESSION','CALLED_NOT_FIT','MISSED','RUDE') AND (?3 IS NULL OR i.practitioner_id = ?3) AND ${where}`;
@@ -178,7 +180,7 @@ const SESSIONS_SQL = (where: string) => `SELECT 'SESSION' AS kind, se.id, se.slo
     o.id AS oid, o.value, o.tapped_at AS tappedAt, o.undo_until AS undoUntil, o.applied_at AS appliedAt,
     (SELECT x.profession FROM intros x WHERE x.conversation_id = c.id AND x.profession IS NOT NULL ORDER BY x.id DESC LIMIT 1) AS profession,
     (SELECT x.help_area FROM intros x WHERE x.conversation_id = c.id AND x.help_area IS NOT NULL ORDER BY x.id DESC LIMIT 1) AS helpArea,
-    ${SCOPE("'session:' || se.id")} AS outOfScope
+    ${SCOPE("'session:' || se.id")} AS outOfScope, COALESCE(se.service_key, s.service_key) AS serviceKey
   FROM sessions se JOIN slots s ON s.id = se.slot_id JOIN conversations c ON c.id = se.conversation_id
   LEFT JOIN intros i ON i.id = se.intro_id LEFT JOIN outcomes o ON o.session_id = se.id
   WHERE s.kind = 'SESSION' AND se.state IN ('CONFIRMED','CREDIT_BOOKED','NOT_FIT') AND (?3 IS NULL OR se.practitioner_id = ?3) AND ${where}`;
@@ -238,7 +240,8 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number, hero = false) 
   const t = todayCopy(m.locale);
   const lang = consoleLang(m.locale);
   const kindText =
-    b.kind === "CALL" ? t.kindCall(config.slots.callMinutes) : b.origin === "CREDIT" && b.packSize ? t.kindSessionPackage(b.packNo ?? 0, b.packSize) : t.kindSession;
+    otherServiceLabel(b.serviceKey, lang) ??
+    (b.kind === "CALL" ? t.kindCall(minutesFor("CALL")) : b.origin === "CREDIT" && b.packSize ? t.kindSessionPackage(b.packNo ?? 0, b.packSize) : t.kindSession);
   const details = [kindText, forWhomText(b.forWhom, m.locale), callLangText(b.callLang ?? b.locale, m.locale)];
   if (istDay(startMs(b)) !== istDay(now)) details.unshift(dayName(b.startUtc, m.locale));
   const full = seesNumberOf(m, b);
@@ -253,7 +256,7 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number, hero = false) 
     } else extra = html`<p class="saved">${t.marked(word)}</p>`;
   } else if (mayMark(m, b) && outcomesFor(b).length && outcomeOpen(b, now)) {
     const vs = outcomesFor(b);
-    const amount = rupees(b.amount ?? config.prices.intro);
+    const amount = rupees(b.amount ?? prices().intro);
     const label: Record<OutcomeValue, string> = { SESSION: cc.outcomeSession, NOT_FIT: cc.outcomeNotFit(amount), MISSED: cc.outcomeMissed, RUDE: cc.reportBehaviour };
     const post = async (v: OutcomeValue) => ({ action: "/app/today/outcome", csrf: await memberCsrf(jwt, m, outScope(b, v)), fields: { kind: kindKey(b), id: String(b.id), v } });
     const main = await Promise.all(vs.filter((v) => v !== "RUDE").map(async (v) => button({ label: label[v], post: await post(v), kind: v === "SESSION" ? "primary" : "secondary" })));

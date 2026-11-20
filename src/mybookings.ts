@@ -16,7 +16,8 @@ import { requestRefund } from "./pay/refund";
 import { creditBalance, hasPackage } from "./packages";
 import { raiseAttention, sendMessage, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
-import { bind, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
+import { bind, capSql, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
+import { defaultService, SESSION_KEY } from "./catalogue";
 
 const HOUR = 3_600_000;
 const nowIso = () => iso(Date.now());
@@ -245,21 +246,22 @@ export async function moveSession(db: D1Database, convId: number, ses: SessionRo
   const slot = generateSlots(istDay(Date.parse(startUtc)), "SESSION").find((s) => s.startUtc === startUtc);
   if (!slot || startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000) || slot.startUtc === ses.startUtc) return false;
   if (await isHoliday(db, istDay(Date.parse(startUtc)))) return false; // a day off takes no new booking
+  const cap = capSql(defaultService("SESSION"), slot.startUtc); // the day caps, as holdSlot (ticket 48)
   const p = {
     sid: ses.id, conv: convId, now: iso(nowMs), start: slot.startUtc, end: slot.endUtc, old: ses.slotId,
-    min: iso(nowMs + config.sessionRules.changeBeforeHours * HOUR), maxMoves: config.sessionRules.singleMoves,
+    min: iso(nowMs + config.sessionRules.changeBeforeHours * HOUR), maxMoves: config.sessionRules.singleMoves, ...cap.params,
   };
   await db.batch([
     // The new slot, only if it is free and the session may be moved right now.
     bind(
       db,
-      `INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until, practitioner_id)
-       SELECT 'SESSION', :start, :end, :conv, 'BOOKED', NULL, ${PRACTITIONER_SQL}
-       WHERE NOT EXISTS (SELECT 1 FROM slots WHERE (state = 'BOOKED' OR hold_until > :now) AND start_utc < :end AND end_utc > :start)
+      `INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until, practitioner_id, service_key)
+       SELECT 'SESSION', :start, :end, :conv, 'BOOKED', NULL, ${PRACTITIONER_SQL}, '${SESSION_KEY}'
+       WHERE NOT EXISTS (SELECT 1 FROM slots WHERE (state = 'BOOKED' OR hold_until > :now) AND start_utc < :end AND end_utc > :start)${cap.sql}
          AND EXISTS (SELECT 1 FROM sessions se JOIN slots o ON o.id = se.slot_id
                      WHERE se.id = :sid AND se.conversation_id = :conv AND se.state IN ('CREDIT_BOOKED', 'CONFIRMED') AND se.slot_id = :old
                        AND o.start_utc >= :min AND (se.origin = 'CREDIT' OR se.moves < :maxMoves))
-       ON CONFLICT (kind, start_utc) DO UPDATE SET owner_id = :conv, state = 'BOOKED', hold_until = NULL, end_utc = :end
+       ON CONFLICT (kind, start_utc) DO UPDATE SET owner_id = :conv, state = 'BOOKED', hold_until = NULL, end_utc = :end, service_key = '${SESSION_KEY}'
          WHERE NOT (slots.state = 'BOOKED' OR slots.hold_until > :now)`,
       p,
     ),

@@ -4,6 +4,8 @@ import { Hono, type Context } from "hono";
 import { html, raw } from "hono/html";
 import { allowedJwt, csrf } from "./amma";
 import { config } from "./config";
+import { prices } from "./business";
+import { minutesFor } from "./catalogue";
 import type { Env } from "./env";
 import { HEARTBEAT_KEY, HEARTBEAT_STALE_MIN, MAIL_LAST_KEY, sendAlerts } from "./mail";
 import { ensureState, noSellActiveFor, personState, quietActive } from "./noise";
@@ -277,7 +279,7 @@ async function bookingRow(c: Ctx, d: DayItem, nowStr: string) {
       : "";
   const service = d.service === "PROTECTION" ? "Energy cleansing" : "Healing";
   return html`<div class="li"><span class="time">${formatIstParts(d.startUtc).time}</span><div class="main"><a href="/admin/conv/${d.convId}"><b>${firstName(d.name)}</b></a>
-<div class="muted">${d.kind === "CALL" ? `${rupees(config.prices.intro)} call · 15 min` : "Session · 60 min"} · ${service}</div>${btns}</div><div class="end">${chip(word, tone)}</div></div>`;
+<div class="muted">${d.kind === "CALL" ? `${rupees(prices().intro)} call · ${minutesFor("CALL")} min` : `Session · ${minutesFor("SESSION")} min`} · ${service}</div>${btns}</div><div class="end">${chip(word, tone)}</div></div>`;
 }
 
 // ---- the line that says whether the machine is healthy ----
@@ -396,7 +398,7 @@ ${sorted.length ? itemsHtml : html`<div class="card"><p class="empty"><b>Nothing
 </section><aside>
 <h2>Today and tomorrow</h2>${await day("Today", istDay(now))}${await day("Tomorrow", istDay(now + 86_400_000))}
 <h2>Last 7 days</h2>
-<div class="week">${kpi("New chats", String(wk.chats), `${wk.adChats} from ads · ${was(prev.chats)}`)}${kpi(`${rupees(config.prices.intro)} calls paid`, String(wk.intros), was(prev.intros))}${kpi(
+<div class="week">${kpi("New chats", String(wk.chats), `${wk.adChats} from ads · ${was(prev.chats)}`)}${kpi(`${rupees(prices().intro)} calls paid`, String(wk.intros), was(prev.intros))}${kpi(
     "Sessions & packs paid",
     String(wk.later),
     was(prev.later),
@@ -577,7 +579,7 @@ const PAY_SQL = `SELECT p.id, p.purpose, COALESCE(p.paid_paise, p.amount_paise) 
   LEFT JOIN sessions s ON p.purpose = 'SESSION' AND s.id = p.target_id
   LEFT JOIN packages pk ON p.purpose = 'PACKAGE' AND pk.id = p.target_id
   LEFT JOIN conversations c ON c.id = COALESCE(i.conversation_id, s.conversation_id, pk.conversation_id)`;
-const whatPaid = (r: PayRow) => (r.purpose === "INTRO" ? `${rupees(config.prices.intro)} call` : r.purpose === "PACKAGE" ? `${r.size ?? ""}-session package` : "Session");
+const whatPaid = (r: PayRow) => (r.purpose === "INTRO" ? `${rupees(prices().intro)} call` : r.purpose === "PACKAGE" ? `${r.size ?? ""}-session package` : "Session");
 const payRow = (r: PayRow, now: number, withWho = true) => {
   const [word, tone] = PAY_WORDS[r.state] ?? [r.state, ""];
   return html`<div class="li"><div class="main"><b>${whatPaid(r)}</b> · ${rupees(r.amount)}<div class="muted">${ist(r.at, now)}${withWho && r.convId ? html` · <a href="/admin/conv/${r.convId}">${firstName(r.name)} ${mask(r.waId)}</a>` : ""}</div></div><div class="end">${chip(word, tone)}</div></div>`;
@@ -655,7 +657,7 @@ ${replyInItem ? "" : html`<h2>Talk to them</h2>${talk}`}
 <h2>Bookings</h2>${bookings.length ? html`<div class="list">${bookings.map((b) => {
     const [w, t] = STATE_WORDS[b.state] ?? [b.state.replaceAll("_", " ").toLowerCase(), ""];
     const p = formatIstParts(b.startUtc);
-    return html`<div class="li"><div class="main"><b>${b.kind === "CALL" ? `${rupees(config.prices.intro)} call` : "Session"}</b> · ${svc(b.service)}<div class="muted">${p.day}, ${p.time}</div></div><div class="end">${chip(w, t)}</div></div>`;
+    return html`<div class="li"><div class="main"><b>${b.kind === "CALL" ? `${rupees(prices().intro)} call` : "Session"}</b> · ${svc(b.service)}<div class="muted">${p.day}, ${p.time}</div></div><div class="end">${chip(w, t)}</div></div>`;
   })}</div>` : html`<div class="list"><p class="empty">No bookings.</p></div>`}
 <h2>Payments</h2>${pays.length ? html`<div class="list">${pays.map((r) => payRow(r, now, false))}</div>` : html`<div class="list"><p class="empty">No payments.</p></div>`}
 <h2>Packages</h2>${packBlock}
