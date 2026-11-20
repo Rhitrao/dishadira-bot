@@ -1,4 +1,4 @@
-// Ticket 49 (CONTRACT v18): catalogue services offered by the bot behind NEW_SERVICES (src/offer.ts), the question after payment, the two
+// Ticket 49 (CONTRACT v19): catalogue services offered by the bot behind NEW_SERVICES (src/offer.ts), the question after payment, the two
 // health questions before the hold, and the reading-safety replies in the gatekeeper (src/gate.ts). The Tarot reading here exists only in
 // these tests. All data synthetic.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

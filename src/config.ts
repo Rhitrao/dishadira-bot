@@ -421,13 +421,13 @@ export const config = {
     workMaxWords: 8,
     otherMaxChars: 300,
   },
-  // Ticket 49 (CONTRACT v18): the catalogue services the bot may offer (src/offer.ts), behind the NEW_SERVICES env flag.
+  // Ticket 49 (CONTRACT v19): the catalogue services the bot may offer (src/offer.ts), behind the NEW_SERVICES env flag.
   offer: {
     listMax: 10, // WhatsApp's list limit: the ₹99 call, the single session, then at most 8 offered services (the owner's order)
     intakeQuestionMax: 300, // the owner's question after payment, per language (Settings → Services)
     intakeMaxChars: 300, // the customer's typed answer is kept up to this many characters
   },
-  // Ticket 49 (CONTRACT v18): reading-safety replies, decided by code before any AI (src/gate.ts), on every Worker whatever NEW_SERVICES says.
+  // Ticket 49 (CONTRACT v19): reading-safety replies, decided by code before any AI (src/gate.ts), on every Worker whatever NEW_SERVICES says.
   // Fixed calm replies, never a strike or a block; crisis and emergency always come first. Whole words or phrases after normalising.
   readingSafety: {
     // (a) "Someone did something to me": never confirmed, no remedy or ritual; Shantha Rao doesn't remove anything; the ₹99 call.

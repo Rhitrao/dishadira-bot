@@ -69,7 +69,7 @@ const en = {
   badLength: "Choose 15, 30, 60 or 90 minutes.",
   badCap: (max: number) => `Leave empty, or a whole number from 1 to ${max}.`,
   badPathway: "Choose a pathway.",
-  // Ticket 49 (CONTRACT v18)
+  // Ticket 49 (CONTRACT v19)
   offerToggle: "Offered by the bot",
   offerHelp: "The bot lists it under Book (when it can also be booked). Only while new services are switched on for this bot.",
   intakeEn: "Question after payment (English)",

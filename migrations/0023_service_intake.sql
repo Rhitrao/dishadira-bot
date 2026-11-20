@@ -1,4 +1,4 @@
--- Ticket 49 (CONTRACT v18): the bot may offer catalogue services (behind the NEW_SERVICES env flag), each with its own question after
+-- Ticket 49 (CONTRACT v19): the bot may offer catalogue services (behind the NEW_SERVICES env flag), each with its own question after
 -- payment and, for some, two yes/no questions before a time is held (src/offer.ts). The owner edits all three in /app Settings → Services.
 
 -- intake_en / intake_hi: one free-text question the bot asks after a paid booking of this service ("What question would you like to bring to

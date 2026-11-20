@@ -116,7 +116,7 @@ export async function gate(env: Env, conv: GateConv, message: GateMessage, nowMs
     isCallRequest(text) && !noSellActiveFor(await personState(env.DB, conv.id), nowMs) &&
     !(await hasUpcomingBooking(env, conv.id, nowMs)) && !(await isPayingCustomer(env.DB, conv.id, nowMs))
   ) return "CALL_REQUEST";
-  // 11c. Reading safety (ticket 49, CONTRACT v18; on every Worker, whatever NEW_SERVICES says): a fixed calm reply, never the AI, never a strike.
+  // 11c. Reading safety (ticket 49, CONTRACT v19; on every Worker, whatever NEW_SERVICES says): a fixed calm reply, never the AI, never a strike.
   const reading = readingSafety(text);
   if (reading) return reading;
   // 12. The day's AI budget.
@@ -139,7 +139,7 @@ export function classifyWithoutAI(text: string): Extract<Label, "spam_or_promo" 
   return "TO_CLASSIFIER";
 }
 
-// Ticket 49 (CONTRACT v18, docs/AGENT.md §3.2 step 11c): a worry that "someone did something to me" (black magic, evil eye, jadoo, tona, nazar,
+// Ticket 49 (CONTRACT v19, docs/AGENT.md §3.2 step 11c): a worry that "someone did something to me" (black magic, evil eye, jadoo, tona, nazar,
 // bhoot-pret …), or a request to predict death, illness, pregnancy, exam or court results or an exact date. Word lists: config.readingSafety
 // (a prediction needs an asking word and a subject together, or one of the whole phrases). Abuse keeps its own rule (a strike), and crisis and
 // emergency come before this in gate(). "I feel stuck" and "energy cleansing" are none of these.

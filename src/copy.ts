@@ -335,7 +335,7 @@ export type Copy = {
   pageOpeningTitle: string; // ... the short page before Razorpay's
   pageOpeningBody: string;
   pageBtnContinue: string;
-  // Ticket 49 (CONTRACT v18): the catalogue services the bot offers behind NEW_SERVICES (src/offer.ts), and the two reading-safety replies.
+  // Ticket 49 (CONTRACT v19): the catalogue services the bot offers behind NEW_SERVICES (src/offer.ts), and the two reading-safety replies.
   offerBody: string; // the Book list, when at least one more service is offered
   offerButton: string; // max 20 chars
   offerSectionStart: string; // max 24 chars: the ₹99 call and the single session

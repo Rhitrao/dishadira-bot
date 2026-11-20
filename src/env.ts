@@ -40,7 +40,7 @@ export type Env = {
   CONSOLE_V2?: string;
   // "true" lets the bot answer Instagram DMs and Messenger (src/social.ts); anything else: /meta/webhook checks and answers 200, and sends nothing.
   SOCIAL_REPLIES?: string;
-  // Ticket 49 (CONTRACT v18): "true" lets the bot offer catalogue services other than the ₹99 call and the ₹799 session (src/offer.ts), and
+  // Ticket 49 (CONTRACT v19): "true" lets the bot offer catalogue services other than the ₹99 call and the ₹799 session (src/offer.ts), and
   // Settings → Services offer them; anything else: the bot's menus and replies are exactly as before. Top level and live "false", test "true".
   NEW_SERVICES?: string;
   // Minutes after a person's last message that their chat text is wiped: live "10080" (7 days), test "10".

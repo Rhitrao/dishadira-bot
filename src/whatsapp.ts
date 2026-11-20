@@ -15,6 +15,7 @@ import { requestHuman } from "./handoff";
 import { mediaOf } from "./media";
 import { menuOut } from "./menu";
 import { applyLabel, ensureState, noSellActive } from "./noise";
+import { cardReply, isCardChoice, isCardWord, THEME_IDS } from "./cardtest";
 import { ACTION_TOPICS, isOutOfScope, isSexualHealth, isVideoQuestion, matchTopic, sentRecently, topicOut, topicText, type Topic } from "./router";
 import { intentChoice, intentText, isIntentStep, raiseOutOfScope } from "./intent";
 import { rescheduleChoice } from "./outcomes";
@@ -447,7 +448,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     if (wentOut(res)) await db.prepare("UPDATE conversations SET greeted_at = COALESCE(greeted_at, ?2) WHERE id = ?1").bind(conv!.id, nowIso()).run();
   }
 
-  // Ticket 49 (CONTRACT v18): the two reading-safety replies, fixed and calm, never the AI, never a strike or a block; once per
+  // Ticket 49 (CONTRACT v19): the two reading-safety replies, fixed and calm, never the AI, never a strike or a block; once per
   // config.router.answerEveryMinutes (a loop gets silence). "Someone did something to me": nothing is confirmed or removed, the ₹99 call
   // (Help and Talk to a person instead while nothing may be sold). A prediction: not predicted, a doctor for health; no booking push.
   async function readingReply(kind: "READING_SPELL" | "READING_PREDICT", c2: Copy = cp, send: (out: Out, step: string) => Promise<unknown> = reply): Promise<void> {
@@ -553,6 +554,11 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       else await routeTopic("video");
       return;
     }
+    // Ticket 49 (the CARD test): the bare word CARD (or TAROT) starts a draw: the theme buttons, or today's cards again. Pre-written, never the assistant.
+    if (isCardWord(said) && classifyWithoutAI(said) === "TO_CLASSIFIER") {
+      await reply(await cardReply(db, conv!.id, langOf(conv!.locale), null, await noSellActive(db, conv!.id), cp), "card");
+      return;
+    }
     // The assistant (when AI_REPLIES is on) labels and answers the question. Otherwise, or when it cannot answer in the middle of a booking, the path below.
     let viaAI = false;
     if (decision === "TO_CLASSIFIER" && text !== null) {
@@ -644,6 +650,11 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     // Ticket 49: "no", "haan", "ok" typed as the answer to a health question before a booking: its words are not kept either.
     if (/^scr_/.test(choice ?? "") && typed && mine) await db.prepare("UPDATE messages SET body = NULL WHERE id = ?1").bind(mine.id).run();
     await clearStep(db, conv!.id); // a tap moves on; the step sent next (if any) becomes the open one
+    // Ticket 49 (the CARD test): a theme button under "Pick today's theme".
+    if (isCardChoice(choice)) {
+      await reply(await cardReply(db, conv!.id, langOf(conv!.locale), THEME_IDS[choice], await noSellActive(db, conv!.id), cp), "card");
+      return;
+    }
     // lang_kn: a language button from before Hindi replaced the third language; those chats continue in English.
     if (choice === "lang_en" || choice === "lang_hi" || choice === "lang_kn") {
       const locale = choice === "lang_hi" ? "hi" : "en";
@@ -663,6 +674,11 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
         // Ticket 41: a sexual-function concern as the first message: the fixed answer, never the assistant (see classified()).
         if (asked && isSexualHealth(asked.text) && classifyWithoutAI(asked.text) !== "abuse") {
           await routeTopic("sexual_health", cp2, (out, step) => sendMessage(env, conv!.id, out, `${key}:${step}`));
+          return;
+        }
+        // Ticket 49: CARD as the first message (the ad's prefilled text): the theme buttons, in the language just chosen.
+        if (asked && isCardWord(asked.text) && classifyWithoutAI(asked.text) === "TO_CLASSIFIER") {
+          await sendMessage(env, conv!.id, await cardReply(db, conv!.id, locale, null, await noSellActive(db, conv!.id), cp2), `${key}:card`);
           return;
         }
         const answered = asked

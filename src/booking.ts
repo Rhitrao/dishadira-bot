@@ -96,7 +96,7 @@ const otherService = (key: string | null | undefined) => {
   return s && !isSeeded(s.key) ? s : undefined;
 };
 
-// ---- the Book list (ticket 49, CONTRACT v18) ----
+// ---- the Book list (ticket 49, CONTRACT v19) ----
 // With NEW_SERVICES "true" and at least one more service offered (active and public), "Book" shows one list: the ₹99 call and the single
 // session first, then the offered services grouped by pathway (the owner's order), at most config.offer.listMax rows. Row ids: book_call (the
 // call's own steps, as "Book" was before), pk_single (the single session, with its soft nudge), cat_<key> (src/offer.ts). Otherwise null.

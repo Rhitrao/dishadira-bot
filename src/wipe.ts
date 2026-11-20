@@ -26,6 +26,8 @@ export async function wipeChats(env: Env, nowMs = Date.now()): Promise<number> {
   // Ticket 47: the chat's gist is made from its text, so it goes with it (notes are the practice's record and stay).
   await env.DB.prepare("DELETE FROM gists WHERE conversation_id IN (SELECT id FROM conversations WHERE last_user_at < ?1)").bind(cutoff).run();
   await removeOldNames(env, nowMs);
+  // Ticket 49: the CARD test's draws (no name or number) go 90 days after the draw.
+  await env.DB.prepare("DELETE FROM card_draws WHERE created_at < ?1").bind(iso(nowMs - 90 * 86_400_000)).run();
   return res.meta.changes;
 }
 
@@ -56,4 +58,5 @@ export const wipePersonStmts = (db: Env["DB"], convId: number, nowIso: string) =
   db.prepare("UPDATE sessions SET intake_answer = NULL WHERE conversation_id = ?1 AND intake_answer IS NOT NULL").bind(convId), // ticket 49
   db.prepare("DELETE FROM notes WHERE conversation_id = ?1").bind(convId),
   db.prepare("DELETE FROM gists WHERE conversation_id = ?1").bind(convId),
+  db.prepare("DELETE FROM card_draws WHERE conversation_id = ?1").bind(convId), // ticket 49
 ];

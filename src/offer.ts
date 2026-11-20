@@ -1,4 +1,4 @@
-// Ticket 49 (CONTRACT v18): booking a catalogue service other than the ₹99 call and the ₹799 session (a Tarot reading, guided hypnosis …),
+// Ticket 49 (CONTRACT v19): booking a catalogue service other than the ₹99 call and the ₹799 session (a Tarot reading, guided hypnosis …),
 // behind the NEW_SERVICES env flag. All fixed messages, no AI. With the flag "false" nothing here is ever reached (the Book list, the only
 // way in, is not shown) and an old button of it gets the menu.
 //   Book list row cat_<key> -> age check (once; age_yes_c_<key>) -> "only after the first call"? -> the two yes/no questions (screen) ->

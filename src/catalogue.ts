@@ -17,7 +17,7 @@ export type Service = {
   key: string; nameEn: string; nameHi: string; pathway: Pathway; minutes: number; pricePaise: number;
   needsCallFirst: boolean; dailyCap: number | null; active: boolean; public: boolean; sort: number;
   updatedAt: string | null; updatedBy: number | null;
-  // Ticket 49 (migration 0022): the one question asked after payment (English, Hindi; null: none) and the two yes/no questions before the hold.
+  // Ticket 49 (migration 0023): the one question asked after payment (English, Hindi; null: none) and the two yes/no questions before the hold.
   intakeEn: string | null; intakeHi: string | null; screen: boolean;
 };
 
@@ -51,7 +51,7 @@ export const isSeeded = (key: string) => key === CALL_KEY || key === SESSION_KEY
 type Row = {
   key: string; name_en: string; name_hi: string; pathway: string; minutes: number; price_paise: number; needs_call_first: number;
   daily_cap: number | null; active: number; public: number; sort: number; updated_at: string | null; updated_by: number | null;
-  intake_en?: string | null; intake_hi?: string | null; screen?: number | null; // migration 0022
+  intake_en?: string | null; intake_hi?: string | null; screen?: number | null; // migration 0023
 };
 const fromRow = (r: Row): Service => ({
   key: r.key, nameEn: r.name_en, nameHi: r.name_hi, pathway: isPathway(r.pathway) ? r.pathway : "RELEASE", minutes: r.minutes, pricePaise: r.price_paise,
@@ -80,7 +80,7 @@ export async function loadCatalogue(db: D1Database): Promise<Service[]> {
   return current;
 }
 
-// Ticket 49 (CONTRACT v18): the NEW_SERVICES env flag ("true" on test only until Razorpay's written go-ahead and Rohit's).
+// Ticket 49 (CONTRACT v19): the NEW_SERVICES env flag ("true" on test only until Razorpay's written go-ahead and Rohit's).
 export const newServicesOn = (env: { NEW_SERVICES?: string }) => env.NEW_SERVICES === "true";
 // A service other than the seeded two that the bot offers right now: the flag is "true" and the row is active and public. With the flag off
 // the bot offers exactly what it did before ticket 49, whatever the rows say.
