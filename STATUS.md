@@ -1,5 +1,16 @@
 # STATUS
-Updated: 2026-11-20 (Ticket 48: the service catalogue and 30- and 90-minute lengths)
+Updated: 2026-11-20 (Ticket 49: the 14-day CARD test)
+
+## Ticket 49 (branch card-test, migration 0022_card_test, CONTRACT v18; based on main with #68)
+Rohit, 20 Nov 2026: run the 14-day CARD test (no app, no new Worker) after the tarot research and council; Amma's yes, her certificate and the foundation's answer are done (Rohit, in chat). Pass bar: 5 paid ₹99 calls from CARD users.
+- **src/cardtest.ts**: the word (`isCardWord`, the bare word only), the draw (`secureInt`/`pickThree`, Web Crypto, three different of 22), the words (English and Hindi: 22 cards with a line each, 3 themes with a question), `cardReply` (theme buttons, a draw, the same draw again, the refusal for another theme, the soft Book line on a person's 1st, 3rd and 5th draw, Help and Talk to a person only while nothing may be sold) and `cardStats`. Hooks in src/whatsapp.ts: a typed CARD in `classified()` after the video line and before the assistant, a theme tap at the top of `tapped()`, and CARD as the first message after the language tap. src/wipe.ts: draws deleted 90 days after the draw and by Remove their data. Migration 0022 `card_draws`.
+- **Numbering**: the plan called this "Ticket 48", but 48 is the service catalogue (#68), so it is 49, and CONTRACT v18 (v17 was the catalogue).
+- Docs: CONTRACT v18 (version line, Flow invariants, Data), tickets.md Ticket 49.
+- Checks: `npm run typecheck` clean; test/cardtest.test.ts 15/15; test/copy, flow, whatsapp and people each rerun green, one file at a time. The whole suite was not rerun.
+- **Before it goes live (Rohit)**: (1) the privacy page needs one sentence: "If you send the word CARD, we keep the three cards you were shown, with the date, for up to 90 days, and delete them if you ask us to delete your data." (2) Amma reads the English card lines (card-test-content.md was sent in chat) and a native speaker reads the Hindi. (3) The Click-to-WhatsApp ad's prefilled first message must be "CARD"; new creative with no Pranic Healing name and the disclaimer "A reflection tool for calm moments. Not advice or prediction." (4) Day-7 ad review baseline.
+- Not built: a page or digest line for `cardStats` (ask Rohit); the Razorpay approval for tarot readings as a paid service is separate (Ticket 48's note: launches wait for it). Nothing is paid or sold in this test except the existing ₹99 call.
+- Open questions for Rohit: (1) Show `cardStats` on Today or in the 9 pm digest? (2) Should "TAROT" also start it, or only CARD? (it does now) (3) Hindi card names are transliterations; keep, or use the English names in Hindi chats?
+- Next: Rohit reads the PR, merges, runs Actions → Deploy → test (applies 0022), tries CARD on the test number in English and Hindi, then Deploy → live.
 
 ## Ticket 48 (PR https://github.com/Rhitrao/dishadira-bot/pull/68, migration 0021_services, CONTRACT v17; based on main with #66 and #67)
 Rohit, 20 Nov 2026: the foundation for "Karmic Coaching with Shantha Rao" (readings, guided hypnosis, programmes in the pathways RELEASE, UNDERSTAND, REWIRE plus the ENTRY ₹99 call). Those launches wait for Razorpay's written approval, so **nothing a customer sees changes** here.
