@@ -200,6 +200,7 @@ function parse(f: Record<string, unknown>, svc: Service | undefined, offerable =
 const PAGE_CSS = `<style>.svc .chips{margin:4px 0 0}.svc h3{margin:0}.svc .kv{margin-top:12px}.svc details{margin-top:12px}
 .svc details>summary{list-style:none;display:inline-flex}.svc details>summary::-webkit-details-marker{display:none}.svc details[open]>summary{margin-bottom:12px}
 .svc-form .fld input[type=checkbox]{width:22px;height:22px;margin:0 8px 0 0;accent-color:var(--accent);vertical-align:middle}
+.svc-form textarea{display:block;width:100%;min-height:72px;font:inherit;font-size:var(--fs-in);color:var(--ink);background:var(--surface);border:1px solid var(--muted);border-radius:var(--r-sm);padding:12px;resize:vertical}
 .svc-form .check{display:flex;align-items:center;min-height:var(--tap);margin:0 0 16px;font-weight:500}
 @media (min-width:900px){.svc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}}</style>`;
 
