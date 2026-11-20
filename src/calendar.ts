@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { can, canAny, memberCsrf, seesNumber, type Member } from "./auth";
 import { config } from "./config";
+import { minutesFor, otherServiceLabel, otherServiceName } from "./catalogue";
 import { appPage, auditStmt, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { addHoliday, anyDate, bookingsOn, holidayBounds, holidayDate, holidaysBetween, removeHoliday, upcomingHolidays } from "./holidays";
 import { consoleCopy, consoleLang, type ConsoleCopy } from "./console-copy";
@@ -38,7 +39,7 @@ const validDay = (v: string | undefined): string | null => (v && YMD.test(v) && 
 export type Entry = {
   kind: "CALL" | "SESSION"; id: number; startUtc: string; endUtc: string; state: string; holdUntil: string | null;
   convId: number; name: string | null; waId: string; service: string; forWhom: ForWhom | null; practitionerId: number | null;
-  packSize: number | null; packNo: number | null;
+  packSize: number | null; packNo: number | null; serviceKey: string | null; // ticket 48: the catalogue row (NULL before 0021)
 };
 // A booking that still holds its time (or held it: done, missed), and a hold that hasn't lapsed. Cancelled and expired ones free the time.
 const CALL_STATES = "('PAID','RESCHEDULED','CALLED_SESSION','CALLED_NOT_FIT','MISSED','RUDE')";
@@ -47,7 +48,8 @@ const LIVE_HOLD = "(x.state = 'HELD' AND s.state = 'HELD' AND s.hold_until > ?4 
 
 export async function entriesBetween(env: Env, fromUtc: string, toUtc: string, practitionerId: number | null, nowMs: number): Promise<Entry[]> {
   const common = `s.start_utc AS startUtc, s.end_utc AS endUtc, x.state, CASE WHEN x.state = 'HELD' THEN s.hold_until END AS holdUntil,
-    c.id AS convId, c.display_name AS name, c.wa_id AS waId, x.service, x.for_whom AS forWhom, COALESCE(x.practitioner_id, s.practitioner_id) AS practitionerId`;
+    c.id AS convId, c.display_name AS name, c.wa_id AS waId, x.service, x.for_whom AS forWhom, COALESCE(x.practitioner_id, s.practitioner_id) AS practitionerId,
+    COALESCE(x.service_key, s.service_key) AS serviceKey`;
   const scope = "(?3 IS NULL OR COALESCE(x.practitioner_id, s.practitioner_id) = ?3) AND s.start_utc >= ?1 AND s.start_utc < ?2";
   const [calls, sessions] = await env.DB.batch([
     env.DB.prepare(
@@ -357,7 +359,9 @@ const CONFIRMED = ["PAID", "RESCHEDULED", "CONFIRMED", "CREDIT_BOOKED"];
 // What a booking is, in words: "15-minute call", "Session 3 of 10, from a package", who it's for, a hold's lapse, whose calendar.
 function entryDetails(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, string> | null) {
   const t = TODAY_COPY[consoleLang(m.locale)];
-  const kind = e.kind === "CALL" ? t.kindCall(config.slots.callMinutes) : e.packSize ? t.kindSessionPackage(e.packNo ?? 0, e.packSize) : t.kindSession;
+  const kind =
+    otherServiceLabel(e.serviceKey, consoleLang(m.locale)) ??
+    (e.kind === "CALL" ? t.kindCall(minutesFor("CALL")) : e.packSize ? t.kindSessionPackage(e.packNo ?? 0, e.packSize) : t.kindSession);
   const details = [kind, forWhomText(e.forWhom, m.locale)];
   if (e.state === "HELD" && e.holdUntil) details.push(cc.calHeldUntil(clock(e.holdUntil, m.locale)));
   if (many && e.practitionerId !== null && many.has(e.practitionerId)) details.push(many.get(e.practitionerId)!);
@@ -365,6 +369,8 @@ function entryDetails(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, st
 }
 // Ticket 47: a booking opens the person page with that booking chosen for a note.
 const personHref = (e: Entry) => `/app/people/${e.convId}?b=${e.kind}-${e.id}#notes`;
+// The kind in a block or chip: "Call" / "Session", or a newer service's own name (ticket 48).
+const shortKind = (e: Entry, cc: ConsoleCopy, lang: "en" | "hi") => otherServiceName(e.serviceKey, lang) ?? (e.kind === "CALL" ? cc.calShortCall : cc.calShortSession);
 const evClass = (e: Entry) => `${e.kind === "CALL" ? "call" : "session"}${e.state === "HELD" ? " held" : ""}`;
 
 // The Day view's row (the timeline): the full appointment row, with the number and a one-tap Call for whoever may see it, and Open.
@@ -462,7 +468,7 @@ function gridBlock(e: Entry, o: DayArgs & { open: number; px: number; lane: { la
   const st = bookingStatus(e.state, m.locale);
   const status = st && !st.confirmed ? st : null;
   const name = firstName(e.name, noName(m));
-  const kind = e.kind === "CALL" ? cc.calShortCall : cc.calShortSession;
+  const kind = shortKind(e, cc, lang);
   const details = [serviceName(e.service, lang), ...entryDetails(e, m, cc, o.many)].join(" · ");
   const title = [`${clock(e.startUtc, lang)} – ${clock(e.endUtc, lang)}`, `${name} ${last4(e.waId)}`, details, status?.word ?? ""].filter(Boolean).join(" · ");
   // Overlapping bookings (rare: one calendar) are drawn as Google Calendar does: the first full width, each later one indented and on top,
@@ -594,11 +600,11 @@ function monthGrid(o: { first: string; days: string[]; entries: Entry[]; holiday
     const dots = es.slice(0, 8).map((e) => raw(e.kind === "CALL" ? "<i></i>" : '<i class="s"></i>'));
     // Each chip opens the person with that booking chosen (ticket 47); the rest of the cell opens the day (the link under them).
     const chips = es.slice(0, 3).map((e) => {
-      const what = `${shortClock(e.startUtc, lang)} ${firstName(e.name, noName(m))} · ${e.kind === "CALL" ? cc.calShortCall : cc.calShortSession}`;
+      const what = `${shortClock(e.startUtc, lang)} ${firstName(e.name, noName(m))} · ${shortKind(e, cc, lang)}`;
       return html`<a class="mc ${evClass(e)}" href="${personHref(e)}" title="${clock(e.startUtc, lang)} ${firstName(e.name, noName(m))} ${last4(e.waId)}"><b>${shortClock(e.startUtc, lang)}</b> ${what.slice(what.indexOf(" ") + 1)}</a>`;
     });
     // How full the working day is: booked minutes over the working minutes.
-    const work = generateSlots(ymd, "CALL").length * config.slots.callMinutes;
+    const work = generateSlots(ymd, "CALL").length * minutesFor("CALL");
     const booked = es.reduce((n, e) => n + (endMin(e) - startMin(e)), 0);
     const bar = work && booked && !hol && ymd.slice(0, 7) === month ? html`<span class="mbar" style="--b:${Math.min(100, Math.round((booked / work) * 100))}%" title="${cc.calBusyLabel(Math.min(100, Math.round((booked / work) * 100)))}"></span>` : "";
     const dayHref = link({ view: "day", d: ymd, p: o.p });
@@ -615,7 +621,7 @@ function monthGrid(o: { first: string; days: string[]; entries: Entry[]; holiday
 }
 const legend = (m: Member, cc: ConsoleCopy) => {
   const t = TODAY_COPY[consoleLang(m.locale)];
-  return html`<p class="legend"><span><i></i>${t.kindCall(config.slots.callMinutes)}</span><span><i class="s"></i>${t.kindSession}</span><span><i class="hd"></i>${cc.bookingHeld}</span><span><i class="h"></i>${cc.calHoliday}</span><span><i class="t"></i>${cc.calToday}</span></p>`;
+  return html`<p class="legend"><span><i></i>${t.kindCall(minutesFor("CALL"))}</span><span><i class="s"></i>${t.kindSession}</span><span><i class="hd"></i>${cc.bookingHeld}</span><span><i class="h"></i>${cc.calHoliday}</span><span><i class="t"></i>${cc.calToday}</span></p>`;
 };
 
 const monthTitle = (first: string, cc: ConsoleCopy) => `${cc.calMonthNames.split(" ")[Number(first.slice(5, 7)) - 1]} ${first.slice(0, 4)}`;

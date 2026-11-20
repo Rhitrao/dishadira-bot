@@ -15,6 +15,7 @@ import { html } from "hono/html";
 import { can, memberCsrf, type Member } from "./auth";
 import { loadConv } from "./booking";
 import { prices } from "./business";
+import { minutesFor, SESSION_KEY } from "./catalogue";
 import { config } from "./config";
 import { appPage, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleLang } from "./console-copy";
@@ -136,8 +137,8 @@ async function sessionFor(env: Env, t: Target, m: Member): Promise<Session> {
     sid = (
       await db
         .prepare(
-          `INSERT INTO sessions (conversation_id, service, practitioner_id, for_whom, call_lang, origin, override_by)
-           SELECT conversation_id, service, practitioner_id, for_whom, call_lang, 'AMMA', ?2 FROM intros WHERE id = ?1`,
+          `INSERT INTO sessions (conversation_id, service, practitioner_id, for_whom, call_lang, origin, override_by, service_key)
+           SELECT conversation_id, service, practitioner_id, for_whom, call_lang, 'AMMA', ?2, '${SESSION_KEY}' FROM intros WHERE id = ?1`,
         )
         .bind(t.introId, `member:${m.id}`)
         .run()
@@ -180,7 +181,7 @@ async function screen(c: ConsoleCtx, t: Target, flash: string | null = null, sta
   const open = inWindow(t, now);
   const no = await refusal(c.env, t, w, loc, now);
   const head = html`<p><a class="crumb" href="/app/people/${t.convId}">← ${w.backToPerson}</a></p><div class="card"><h2>${firstName(t.name)} <span class="d">${last4(t.waId)}</span></h2>
-<p>${w.intro(rupees(prices().single), config.slots.sessionMinutes)}</p></div>`;
+<p>${w.intro(rupees(prices().single), minutesFor("SESSION"))}</p></div>`;
   let body: unknown;
   if (no) body = html`<p class="card attention">${no}</p>`;
   else {

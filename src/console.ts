@@ -18,6 +18,7 @@ import { people } from "./people";
 import { sessionLink } from "./sessionlink";
 import { settings } from "./settings";
 import { team } from "./team";
+import { servicesPage } from "./services-page";
 import { today } from "./today";
 import { CONSOLE_CSP, consoleFrame, emptyState, plainFrame, type TabId } from "./ui";
 
@@ -153,6 +154,7 @@ consoleApp.route("/people", people); // ticket 23: the list and /app/people/<id>
 consoleApp.route("/payments", payments); // ticket 24 (src/payments.ts)
 consoleApp.route("/session-link", sessionLink); // ticket 40: the team's ₹799 session link (src/sessionlink.ts)
 consoleApp.route("/settings/team", team);
+consoleApp.route("/settings/services", servicesPage); // ticket 48: the service catalogue (src/services-page.ts)
 consoleApp.route("/settings", settings); // ticket 24 (src/settings.ts)
 consoleApp.route("/notes", notes); // ticket 47: notes for each customer (src/notes.ts)
 consoleApp.route("/gist", gist); // ticket 47: the chat gist's Refresh and its Settings switch (src/gist.ts)

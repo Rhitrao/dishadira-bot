@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { config } from "./config";
+import { countsAsSession, defaultService, serviceOf, slotKindOf, SLOT_SERVICE_SQL, type Service } from "./catalogue";
 import { dayLabel, timeLabel, type Lang } from "./copy";
 
 export type SlotKind = "CALL" | "SESSION";
@@ -20,18 +21,28 @@ const hhmm = (s: string) => {
   return h * 60 + m;
 };
 
-// All slots for one IST calendar day ("YYYY-MM-DD"). Empty on days Amma doesn't work.
-export function generateSlots(ymd: string, kind: SlotKind): Slot[] {
+// The service a slot of `kind` is for: `key` from the catalogue (src/catalogue.ts), or the first call / single session when no key is given.
+// undefined for an unknown key, or one whose pathway makes the other kind of slot.
+export function slotService(kind: SlotKind, key?: string | null): Service | undefined {
+  const svc = key ? serviceOf(key) : defaultService(kind);
+  return svc && slotKindOf(svc) === kind ? svc : undefined;
+}
+
+// All slots for one IST calendar day ("YYYY-MM-DD"), each as long as its service (15, 30, 60 or 90 minutes; ticket 48), back to back from
+// opening. Empty on days Amma doesn't work. A session (countsAsSession) day lists at most config.slots.maxSessionsPerDay, as before.
+export function generateSlots(ymd: string, kind: SlotKind, key?: string | null): Slot[] {
   const [y, mo, d] = ymd.split("-").map(Number);
   const dayMs = Date.UTC(y, mo - 1, d);
   if (!(config.hours.days as readonly number[]).includes(new Date(dayMs).getUTCDay())) return [];
+  const svc = slotService(kind, key);
+  if (!svc) return [];
 
-  const length = kind === "CALL" ? config.slots.callMinutes : config.slots.sessionMinutes;
+  const length = svc.minutes;
   const open = hhmm(config.hours.start);
   const close = hhmm(config.hours.end);
   const slots: Slot[] = [];
   for (let t = open; t + length <= close; t += length) {
-    if (kind === "SESSION" && slots.length >= config.slots.maxSessionsPerDay) break;
+    if (countsAsSession(svc) && slots.length >= config.slots.maxSessionsPerDay) break;
     const start = dayMs + (t - IST_OFFSET_MINUTES) * 60_000;
     slots.push({ kind, startUtc: iso(start), endUtc: iso(start + length * 60_000) });
   }
@@ -115,29 +126,33 @@ export type HoldResult = { ok: true; holdUntil: string } | { ok: false; reason: 
 // unexpired hold. INSERT ... WHERE NOT EXISTS is one atomic write, so concurrent callers get one winner.
 // An expired row on the same (kind, start) is taken over by ON CONFLICT; an active one never is,
 // so a replay by the same person can never extend a hold (it is refused as ALREADY_HOLDING).
+// Ticket 48: `service` (a catalogue key; default the first call or the single session) sets the length, is written on the slot, and brings
+// the day caps (capSql) into the same atomic write.
 export async function holdSlot(
   db: D1Database,
-  args: { kind: SlotKind; startUtc: string; ownerId: number; nowMs: number },
+  args: { kind: SlotKind; startUtc: string; ownerId: number; nowMs: number; service?: string },
 ): Promise<HoldResult> {
   const { kind, startUtc, ownerId, nowMs } = args;
-  const slot = generateSlots(istDay(Date.parse(startUtc)), kind).find((s) => s.startUtc === startUtc);
-  if (!slot) return { ok: false, reason: "NOT_A_SLOT" };
+  const svc = slotService(kind, args.service);
+  const slot = svc && generateSlots(istDay(Date.parse(startUtc)), kind, svc.key).find((s) => s.startUtc === startUtc);
+  if (!svc || !slot) return { ok: false, reason: "NOT_A_SLOT" };
   // A time that has passed, or starts inside the booking lead (an old list row tapped later), is never held (ticket 31, B1).
   if (slot.startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000)) return { ok: false, reason: "TOO_SOON" };
   if (await isHoliday(db, istDay(Date.parse(startUtc)))) return { ok: false, reason: "UNAVAILABLE" }; // a day off: nothing new is held
 
   const now = iso(nowMs);
   const holdUntil = iso(nowMs + config.holdMinutes * 60_000);
+  const cap = capSql(svc, slot.startUtc);
   const sql = `
-    INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until, practitioner_id)
-    SELECT :kind, :start, :end, :owner, 'HELD', :until, ${PRACTITIONER_SQL}
+    INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until, practitioner_id, service_key)
+    SELECT :kind, :start, :end, :owner, 'HELD', :until, ${PRACTITIONER_SQL}, :svc
     WHERE NOT EXISTS (SELECT 1 FROM slots WHERE ${ACTIVE} AND start_utc < :end AND end_utc > :start)
-      AND NOT EXISTS (SELECT 1 FROM slots WHERE ${HELD} AND owner_id = :owner)
+      AND NOT EXISTS (SELECT 1 FROM slots WHERE ${HELD} AND owner_id = :owner)${cap.sql}
     ON CONFLICT (kind, start_utc) DO UPDATE
-      SET owner_id = :owner, state = 'HELD', hold_until = :until, end_utc = :end
+      SET owner_id = :owner, state = 'HELD', hold_until = :until, end_utc = :end, service_key = :svc
       WHERE NOT (slots.state = 'BOOKED' OR slots.hold_until > :now)`;
   // D1 binds positionally, so named params are rewritten to ?N via the helper below.
-  const res = await run(db, sql, { kind, start: slot.startUtc, end: slot.endUtc, owner: ownerId, until: holdUntil, now });
+  const res = await run(db, sql, { kind, start: slot.startUtc, end: slot.endUtc, owner: ownerId, until: holdUntil, now, svc: svc.key, ...cap.params });
   if (res.meta.changes > 0) return { ok: true, holdUntil };
 
   const mine = await first(db, `SELECT 1 AS x FROM slots WHERE ${HELD} AND owner_id = :owner`, { owner: ownerId, now });
@@ -147,12 +162,17 @@ export async function holdSlot(
 // Slots of one kind on one IST day that a customer could hold right now.
 // `nowMs` is the earliest start (the caller adds the booking lead time). Holds are judged at `busyAtMs`, the real now: a hold that
 // is live right now keeps the slot off the list even when it will have lapsed by the time the lead has passed.
-export async function availableSlots(db: D1Database, kind: SlotKind, ymd: string, nowMs: number, busyAtMs = nowMs): Promise<Slot[]> {
-  if (await isHoliday(db, ymd)) return [];
+// `service`: a catalogue key (default the first call or the single session); a day whose caps are reached has no free time for it.
+export async function availableSlots(db: D1Database, kind: SlotKind, ymd: string, nowMs: number, busyAtMs = nowMs, service?: string): Promise<Slot[]> {
+  const svc = slotService(kind, service);
+  if (!svc || (await isHoliday(db, ymd))) return [];
   const now = iso(nowMs);
   const busyAt = iso(busyAtMs);
+  const slots = generateSlots(ymd, kind, svc.key);
+  const cap = capSql(svc, slots[0]?.startUtc ?? dayStartUtc(ymd));
+  if (cap.sql && !(await first(db, `SELECT 1 AS x WHERE 1${cap.sql}`, { ...cap.params, now: busyAt }))) return [];
   const out: Slot[] = [];
-  for (const s of generateSlots(ymd, kind)) {
+  for (const s of slots) {
     if (s.startUtc <= now) continue;
     const busy = await first(
       db,
@@ -163,6 +183,31 @@ export async function availableSlots(db: D1Database, kind: SlotKind, ymd: string
   }
   return out;
 }
+
+// The day caps for one more booking of `svc` on the IST day of `startUtc` (ticket 48), as " AND ..." conditions for a WHERE, with their
+// named parameters (the caller's :now marks what is active, as ACTIVE does). Two caps, each only when it applies:
+//   - the sessions cap: fewer than config.slots.maxSessionsPerDay active session slots of 60 or 90 minutes that day (RELEASE, UNDERSTAND,
+//     REWIRE; never a call or a 30-minute one), counted from the slots themselves. With today's 60-minute session the generator already
+//     makes only 5 a day, so today's numbers are the same;
+//   - the service's own daily_cap: fewer than that many active slots of this service that day.
+export function capSql(svc: Service, startUtc: string): { sql: string; params: Record<string, string | number> } {
+  const from = dayStartUtc(istDay(Date.parse(startUtc)));
+  const params: Record<string, string | number> = { dayFrom: from, dayTo: iso(Date.parse(from) + 86_400_000) };
+  const inDay = `${ACTIVE} AND start_utc >= :dayFrom AND start_utc < :dayTo`;
+  let sql = "";
+  if (countsAsSession(svc)) {
+    sql += ` AND (SELECT COUNT(*) FROM slots WHERE ${inDay} AND kind = 'SESSION' AND strftime('%s', end_utc) - strftime('%s', start_utc) >= 3600) < :maxSessions`;
+    params.maxSessions = config.slots.maxSessionsPerDay;
+  }
+  if (svc.dailyCap !== null) {
+    sql += ` AND (SELECT COUNT(*) FROM slots WHERE ${inDay} AND ${SLOT_SERVICE_SQL("slots")} = :capKey) < :dailyCap`;
+    params.capKey = svc.key;
+    params.dailyCap = svc.dailyCap;
+  }
+  return { sql, params };
+}
+// The UTC instant an IST calendar day ("YYYY-MM-DD") starts.
+export const dayStartUtc = (ymd: string) => iso(Date.parse(`${ymd}T00:00:00+05:30`));
 
 // --- tiny named-parameter helper (D1 only supports ?N / ? placeholders) ---
 export function bind(db: D1Database, sql: string, params: Record<string, string | number>) {

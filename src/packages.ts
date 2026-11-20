@@ -24,7 +24,8 @@ import { startSession } from "./session";
 import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
 import { pausedOut } from "./menu";
-import { bind, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
+import { bind, capSql, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
+import { defaultService, SESSION_KEY } from "./catalogue";
 
 const nowIso = () => iso(Date.now());
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -203,7 +204,7 @@ export async function packChoice(env: Env, choice: string | null, convId: number
       await env.DB.prepare("UPDATE sessions SET service = ?2, for_whom = ?3, call_lang = ?4, state = 'OFFERED', updated_at = ?5 WHERE id = ?1").bind(sid, a, b, lang, nowIso()).run();
     } else {
       const ins = await env.DB
-        .prepare(`INSERT INTO sessions (conversation_id, service, for_whom, call_lang, origin, practitioner_id) VALUES (?1, ?2, ?3, ?4, 'SELF', ${PRACTITIONER_SQL})`)
+        .prepare(`INSERT INTO sessions (conversation_id, service, for_whom, call_lang, origin, practitioner_id, service_key) VALUES (?1, ?2, ?3, ?4, 'SELF', ${PRACTITIONER_SQL}, '${SESSION_KEY}')`)
         .bind(conv.id, a, b, lang)
         .run();
       sid = ins.meta.last_row_id;
@@ -355,25 +356,26 @@ export async function bookCredit(db: D1Database, convId: number, service: string
   if (startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000)) return { ok: false, reason: "TOO_SOON" }; // passed, or too soon (ticket 31, B1)
   if (await isHoliday(db, istDay(Date.parse(startUtc)))) return { ok: false, reason: "SLOT_TAKEN" }; // a day off takes no new booking
   const now = iso(nowMs);
-  const params = { conv: convId, start: slot.startUtc, end: slot.endUtc, now, service, who: forWhom, lang, max: config.sessionRules.maxUpcoming };
+  const cap = capSql(defaultService("SESSION"), slot.startUtc); // the day caps, as holdSlot (ticket 48)
+  const params = { conv: convId, start: slot.startUtc, end: slot.endUtc, now, service, who: forWhom, lang, max: config.sessionRules.maxUpcoming, ...cap.params };
   const stmt = (sql: string) => bind(db, sql, params);
   const PACKAGE = `(SELECT k.id FROM packages k WHERE k.conversation_id = :conv AND k.state = 'PAID' AND (SELECT COALESCE(SUM(delta), 0) FROM credits WHERE package_id = k.id) > 0 ORDER BY k.id LIMIT 1)`;
   const results = await db.batch([
     // 1. The slot, booked at once, only if it is free, there is a credit, and fewer than the allowed sessions are upcoming.
     stmt(
-      `INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until, practitioner_id)
-       SELECT 'SESSION', :start, :end, :conv, 'BOOKED', NULL, ${PRACTITIONER_SQL}
-       WHERE NOT EXISTS (SELECT 1 FROM slots WHERE (state = 'BOOKED' OR hold_until > :now) AND start_utc < :end AND end_utc > :start)
+      `INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until, practitioner_id, service_key)
+       SELECT 'SESSION', :start, :end, :conv, 'BOOKED', NULL, ${PRACTITIONER_SQL}, '${SESSION_KEY}'
+       WHERE NOT EXISTS (SELECT 1 FROM slots WHERE (state = 'BOOKED' OR hold_until > :now) AND start_utc < :end AND end_utc > :start)${cap.sql}
          AND ${BALANCE} > 0
          AND (SELECT COUNT(*) FROM sessions se JOIN slots sl ON sl.id = se.slot_id
               WHERE se.conversation_id = :conv AND se.state IN ('CREDIT_BOOKED', 'CONFIRMED') AND sl.end_utc > :now) < :max
-       ON CONFLICT (kind, start_utc) DO UPDATE SET owner_id = :conv, state = 'BOOKED', hold_until = NULL, end_utc = :end
+       ON CONFLICT (kind, start_utc) DO UPDATE SET owner_id = :conv, state = 'BOOKED', hold_until = NULL, end_utc = :end, service_key = '${SESSION_KEY}'
          WHERE NOT (slots.state = 'BOOKED' OR slots.hold_until > :now)`,
     ),
     // 2. The session, on that slot, only if the slot is the one just booked for this person and no session uses it yet.
     stmt(
-      `INSERT INTO sessions (conversation_id, slot_id, service, for_whom, call_lang, origin, state, package_id, created_at, updated_at, practitioner_id)
-       SELECT :conv, sl.id, :service, :who, :lang, 'CREDIT', 'CREDIT_BOOKED', ${PACKAGE}, :now, :now, sl.practitioner_id
+      `INSERT INTO sessions (conversation_id, slot_id, service, for_whom, call_lang, origin, state, package_id, created_at, updated_at, practitioner_id, service_key)
+       SELECT :conv, sl.id, :service, :who, :lang, 'CREDIT', 'CREDIT_BOOKED', ${PACKAGE}, :now, :now, sl.practitioner_id, '${SESSION_KEY}'
        FROM slots sl
        WHERE sl.kind = 'SESSION' AND sl.start_utc = :start AND sl.owner_id = :conv AND sl.state = 'BOOKED'
          AND NOT EXISTS (SELECT 1 FROM sessions x WHERE x.slot_id = sl.id AND x.state IN ('HELD', 'CONFIRMED', 'CREDIT_BOOKED')) AND ${PACKAGE} IS NOT NULL`,

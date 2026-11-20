@@ -5,6 +5,7 @@
 // The old list rows slot_<SERVICE>_<startUtc> (before who-for and day steps existed) are still understood; see below.
 import type { D1Database } from "@cloudflare/workers-types";
 import { prices } from "./business";
+import { CALL_KEY } from "./catalogue";
 import { config } from "./config";
 import { copyFor, langOf, type Copy, type ForWhom, type Lang } from "./copy";
 import type { Env } from "./env";
@@ -310,7 +311,7 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
 
   // 3. Intro (HELD) and payment (CREATING), then the link. The call is in the language of this chat.
   const intro = await db
-    .prepare(`INSERT INTO intros (conversation_id, slot_id, service, for_whom, call_lang, practitioner_id) VALUES (?1, ?2, ?3, ?4, ?5, ${PRACTITIONER_SQL})`)
+    .prepare(`INSERT INTO intros (conversation_id, slot_id, service, for_whom, call_lang, practitioner_id, service_key) VALUES (?1, ?2, ?3, ?4, ?5, ${PRACTITIONER_SQL}, '${CALL_KEY}')`)
     .bind(conv.id, slot?.id ?? null, service, forWhom, lang)
     .run();
   const introId = intro.meta.last_row_id;

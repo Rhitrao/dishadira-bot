@@ -410,7 +410,9 @@ describe("item 6: the assistant quotes the prices in force", () => {
   });
 
   it("after the owner changes prices in Settings: the facts carry them, the check allows them and refuses the old ones", async () => {
-    await h.db.prepare("INSERT INTO settings (key, value) VALUES ('price.intro_paise', '14900'), ('price.single_paise', '89900'), ('price.pack10_paise', '600000')").run();
+    // Ticket 48: the first call's and the single session's prices live in their service catalogue rows.
+    await h.db.prepare("UPDATE services SET price_paise = CASE key WHEN 'first_call' THEN 14900 ELSE 89900 END").run();
+    await h.db.prepare("INSERT INTO settings (key, value) VALUES ('price.pack10_paise', '600000')").run();
     await loadPrices(h.env());
     const t = factsText(FACTS);
     expect(t).toContain("first call ₹149 (15 minutes); single session ₹899; 10 sessions ₹6,000 (₹600 a session); 20 sessions ₹9,000 (₹450 a session)");
@@ -418,6 +420,7 @@ describe("item 6: the assistant quotes the prices in force", () => {
     expect(checkReply("The first call is ₹99.")).toEqual({ ok: false, reason: "NUMBER" });
     expect(checkReply("A session is ₹799.")).toEqual({ ok: false, reason: "NUMBER" });
     await h.db.prepare("DELETE FROM settings WHERE key LIKE 'price.%'").run();
+    await h.db.prepare("UPDATE services SET price_paise = CASE key WHEN 'first_call' THEN 9900 ELSE 79900 END").run();
     await loadPrices(h.env());
   });
 

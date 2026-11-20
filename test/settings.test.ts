@@ -16,6 +16,10 @@ const h = new ConsoleHarness();
 beforeEach(() => h.start(NOW));
 afterEach(() => h.stop());
 
+// Ticket 48: the first call's and the single session's prices live in their service catalogue rows (src/catalogue.ts).
+const servicePrice = async (db: { prepare: (s: string) => any }, key: string) => (await db.prepare("SELECT price_paise AS p FROM services WHERE key = ?1").bind(key).first())?.p ?? null;
+const setServicePrice = (db: { prepare: (s: string) => any }, key: string, paise: number) => db.prepare("UPDATE services SET price_paise = ?2 WHERE key = ?1").bind(key, paise).run();
+
 // The page as a person reads it: entities decoded (the tests look for words with apostrophes).
 const decode = (t: string) => t.replaceAll("&#39;", "'").replaceAll("&quot;", '"').replaceAll("&gt;", ">").replaceAll("&lt;", "<").replaceAll("&amp;", "&");
 const page = async (path = "/app/settings", as = OWNER) => decode(await (await h.get(path, as)).text());
@@ -169,7 +173,7 @@ describe("prices: saved in Settings, quoted by the bot, config as the fallback",
     expect(validPrice("pack10", 550500)).toBe(false); // ₹550.50 a session
     expect(validPrice("pack20", 900000)).toBe(true);
   });
-  it("saving writes one settings row and one audit row per changed price; bad input keeps the form filled and saves nothing", async () => {
+  it("saving writes one row and one audit row per changed price; bad input keeps the form filled and saves nothing", async () => {
     const csrf = csrfOn(await page(), "/app/settings/prices")!;
     const bad = await h.post("/app/settings/prices", { csrf, intro: "149", single: "79.5", pack10: "5,000", pack20: "abc" });
     expect(bad.status).toBe(400);
@@ -177,11 +181,13 @@ describe("prices: saved in Settings, quoted by the bot, config as the fallback",
     expect(html).toContain("That didn't save");
     expect(html).toContain('value="79.5"');
     expect(await h.count("SELECT COUNT(*) AS n FROM settings WHERE key LIKE 'price.%'")).toBe(0);
+    expect(await servicePrice(h.db, "first_call")).toBe(9900);
     const ok = await h.post("/app/settings/prices", { csrf, intro: "149", single: "799", pack10: "₹5,500", pack20: "9000" });
     expect(ok.status).toBe(303);
-    expect(await h.setting(KEYS.intro)).toBe("14900");
+    expect(await servicePrice(h.db, "first_call")).toBe(14900); // ticket 48: the catalogue row
     expect(await h.setting(KEYS.pack10)).toBe("550000");
-    expect(await h.setting(KEYS.single)).toBeNull(); // unchanged: no row
+    expect(await servicePrice(h.db, "single_session")).toBe(79900); // unchanged
+    expect(await h.count("SELECT COUNT(*) AS n FROM settings WHERE key IN ('price.intro_paise', 'price.single_paise')")).toBe(0);
     expect((await h.audits("PRICE_CHANGED")).map((a) => [a.target, a.detail])).toEqual([
       [KEYS.intro, "9900 -> 14900"],
       [KEYS.pack10, "500000 -> 550000"],
@@ -191,7 +197,9 @@ describe("prices: saved in Settings, quoted by the bot, config as the fallback",
     expect(after).toContain("₹550 a session");
   });
   it("readPrices falls back to config for a missing or bad row, one price at a time", async () => {
-    await h.db.prepare("INSERT INTO settings (key, value) VALUES (?1, '14900'), (?2, 'lots'), (?3, '555555')").bind(KEYS.intro, KEYS.single, KEYS.pack10).run();
+    await setServicePrice(h.db, "first_call", 14900);
+    await h.db.prepare("DELETE FROM services WHERE key = 'single_session'").run(); // ticket 48: a missing catalogue row
+    await h.db.prepare("INSERT INTO settings (key, value) VALUES (?1, '555555')").bind(KEYS.pack10).run();
     const p = await readPrices(h.db);
     expect(p.intro).toBe(14900);
     expect(p.single).toBe(DEFAULT_PRICES.single);
@@ -199,7 +207,7 @@ describe("prices: saved in Settings, quoted by the bot, config as the fallback",
     expect(p.pack20).toEqual(DEFAULT_PRICES.pack20);
   });
   it("priceAt: the price when a link was made, from the first change after it", async () => {
-    await h.db.prepare("INSERT INTO settings (key, value) VALUES (?1, '19900')").bind(KEYS.intro).run();
+    await setServicePrice(h.db, "first_call", 19900);
     await h.db.prepare("INSERT INTO audit_log (at, actor, action, target, detail) VALUES ('2026-10-20T00:00:00Z', 'o', 'PRICE_CHANGED', ?1, '9900 -> 14900'), ('2026-10-25T00:00:00Z', 'o', 'PRICE_CHANGED', ?1, '14900 -> 19900')").bind(KEYS.intro).run();
     expect(await priceAt(h.db, "intro", "2026-10-01T00:00:00Z")).toBe(9900);
     expect(await priceAt(h.db, "intro", "2026-10-22T00:00:00Z")).toBe(14900);
@@ -207,7 +215,8 @@ describe("prices: saved in Settings, quoted by the bot, config as the fallback",
     expect(await priceAt(h.db, "single", "2026-10-26T00:00:00Z")).toBe(DEFAULT_PRICES.single);
   });
   it("copyFor quotes the prices in force; allCopy stays at config's prices", async () => {
-    await h.db.prepare("INSERT INTO settings (key, value) VALUES (?1, '14900'), (?2, '600000')").bind(KEYS.intro, KEYS.pack10).run();
+    await setServicePrice(h.db, "first_call", 14900);
+    await h.db.prepare("INSERT INTO settings (key, value) VALUES (?1, '600000')").bind(KEYS.pack10).run();
     await loadPrices(h.env());
     expect(prices().intro).toBe(14900);
     expect(copyFor("en").btnBook).toBe("Book ₹149 call");
@@ -215,6 +224,7 @@ describe("prices: saved in Settings, quoted by the bot, config as the fallback",
     expect(copyFor("en").rowPack10Desc).toContain("₹6,000 · ₹600 each");
     expect(allCopy.en.btnBook).toBe("Book ₹99 call");
     await h.db.prepare("DELETE FROM settings WHERE key LIKE 'price.%'").run();
+    await setServicePrice(h.db, "first_call", 9900);
     await loadPrices(h.env());
     expect(copyFor("en").btnBook).toBe("Book ₹99 call");
   });
@@ -233,7 +243,8 @@ describe("the bot quotes the owner's prices (WhatsApp, end to end)", () => {
   const buttons = () => w.last().interactive.action.buttons.map((b: { reply: { title: string } }) => b.reply.title);
 
   it("the menu, the price answer and the payment link use the settings; a later price change doesn't make the paid link a mismatch", async () => {
-    await w.db.prepare("INSERT INTO settings (key, value) VALUES (?1, '14900'), (?2, '850000')").bind(KEYS.intro, KEYS.pack10).run();
+    await setServicePrice(w.db, "first_call", 14900);
+    await w.db.prepare("INSERT INTO settings (key, value) VALUES (?1, '850000')").bind(KEYS.pack10).run();
     const from = w.newPhone();
     await w.typed(from, "hi");
     await w.tap(from, "lang_en");
@@ -256,7 +267,7 @@ describe("the bot quotes the owner's prices (WhatsApp, end to end)", () => {
     expect(w.fake.links.get(pay.link)!.amount).toBe(14900);
     expect(w.texts().some((t: string) => t?.includes('Tap "Pay ₹149" below'))).toBe(true); // the body names the button, at the price in force
     // The owner puts the price back to ₹99 before the customer pays: the ₹149 link is still the right amount.
-    await w.db.prepare("UPDATE settings SET value = '9900' WHERE key = ?1").bind(KEYS.intro).run();
+    await setServicePrice(w.db, "first_call", 9900);
     await w.db.prepare("INSERT INTO audit_log (actor, action, target, detail) VALUES ('owner', 'PRICE_CHANGED', ?1, '14900 -> 9900')").bind(KEYS.intro).run();
     const raw = JSON.stringify(paidEvent(pay.link, { amount: 14900 }));
     expect((await app.request("/pay/razorpay/webhook", { method: "POST", body: raw, headers: await rzpHeaders(raw) }, w.env())).status).toBe(200);
