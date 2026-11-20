@@ -81,10 +81,10 @@ export const prices = (): Prices => current;
 export async function loadPrices(env: Pick<Env, "DB">): Promise<Prices> {
   try {
     current = await readPrices(env.DB);
+    await loadCatalogue(env.DB);
   } catch {
-    // keep the last good prices
+    // keep the last good prices (and catalogue)
   }
-  await loadCatalogue(env.DB);
   return current;
 }
 
