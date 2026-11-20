@@ -17,19 +17,21 @@ import { creditBalance, hasPackage } from "./packages";
 import { raiseAttention, sendMessage, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
 import { bind, capSql, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
-import { defaultService, SESSION_KEY } from "./catalogue";
+import { defaultService, isSeeded, serviceOf, type Service } from "./catalogue";
 
 const HOUR = 3_600_000;
 const nowIso = () => iso(Date.now());
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
-type SessionRow = { id: number; state: string; origin: string; moves: number; slotId: number; startUtc: string };
+type SessionRow = { id: number; state: string; origin: string; moves: number; slotId: number; startUtc: string; serviceKey?: string | null };
+// Ticket 49: a catalogue service other than the single session moves with its own length and caps, and is named in the list.
+const otherOf = (key: string | null | undefined): Service | undefined => (key && !isSeeded(key) ? serviceOf(key) : undefined);
 
 async function loadSession(db: D1Database, convId: number, sid: number): Promise<SessionRow | null> {
   return db
     .prepare(
-      `SELECT se.id, se.state, se.origin, se.moves, sl.id AS slotId, sl.start_utc AS startUtc
+      `SELECT se.id, se.state, se.origin, se.moves, sl.id AS slotId, sl.start_utc AS startUtc, se.service_key AS serviceKey
        FROM sessions se JOIN slots sl ON sl.id = se.slot_id WHERE se.id = ?1 AND se.conversation_id = ?2 AND sl.kind = 'SESSION'`,
     )
     .bind(sid, convId)
@@ -55,17 +57,21 @@ async function sendBookings(env: Env, convId: number, msgId: string): Promise<vo
     .all<{ startUtc: string }>();
   const sessions = await db
     .prepare(
-      `SELECT se.id, sl.start_utc AS startUtc FROM sessions se JOIN slots sl ON sl.id = se.slot_id
+      `SELECT se.id, sl.start_utc AS startUtc, se.service_key AS serviceKey FROM sessions se JOIN slots sl ON sl.id = se.slot_id
        WHERE se.conversation_id = ?1 AND se.state IN ('CREDIT_BOOKED', 'CONFIRMED') AND sl.end_utc > ?2 ORDER BY sl.start_utc`,
     )
     .bind(convId, now)
-    .all<{ id: number; startUtc: string }>();
+    .all<{ id: number; startUtc: string; serviceKey: string | null }>();
   const left = await creditBalance(db, convId);
   const hasPack = await hasPackage(db, convId);
   const when = (startUtc: string) => formatIstLang(startUtc, lang);
   const items = [
     ...calls.results.map((r) => ({ at: r.startUtc, text: cp.bookingItem(cp.wordCall, when(r.startUtc).day, when(r.startUtc).time) })),
-    ...sessions.results.map((r) => ({ at: r.startUtc, text: cp.bookingItem(cp.wordSession, when(r.startUtc).day, when(r.startUtc).time) })),
+    ...sessions.results.map((r) => {
+      const other = otherOf(r.serviceKey);
+      const word = other ? (lang === "hi" ? other.nameHi : other.nameEn) : cp.wordSession;
+      return { at: r.startUtc, text: cp.bookingItem(word, when(r.startUtc).day, when(r.startUtc).time) };
+    }),
   ].sort((x, y) => x.at.localeCompare(y.at));
   const key = (step: string) => `${msgId}:${step}`;
   const bookButton: { id: string; title: string }[] = left > 0 ? [{ id: "bk_new", title: cp.btnBookSession }] : [];
@@ -127,6 +133,7 @@ export async function bookingsChoice(env: Env, choice: string | null, convId: nu
     return true;
   }
   const hours = hoursBefore(ses, now);
+  const svcKey = otherOf(ses.serviceKey)?.key;
 
   // ---- Move: the same day and time steps ----
   if (tag === "mv" || tag === "mdy" || tag === "mmo" || tag === "mtm") {
@@ -139,14 +146,14 @@ export async function bookingsChoice(env: Env, choice: string | null, convId: nu
       return true;
     }
     if (tag === "mv" || tag === "mmo") {
-      await sendDays(env, conv, "SESSION", (ymd) => `mdy_${sid}_${ymd}`, msgId);
+      await sendDays(env, conv, "SESSION", (ymd) => `mdy_${sid}_${ymd}`, msgId, svcKey);
       return true;
     }
     if (tag === "mdy") {
-      const sent = await sendTimes(env, conv, "SESSION", b, (u) => `mtm_${sid}_${u}`, `mmo_${sid}`, msgId);
+      const sent = await sendTimes(env, conv, "SESSION", b, (u) => `mtm_${sid}_${u}`, `mmo_${sid}`, msgId, svcKey);
       if (!sent) {
         await send({ type: "text", text: cp.slotTaken }, "taken");
-        await sendDays(env, conv, "SESSION", (ymd) => `mdy_${sid}_${ymd}`, `${msgId}:again`);
+        await sendDays(env, conv, "SESSION", (ymd) => `mdy_${sid}_${ymd}`, `${msgId}:again`, svcKey);
       }
       return true;
     }
@@ -156,7 +163,7 @@ export async function bookingsChoice(env: Env, choice: string | null, convId: nu
       await send({ type: "text", text: cp.moved(p.day, p.time) }, "moved");
     } else {
       await send({ type: "text", text: cp.slotTaken }, "taken");
-      await sendTimes(env, conv, "SESSION", istDay(Date.parse(b)), (u) => `mtm_${sid}_${u}`, `mmo_${sid}`, `${msgId}:again`);
+      await sendTimes(env, conv, "SESSION", istDay(Date.parse(b)), (u) => `mtm_${sid}_${u}`, `mmo_${sid}`, `${msgId}:again`, svcKey);
     }
     return true;
   }
@@ -243,12 +250,13 @@ export async function cancelSingle(db: D1Database, convId: number, sid: number, 
 // Moving: the new slot is booked, the session points at it, and the old slot is freed, in one batch. It only happens if the session is still live
 // with at least 3 h to go, can still be moved, and the new time is free. false when the new time was taken (or the session changed meanwhile).
 export async function moveSession(db: D1Database, convId: number, ses: SessionRow, startUtc: string, nowMs: number): Promise<boolean> {
-  const slot = generateSlots(istDay(Date.parse(startUtc)), "SESSION").find((s) => s.startUtc === startUtc);
+  const svc = otherOf(ses.serviceKey) ?? defaultService("SESSION"); // ticket 49: its own length and caps
+  const slot = generateSlots(istDay(Date.parse(startUtc)), "SESSION", svc.key).find((s) => s.startUtc === startUtc);
   if (!slot || startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000) || slot.startUtc === ses.startUtc) return false;
   if (await isHoliday(db, istDay(Date.parse(startUtc)))) return false; // a day off takes no new booking
-  const cap = capSql(defaultService("SESSION"), slot.startUtc); // the day caps, as holdSlot (ticket 48)
+  const cap = capSql(svc, slot.startUtc); // the day caps, as holdSlot (ticket 48)
   const p = {
-    sid: ses.id, conv: convId, now: iso(nowMs), start: slot.startUtc, end: slot.endUtc, old: ses.slotId,
+    sid: ses.id, conv: convId, now: iso(nowMs), start: slot.startUtc, end: slot.endUtc, old: ses.slotId, svc: svc.key,
     min: iso(nowMs + config.sessionRules.changeBeforeHours * HOUR), maxMoves: config.sessionRules.singleMoves, ...cap.params,
   };
   await db.batch([
@@ -256,12 +264,12 @@ export async function moveSession(db: D1Database, convId: number, ses: SessionRo
     bind(
       db,
       `INSERT INTO slots (kind, start_utc, end_utc, owner_id, state, hold_until, practitioner_id, service_key)
-       SELECT 'SESSION', :start, :end, :conv, 'BOOKED', NULL, ${PRACTITIONER_SQL}, '${SESSION_KEY}'
+       SELECT 'SESSION', :start, :end, :conv, 'BOOKED', NULL, ${PRACTITIONER_SQL}, :svc
        WHERE NOT EXISTS (SELECT 1 FROM slots WHERE (state = 'BOOKED' OR hold_until > :now) AND start_utc < :end AND end_utc > :start)${cap.sql}
          AND EXISTS (SELECT 1 FROM sessions se JOIN slots o ON o.id = se.slot_id
                      WHERE se.id = :sid AND se.conversation_id = :conv AND se.state IN ('CREDIT_BOOKED', 'CONFIRMED') AND se.slot_id = :old
                        AND o.start_utc >= :min AND (se.origin = 'CREDIT' OR se.moves < :maxMoves))
-       ON CONFLICT (kind, start_utc) DO UPDATE SET owner_id = :conv, state = 'BOOKED', hold_until = NULL, end_utc = :end, service_key = '${SESSION_KEY}'
+       ON CONFLICT (kind, start_utc) DO UPDATE SET owner_id = :conv, state = 'BOOKED', hold_until = NULL, end_utc = :end, service_key = :svc
          WHERE NOT (slots.state = 'BOOKED' OR slots.hold_until > :now)`,
       p,
     ),

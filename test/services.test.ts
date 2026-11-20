@@ -316,9 +316,9 @@ describe("the calendar and Today draw 30- and 90-minute bookings", () => {
     await booking({ name: "Tara Test", wa: "919800000301", ist: "2026-10-29T14:00", minutes: 30, key: "tarot_reading" });
     await booking({ name: "Hari Test", wa: "919800000302", ist: "2026-10-29T17:00", minutes: 90, key: "guided_hypnosis" });
     const week = await page("/app/calendar");
-    expect(week).toMatch(/<a class="ev2 session" href="[^"]+" style="top:0.0px;height:52.0px;[^"]*" title="2:00 pm – 2:30 pm · Tara …0301 · Healing · Tarot reading · 30 min/);
-    expect(week).toMatch(/<a class="ev2 session" href="[^"]+" style="top:324.0px;height:160.0px;[^"]*" title="5:00 pm – 6:30 pm · Hari …0302 · Healing · Guided hypnosis · 90 min/);
-    expect(week).toContain("Guided hypnosis · Healing"); // the tall block's third line: its service, then the area
+    expect(week).toMatch(/<a class="ev2 session" href="[^"]+" style="top:0.0px;height:52.0px;[^"]*" title="2:00 pm – 2:30 pm · Tara …0301 · Tarot reading · 30 min/); // ticket 49: no "Healing" beside a newer service
+    expect(week).toMatch(/<a class="ev2 session" href="[^"]+" style="top:324.0px;height:160.0px;[^"]*" title="5:00 pm – 6:30 pm · Hari …0302 · Guided hypnosis · 90 min/);
+    expect(week).toContain('<span class="k">Guided hypnosis</span>'); // the tall block's third line: its service alone (ticket 49)
     const day = await page("/app/calendar?view=day&d=2026-10-29");
     expect(day).toContain("Tarot reading · 30 min");
     expect(day).toContain("Guided hypnosis · 90 min");

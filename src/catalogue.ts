@@ -17,6 +17,8 @@ export type Service = {
   key: string; nameEn: string; nameHi: string; pathway: Pathway; minutes: number; pricePaise: number;
   needsCallFirst: boolean; dailyCap: number | null; active: boolean; public: boolean; sort: number;
   updatedAt: string | null; updatedBy: number | null;
+  // Ticket 49 (migration 0022): the one question asked after payment (English, Hindi; null: none) and the two yes/no questions before the hold.
+  intakeEn: string | null; intakeHi: string | null; screen: boolean;
 };
 
 // The two seeded rows' keys. Every intro is the first call; every session made before 0021 (and every session the bot books today) is
@@ -29,10 +31,12 @@ export const SEED: readonly Service[] = [
   {
     key: CALL_KEY, nameEn: "First call", nameHi: "पहली कॉल", pathway: "ENTRY", minutes: config.slots.callMinutes, pricePaise: config.prices.intro,
     needsCallFirst: false, dailyCap: null, active: true, public: true, sort: 10, updatedAt: null, updatedBy: null,
+    intakeEn: null, intakeHi: null, screen: false,
   },
   {
     key: SESSION_KEY, nameEn: "Single session", nameHi: "एक सेशन", pathway: "RELEASE", minutes: config.slots.sessionMinutes, pricePaise: config.prices.single,
     needsCallFirst: false, dailyCap: null, active: true, public: true, sort: 20, updatedAt: null, updatedBy: null,
+    intakeEn: null, intakeHi: null, screen: false,
   },
 ];
 
@@ -47,11 +51,13 @@ export const isSeeded = (key: string) => key === CALL_KEY || key === SESSION_KEY
 type Row = {
   key: string; name_en: string; name_hi: string; pathway: string; minutes: number; price_paise: number; needs_call_first: number;
   daily_cap: number | null; active: number; public: number; sort: number; updated_at: string | null; updated_by: number | null;
+  intake_en?: string | null; intake_hi?: string | null; screen?: number | null; // migration 0022
 };
 const fromRow = (r: Row): Service => ({
   key: r.key, nameEn: r.name_en, nameHi: r.name_hi, pathway: isPathway(r.pathway) ? r.pathway : "RELEASE", minutes: r.minutes, pricePaise: r.price_paise,
   needsCallFirst: r.needs_call_first === 1, dailyCap: r.daily_cap, active: r.active === 1, public: r.public === 1, sort: r.sort,
   updatedAt: r.updated_at, updatedBy: r.updated_by,
+  intakeEn: r.intake_en?.trim() || null, intakeHi: r.intake_hi?.trim() || null, screen: r.screen === 1,
 });
 
 // Every row, in the owner's order; a seeded row that is missing comes from config. The table's CHECKs keep every row's values allowed.
@@ -73,6 +79,16 @@ export async function loadCatalogue(db: D1Database): Promise<Service[]> {
   }
   return current;
 }
+
+// Ticket 49 (CONTRACT v18): the NEW_SERVICES env flag ("true" on test only until Razorpay's written go-ahead and Rohit's).
+export const newServicesOn = (env: { NEW_SERVICES?: string }) => env.NEW_SERVICES === "true";
+// A service other than the seeded two that the bot offers right now: the flag is "true" and the row is active and public. With the flag off
+// the bot offers exactly what it did before ticket 49, whatever the rows say.
+export const isOffered = (env: { NEW_SERVICES?: string }, s: Service | undefined): s is Service =>
+  !!s && newServicesOn(env) && !isSeeded(s.key) && s.active && s.public && s.pathway !== "ENTRY";
+export const offeredServices = (env: { NEW_SERVICES?: string }): Service[] => current.filter((s) => isOffered(env, s));
+// The question after payment in the customer's language (the English one when the Hindi one is empty), or null.
+export const intakeOf = (s: Service | undefined, lang: "en" | "hi"): string | null => (s ? (lang === "hi" ? s.intakeHi ?? s.intakeEn : s.intakeEn ?? s.intakeHi) : null);
 
 export const serviceOf = (key: string | null | undefined): Service | undefined => (key ? current.find((s) => s.key === key) : undefined);
 // The service a booking of this kind is when nothing else says: the first call or the single session.

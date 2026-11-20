@@ -2,7 +2,7 @@
 // Payment success is applied by src/pay/apply.ts (bookSession). A session can only be offered after CALLED_SESSION (see outcomes.ts).
 import { prices } from "./business";
 import { config } from "./config";
-import { copyFor, langOf } from "./copy";
+import { copyFor, langOf, rupees } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
 import { contactFor, razorpay } from "./pay/razorpay";
@@ -13,10 +13,21 @@ import { raiseAttention, sendMessage, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
 import { pausedOut } from "./menu";
 import { formatIstLang, holdSlot, iso, istDay } from "./slots";
+import { isOffered, isSeeded, serviceOf, type Service } from "./catalogue";
+import { menuOut } from "./menu";
+import { noSellActive } from "./noise";
 
 const nowIso = () => iso(Date.now());
 type Conv = NonNullable<Awaited<ReturnType<typeof loadConv>>>;
-export type Session = { id: number; state: string; conversation_id: number; service: string; intro_state: string | null; override_by: string | null; origin: string };
+export type Session = {
+  id: number; state: string; conversation_id: number; service: string; intro_state: string | null; override_by: string | null; origin: string;
+  service_key?: string | null; // ticket 49: a catalogue service other than the single session books with its own length and price
+};
+// The catalogue service of a session when it is not the single session (ticket 49), or undefined.
+export const otherServiceOf = (ses: Pick<Session, "service_key">): Service | undefined => {
+  const svc = serviceOf(ses.service_key);
+  return svc && !isSeeded(svc.key) ? svc : undefined;
+};
 
 // The session picker is the same day-then-time steps as the call (no age, service or who-for steps):
 // sess_offer_<sessionId> -> day buttons sday_<sessionId>_<ymd> -> time list sess_<sessionId>_<startUtc>, whose last row smore_<sessionId> shows the days again.
@@ -46,7 +57,7 @@ export async function sessionChoice(env: Env, choice: string | null, convId: num
   // Only after CALLED_SESSION (or an audited operator override), and only the person it was offered to.
   const ses = await db
     .prepare(
-      `SELECT se.id, se.state, se.conversation_id, se.service, i.state AS intro_state, se.override_by, se.origin
+      `SELECT se.id, se.state, se.conversation_id, se.service, i.state AS intro_state, se.override_by, se.origin, se.service_key
        FROM sessions se LEFT JOIN intros i ON i.id = se.intro_id WHERE se.id = ?1`,
     )
     .bind(sid)
@@ -57,12 +68,18 @@ export async function sessionChoice(env: Env, choice: string | null, convId: num
     await raiseAttention(db, "SESSION_NOT_OFFERABLE", `session:${sid}`);
     return true;
   }
+  // Ticket 49: a catalogue service books only while it is offered (NEW_SERVICES "true", active, public); otherwise the menu, kindly.
+  const other = otherServiceOf(ses);
+  if (ses.service_key && !isSeeded(ses.service_key) && !isOffered(env, other)) {
+    await send(menuOut(cp, await noSellActive(db, conv.id), cp.offerNotAvailable), "notoffered");
+    return true;
+  }
   if (offer || more) {
-    await sendSessionDays(env, conv, sid, msgId);
+    await sendSessionDays(env, conv, sid, msgId, other?.key);
     return true;
   }
   if (day) {
-    await showSessionTimes(env, conv, sid, day[2], msgId);
+    await showSessionTimes(env, conv, sid, day[2], msgId, other?.key);
     return true;
   }
   await startSession(env, provider, conv, ses, pick![2], msgId);
@@ -87,16 +104,17 @@ export async function openOfferId(db: Env["DB"], convId: number): Promise<number
   return row?.id ?? null;
 }
 
-async function sendSessionDays(env: Env, conv: Conv, sid: number, msgId: string): Promise<void> {
-  if (!(await sendDays(env, conv, "SESSION", (ymd) => `sday_${sid}_${ymd}`, msgId))) await raiseAttention(env.DB, "NO_SESSION_SLOTS", `session:${sid}`); // a person follows up
+// `service`: a catalogue key other than the single session (ticket 49): its length, caps and words.
+export async function sendSessionDays(env: Env, conv: Conv, sid: number, msgId: string, service?: string): Promise<void> {
+  if (!(await sendDays(env, conv, "SESSION", (ymd) => `sday_${sid}_${ymd}`, msgId, service))) await raiseAttention(env.DB, "NO_SESSION_SLOTS", `session:${sid}`); // a person follows up
 }
 
 // The times of one day; if the day filled up meanwhile, say so and show the days again.
-async function showSessionTimes(env: Env, conv: Conv, sid: number, ymd: string, msgId: string): Promise<void> {
-  const ok = await sendTimes(env, conv, "SESSION", ymd, (u) => `sess_${sid}_${u}`, `smore_${sid}`, msgId);
+async function showSessionTimes(env: Env, conv: Conv, sid: number, ymd: string, msgId: string, service?: string): Promise<void> {
+  const ok = await sendTimes(env, conv, "SESSION", ymd, (u) => `sess_${sid}_${u}`, `smore_${sid}`, msgId, service);
   if (ok) return;
   await sendMessage(env, conv.id, { type: "text", text: copyFor(conv.locale).slotTaken }, `${msgId}:taken`);
-  await sendSessionDays(env, conv, sid, `${msgId}:again`);
+  await sendSessionDays(env, conv, sid, `${msgId}:again`, service);
 }
 
 // `template`: the 24-hour window has closed and the team sent this time from the console (ticket 40, src/sessionlink.ts): the link goes in
@@ -107,16 +125,18 @@ export async function startSession(env: Env, provider: PaymentProvider, conv: Co
   const send = (out: Out, step: string) => sendMessage(env, conv.id, out, `${msgId}:${step}`);
 
   const nowMs = Date.now();
-  const hold = await holdSlot(db, { kind: "SESSION", startUtc, ownerId: conv.id, nowMs });
+  const other = otherServiceOf(ses); // ticket 49: a catalogue service books with its own length, caps, price and words
+  const hold = await holdSlot(db, { kind: "SESSION", startUtc, ownerId: conv.id, nowMs, service: other?.key });
   if (!hold.ok) {
     if (hold.reason === "ALREADY_HOLDING") await send({ type: "text", text: cp.alreadyHolding }, "holding");
     else if (hold.reason === "TOO_SOON") {
       // An old row whose time has passed or is too soon (ticket 31, B1): say so, then that day's times again, or the days.
       await send({ type: "text", text: cp.timePassed }, "toosoon");
-      if (!(await sendTimes(env, conv, "SESSION", istDay(Date.parse(startUtc)), (u) => `sess_${ses.id}_${u}`, `smore_${ses.id}`, `${msgId}:again`))) await sendSessionDays(env, conv, ses.id, `${msgId}:again`);
+      if (!(await sendTimes(env, conv, "SESSION", istDay(Date.parse(startUtc)), (u) => `sess_${ses.id}_${u}`, `smore_${ses.id}`, `${msgId}:again`, other?.key)))
+        await sendSessionDays(env, conv, ses.id, `${msgId}:again`, other?.key);
     } else {
       await send({ type: "text", text: cp.slotTaken }, "taken");
-      await showSessionTimes(env, conv, ses.id, istDay(Date.parse(startUtc)), `${msgId}:again`);
+      await showSessionTimes(env, conv, ses.id, istDay(Date.parse(startUtc)), `${msgId}:again`, other?.key);
     }
     return;
   }
@@ -136,7 +156,7 @@ export async function startSession(env: Env, provider: PaymentProvider, conv: Co
   }
 
   const linkId = `di-session-${ses.id}-${nowMs}`; // unique per attempt, <= 40 chars (Razorpay reference_id limit)
-  const amount = prices().single; // the price in force (src/business.ts), read once for the row and the link
+  const amount = other?.pricePaise ?? prices().single; // the price in force (src/business.ts, the catalogue), read once for the row and the link
   const pay = await db
     .prepare("INSERT INTO payments (provider, purpose, target_id, provider_link_id, amount_paise) VALUES ('razorpay', 'SESSION', ?1, ?2, ?3)")
     .bind(ses.id, linkId, amount)
@@ -146,7 +166,7 @@ export async function startSession(env: Env, provider: PaymentProvider, conv: Co
     const link = await provider.createLink({
       linkId,
       amountPaise: amount,
-      purpose: "Disha Dira session booking",
+      purpose: other ? `Disha Dira ${other.nameEn} booking` : "Disha Dira session booking", // ticket 49: the description names the service
       customerName: conv.display_name ?? "Customer",
       customerPhone: contactFor(conv.wa_id),
       expiresAtUtc: hold.holdUntil, // expires with the hold
@@ -162,6 +182,10 @@ export async function startSession(env: Env, provider: PaymentProvider, conv: Co
         { type: "template", name: "session_link", params: [en.day, en.time, untilLabel(hold.holdUntil, "en"), url], paramsHi: [hi.day, hi.time, untilLabel(hold.holdUntil, "hi"), url] },
         `${msgId}:pay`,
       );
+    } else if (other) {
+      const label = cp.servicePayLabel(rupees(amount));
+      const name = langOf(conv.locale) === "hi" ? other.nameHi : other.nameEn;
+      await sendStep(env, conv.id, "pay", { type: "cta", body: cp.servicePayBody(name, label, p.day, p.time, untilLabel(hold.holdUntil, conv.locale), url), label, url }, `${msgId}:pay`, { until: hold.holdUntil });
     } else await sendStep(env, conv.id, "pay", { type: "cta", body: cp.sessionPayBody(p.day, p.time, untilLabel(hold.holdUntil, conv.locale), url), label: cp.sessionPayLabel, url }, `${msgId}:pay`, { until: hold.holdUntil });
   } catch {
     await db.prepare("UPDATE payments SET state = 'FAILED', updated_at = ?2 WHERE id = ?1 AND state = 'CREATING'").bind(payId, nowIso()).run();

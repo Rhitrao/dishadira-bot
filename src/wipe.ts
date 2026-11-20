@@ -39,6 +39,8 @@ export async function removeOldNames(env: Env, nowMs = Date.now()): Promise<numb
     env.DB
       .prepare(`UPDATE intros SET profession = NULL, help_area = NULL WHERE (profession IS NOT NULL OR help_area IS NOT NULL) AND conversation_id IN (SELECT id FROM conversations WHERE ${OLD})`)
       .bind(cutoff),
+    // Ticket 49: their answer to a service's question after payment goes with the name too.
+    env.DB.prepare(`UPDATE sessions SET intake_answer = NULL WHERE intake_answer IS NOT NULL AND conversation_id IN (SELECT id FROM conversations WHERE ${OLD})`).bind(cutoff),
   ]);
   return res.meta.changes;
 }
@@ -51,6 +53,7 @@ export const wipePersonStmts = (db: Env["DB"], convId: number, nowIso: string) =
   db.prepare("UPDATE messages SET body = NULL, media_id = NULL, media_mime = NULL, wiped_at = ?2 WHERE conversation_id = ?1 AND (body IS NOT NULL OR media_id IS NOT NULL)").bind(convId, nowIso),
   db.prepare("UPDATE conversations SET display_name = NULL, name_given_at = NULL, first_question_msg = NULL WHERE id = ?1").bind(convId),
   db.prepare("UPDATE intros SET profession = NULL, help_area = NULL WHERE conversation_id = ?1 AND (profession IS NOT NULL OR help_area IS NOT NULL)").bind(convId),
+  db.prepare("UPDATE sessions SET intake_answer = NULL WHERE conversation_id = ?1 AND intake_answer IS NOT NULL").bind(convId), // ticket 49
   db.prepare("DELETE FROM notes WHERE conversation_id = ?1").bind(convId),
   db.prepare("DELETE FROM gists WHERE conversation_id = ?1").bind(convId),
 ];

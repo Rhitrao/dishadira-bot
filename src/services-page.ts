@@ -1,7 +1,8 @@
 // Settings → Services (/app/settings/services, ticket 48), owner only (business_settings, like the rest of Settings): the service
 // catalogue (src/catalogue.ts). Each service: its name in English and Hindi, price, length (15, 30, 60 or 90 minutes), its own daily limit,
-// and whether it can be booked. A service the owner adds starts off (active 0) and unoffered by the bot (public 0), and can't be offered from
-// here: that comes with a later ticket and the owner's go-ahead. The two the bot offers today keep their length and stay on, because the
+// and whether it can be booked. A service the owner adds starts off (active 0) and unoffered by the bot (public 0). Ticket 49: a service other
+// than the seeded two also has its question after payment (English, Hindi) and the two health questions before booking, and, only while the
+// NEW_SERVICES env flag is "true", "Offered by the bot" (otherwise Ticket 48's note stays). The two the bot offers today keep their length and stay on, because the
 // bot's messages, its approved templates and the assistant's knowledge state them. Every POST: Origin (console.ts), its own token, one
 // batch with its audit row (SERVICE_UPDATE / SERVICE_ADD; a price change of the first call or the single session is also PRICE_CHANGED
 // under its old key, which is how a payment is checked against the price when its link was made, src/business.ts priceAt).
@@ -10,7 +11,7 @@ import { Hono } from "hono";
 import { html, raw } from "hono/html";
 import { can, memberCsrf, type Member } from "./auth";
 import { KEYS, loadPrices, MAX_PRICE_PAISE } from "./business";
-import { CALL_KEY, isLength, isPathway, isSeeded, LENGTHS, MAX_DAILY_CAP, newKey, PATHWAYS, readCatalogue, seedRowStmt, type Pathway, type Service } from "./catalogue";
+import { CALL_KEY, isLength, isPathway, isSeeded, LENGTHS, MAX_DAILY_CAP, newKey, newServicesOn, PATHWAYS, readCatalogue, seedRowStmt, type Pathway, type Service } from "./catalogue";
 import { config } from "./config";
 import { auditStmt, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { consoleLang } from "./console-copy";
@@ -68,6 +69,18 @@ const en = {
   badLength: "Choose 15, 30, 60 or 90 minutes.",
   badCap: (max: number) => `Leave empty, or a whole number from 1 to ${max}.`,
   badPathway: "Choose a pathway.",
+  // Ticket 49 (CONTRACT v18)
+  offerToggle: "Offered by the bot",
+  offerHelp: "The bot lists it under Book (when it can also be booked). Only while new services are switched on for this bot.",
+  intakeEn: "Question after payment (English)",
+  intakeHi: "Question after payment (Hindi)",
+  intakeHelp: (max: number) => `One question the bot asks after payment, e.g. “What question would you like to bring to your reading?”. Leave empty for none (up to ${max} characters).`,
+  badIntake: (max: number) => `Up to ${max} characters.`,
+  screenToggle: "Two health questions before booking",
+  screenHelp: "Before a time is held: “Under treatment for a mental-health condition right now?” and “Ever had seizures or epilepsy?”. Any “yes” recommends the ₹99 call first. Answers are never kept.",
+  lIntake: "Question after payment",
+  lScreen: "Health questions first",
+  intakeNone: "None",
 };
 type Words = { [K in keyof typeof en]: (typeof en)[K] extends (...a: infer A) => string ? (...a: A) => string : (typeof en)[K] };
 const hi: Words = {
@@ -118,6 +131,17 @@ const hi: Words = {
   badLength: "15, 30, 60 या 90 मिनट चुनें।",
   badCap: (max) => `ख़ाली छोड़ें, या 1 से ${max} तक की पूरी संख्या।`,
   badPathway: "पाथवे चुनें।",
+  offerToggle: "बॉट ऑफ़र करता है",
+  offerHelp: "बॉट इसे \"बुक करें\" में दिखाता है (अगर यह बुक भी हो सकती है)। सिर्फ़ तब, जब इस बॉट के लिए नई सेवाएँ चालू हों।",
+  intakeEn: "भुगतान के बाद का सवाल (अंग्रेज़ी)",
+  intakeHi: "भुगतान के बाद का सवाल (हिन्दी)",
+  intakeHelp: (max) => `भुगतान के बाद बॉट एक सवाल पूछता है, जैसे “आप अपनी रीडिंग में कौन सा सवाल लाना चाहेंगे?”। कोई सवाल न हो तो ख़ाली छोड़ें (${max} अक्षर तक)।`,
+  badIntake: (max) => `${max} अक्षर तक।`,
+  screenToggle: "बुकिंग से पहले सेहत के दो सवाल",
+  screenHelp: "समय रोकने से पहले: “क्या अभी किसी मानसिक स्वास्थ्य की समस्या का इलाज चल रहा है?” और “क्या कभी दौरे या मिर्गी हुई है?”। किसी भी “हाँ” पर पहले ₹99 की कॉल की सलाह दी जाती है। जवाब कभी नहीं रखे जाते।",
+  lIntake: "भुगतान के बाद का सवाल",
+  lScreen: "पहले सेहत के सवाल",
+  intakeNone: "कोई नहीं",
 };
 export const SERVICES_COPY: Record<"en" | "hi", Words> = { en, hi };
 const W = (m: Member): Words => SERVICES_COPY[consoleLang(m.locale)];
@@ -126,17 +150,21 @@ const W = (m: Member): Words => SERVICES_COPY[consoleLang(m.locale)];
 const NEW_PATHWAYS = PATHWAYS.filter((p) => p !== "ENTRY");
 
 // ---------- reading a form ----------
-type Field = "nameEn" | "nameHi" | "price" | "minutes" | "cap" | "pathway";
+type Field = "nameEn" | "nameHi" | "price" | "minutes" | "cap" | "pathway" | "intakeEn" | "intakeHi";
 type FormState = { key: string; values: Record<string, string>; bad: Field[] }; // key "new" is the add form
-type Parsed = { nameEn: string; nameHi: string; pricePaise: number; minutes: number; dailyCap: number | null; active: boolean; pathway: Pathway | null; callFirst: boolean };
+type Parsed = {
+  nameEn: string; nameHi: string; pricePaise: number; minutes: number; dailyCap: number | null; active: boolean; pathway: Pathway | null; callFirst: boolean;
+  public: boolean; intakeEn: string | null; intakeHi: string | null; screen: boolean; // ticket 49
+};
 
 const one = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? "") : typeof v === "string" ? v : "");
 const cleanName = (v: string) => v.trim().replace(/\s+/g, " ");
 
 // `svc` is the row being edited (undefined: a new one). A service the bot offers keeps its length and stays on, whatever the form says.
-function parse(f: Record<string, unknown>, svc: Service | undefined): { values: Record<string, string>; bad: Field[]; next: Parsed } {
+// `offerable`: NEW_SERVICES is "true", so "Offered by the bot" may change on a service that isn't one of the seeded two (ticket 49).
+function parse(f: Record<string, unknown>, svc: Service | undefined, offerable = false): { values: Record<string, string>; bad: Field[]; next: Parsed } {
   const values: Record<string, string> = {};
-  for (const k of ["name_en", "name_hi", "price", "minutes", "cap", "pathway"]) values[k] = one(f[k]).trim();
+  for (const k of ["name_en", "name_hi", "price", "minutes", "cap", "pathway", "intake_en", "intake_hi"]) values[k] = one(f[k]).trim();
   const bad: Field[] = [];
   const nameEn = cleanName(values.name_en);
   const nameHi = cleanName(values.name_hi);
@@ -146,7 +174,7 @@ function parse(f: Record<string, unknown>, svc: Service | undefined): { values: 
   const pricePaise = /^\d{1,7}$/.test(rupees) ? Number(rupees) * 100 : NaN;
   if (!(pricePaise >= 100 && pricePaise <= MAX_PRICE_PAISE)) bad.push("price");
   let minutes = Number(values.minutes);
-  if (svc?.public) {
+  if (svc && isSeeded(svc.key)) {
     if (values.minutes && minutes !== svc.minutes) bad.push("minutes");
     minutes = svc.minutes;
   } else if (!isLength(minutes)) bad.push("minutes");
@@ -154,8 +182,18 @@ function parse(f: Record<string, unknown>, svc: Service | undefined): { values: 
   if (dailyCap !== null && !(dailyCap >= 1 && dailyCap <= MAX_DAILY_CAP)) bad.push("cap");
   const pathway = svc ? null : isPathway(values.pathway) && values.pathway !== "ENTRY" ? values.pathway : null;
   if (!svc && !pathway) bad.push("pathway");
-  const active = svc?.public ? true : one(f.active) === "1";
-  return { values, bad, next: { nameEn, nameHi, pricePaise, minutes, dailyCap, active, pathway, callFirst: one(f.call_first) === "1" } };
+  const seeded = svc ? isSeeded(svc.key) : false;
+  const active = seeded ? true : one(f.active) === "1";
+  // Ticket 49: the seeded two stay offered; another service is offered only from its edit form while NEW_SERVICES is "true" (a new one
+  // starts unoffered), otherwise it keeps what it had. The question after payment and the health questions belong to the other services.
+  const pub = seeded ? true : svc && offerable ? one(f.public) === "1" : (svc?.public ?? false);
+  const intake = (v: string) => (seeded ? null : v.replace(/\s+/g, " ").trim() || null);
+  const intakeEn = intake(values.intake_en);
+  const intakeHi = intake(values.intake_hi);
+  if (intakeEn && [...intakeEn].length > config.offer.intakeQuestionMax) bad.push("intakeEn");
+  if (intakeHi && [...intakeHi].length > config.offer.intakeQuestionMax) bad.push("intakeHi");
+  const screen = seeded ? false : one(f.screen) === "1";
+  return { values, bad, next: { nameEn, nameHi, pricePaise, minutes, dailyCap, active, pathway, callFirst: one(f.call_first) === "1", public: pub, intakeEn, intakeHi, screen } };
 }
 
 // ---------- the page ----------
@@ -178,6 +216,7 @@ const token = (c: ConsoleCtx, scope: string) => memberCsrf(c.get("jwt"), c.get("
 async function page(c: ConsoleCtx, o: { flash?: string | null; status?: 200 | 400; form?: FormState } = {}) {
   const m = c.get("member");
   const w = W(m);
+  const offerable = newServicesOn(c.env); // ticket 49: "Offered by the bot" can change only while NEW_SERVICES is "true"
   const lang = consoleLang(m.locale);
   const list = await readCatalogue(c.env.DB);
   const form = o.form;
@@ -191,24 +230,38 @@ async function page(c: ConsoleCtx, o: { flash?: string | null; status?: 200 | 40
     html`<select name="minutes">${LENGTHS.map((n) => html`<option value="${n}"${n === value ? raw(" selected") : ""}>${w.minutes(n)}</option>`)}</select>`;
   const capInput = (value: string) => html`<input type="text" name="cap" inputmode="numeric" pattern="[0-9]*" value="${value}" autocomplete="off">`;
   const check = (name: string, label: string, on: boolean) => html`<label class="check"><input type="checkbox" name="${name}" value="1"${on ? raw(" checked") : ""}>${label}</label>`;
+  const max = config.offer.intakeQuestionMax;
+  const area = (name: string, value: string, extra = "") => html`<textarea name="${name}" rows="2" maxlength="${max}"${raw(extra)}>${value}</textarea>`;
+  // Ticket 49: the question after payment (English, Hindi) and the two health questions, for a service other than the seeded two.
+  const extraFields = (state: FormState | undefined, v: (k: string, d: string) => string, svc: Service | undefined) => html`<div class="svc-grid">${fld(
+    state, "intakeEn", w.intakeEn, area("intake_en", v("intake_en", svc?.intakeEn ?? "")), w.intakeHelp(max), w.badIntake(max),
+  )}${fld(state, "intakeHi", w.intakeHi, area("intake_hi", v("intake_hi", svc?.intakeHi ?? ""), ' lang="hi"'), w.intakeHelp(max), w.badIntake(max))}</div>
+${check("screen", w.screenToggle, state ? state.values.screen === "1" : (svc?.screen ?? false))}<p class="note">${w.screenHelp}</p>`;
 
   const cards = await Promise.all(
     list.map(async (s) => {
       const state = form?.key === s.key ? form : undefined;
       const v = (k: string, dflt: string) => state?.values[k] ?? dflt;
-      const chips = html`<div class="chips">${statusChip(w.pathway[s.pathway], "plain")}${s.public ? statusChip(w.offered, "done") : statusChip(w.notOffered, "plain")}${
-        s.active ? (s.public ? "" : statusChip(w.on, "accent")) : statusChip(w.off, "attention")
+      const seeded = isSeeded(s.key);
+      // A service other than the seeded two counts as offered only while NEW_SERVICES is "true" (src/catalogue.ts isOffered).
+      const offered = seeded || (s.public && offerable);
+      const chips = html`<div class="chips">${statusChip(w.pathway[s.pathway], "plain")}${offered ? statusChip(w.offered, "done") : statusChip(w.notOffered, "plain")}${
+        s.active ? (seeded ? "" : statusChip(w.on, "accent")) : statusChip(w.off, "attention")
       }</div>`;
       const facts = html`<dl class="kv"><dt>${w.lLength}</dt><dd>${w.minutes(s.minutes)}</dd><dt>${w.lPrice}</dt><dd>${rupeesText(s.pricePaise)}</dd>
 <dt>${w.lCap}</dt><dd>${s.dailyCap ?? w.capNone}</dd><dt>${w.lCallFirst}</dt><dd>${s.needsCallFirst ? w.yes : w.no}</dd>${
-        s.updatedBy !== null && s.updatedAt ? html`<dt>${w.lChanged}</dt><dd>${whenText(s.updatedAt, lang)}</dd>` : ""
-      }</dl>`;
-      const lengthField = s.public
+        seeded ? "" : html`<dt>${w.lIntake}</dt><dd>${(lang === "hi" ? s.intakeHi ?? s.intakeEn : s.intakeEn ?? s.intakeHi) ?? w.intakeNone}</dd><dt>${w.lScreen}</dt><dd>${s.screen ? w.yes : w.no}</dd>`
+      }${s.updatedBy !== null && s.updatedAt ? html`<dt>${w.lChanged}</dt><dd>${whenText(s.updatedAt, lang)}</dd>` : ""}</dl>`;
+      const lengthField = seeded
         ? html`<div class="fld"><span>${w.length}</span><p>${w.minutes(s.minutes)}</p><span class="help">${w.lengthLocked}</span></div>`
         : fld(state, "minutes", w.length, lengthSelect(Number(v("minutes", String(s.minutes)))), "", w.badLength);
-      const activeField = s.public
+      const activeField = seeded
         ? html`<p class="note">${w.activeLocked}</p>`
-        : html`${check("active", w.active, state ? state.values.active === "1" : s.active)}<p class="note">${w.afterLaunch}</p>`;
+        : html`${check("active", w.active, state ? state.values.active === "1" : s.active)}${
+            offerable
+              ? html`${check("public", w.offerToggle, state ? state.values.public === "1" : s.public)}<p class="note">${w.offerHelp}</p>`
+              : html`<p class="note">${w.afterLaunch}</p>`
+          }${extraFields(state, v, s)}`;
       const edit = html`<details${state ? raw(" open") : ""}><summary class="btn">${w.edit}</summary>
 <form class="svc-form" method="post" action="/app/settings/services/edit"><input type="hidden" name="csrf" value="${await token(c, `edit:${s.key}`)}"><input type="hidden" name="key" value="${s.key}">
 <div class="svc-grid">${fld(state, "nameEn", w.nameEn, text("name_en", v("name_en", s.nameEn)), "", w.badName)}${fld(state, "nameHi", w.nameHi, text("name_hi", v("name_hi", s.nameHi), ' lang="hi"'), "", w.badName)}
@@ -226,7 +279,7 @@ ${activeField}<div class="acts"><button class="btn primary" type="submit">${w.sa
 ${fld(nf, "pathway", w.lPathway, html`<select name="pathway">${NEW_PATHWAYS.map((p) => html`<option value="${p}"${p === nv("pathway") ? raw(" selected") : ""}>${w.pathway[p]}</option>`)}</select>`, "", w.badPathway)}
 ${fld(nf, "minutes", w.length, lengthSelect(Number(nv("minutes", "60"))), "", w.badLength)}
 ${fld(nf, "price", w.price, money(nv("price")), w.rupeesOnly, w.badPrice)}${fld(nf, "cap", w.cap, capInput(nv("cap")), w.capHelp(MAX_DAILY_CAP), w.badCap(MAX_DAILY_CAP))}</div>
-${check("call_first", w.callFirst, nf?.values.call_first === "1")}<div class="acts"><button class="btn primary" type="submit">${w.add}</button></div></form></div>`;
+${check("call_first", w.callFirst, nf?.values.call_first === "1")}${extraFields(nf, nv, undefined)}<div class="acts"><button class="btn primary" type="submit">${w.add}</button></div></form></div>`;
 
   const body = html`${raw(PAGE_CSS)}<a class="crumb" href="/app/settings">← ${w.back}</a><header class="screen"><h1>${w.title}</h1></header>
 <p class="muted lead">${w.sub}</p><p class="note">${w.sessionsCap(config.slots.maxSessionsPerDay)}</p>
@@ -250,8 +303,8 @@ servicesPage.post("/edit", async (c) => {
   const svc = (await readCatalogue(c.env.DB)).find((s) => s.key === key);
   if (!svc) return c.text("Bad request", 400);
   if (one(f.csrf) !== (await token(c, `edit:${key}`))) return c.text("Forbidden", 403);
-  const { values, bad, next } = parse(f, svc);
-  if (bad.length) return page(c, { flash: W(c.get("member")).notSaved, status: 400, form: { key, values: { ...values, active: one(f.active) }, bad } });
+  const { values, bad, next } = parse(f, svc, newServicesOn(c.env));
+  if (bad.length) return page(c, { flash: W(c.get("member")).notSaved, status: 400, form: { key, values: { ...values, active: one(f.active), public: one(f.public), screen: one(f.screen) }, bad } });
 
   const changed: string[] = [];
   if (next.nameEn !== svc.nameEn) changed.push("name_en");
@@ -260,6 +313,10 @@ servicesPage.post("/edit", async (c) => {
   if (next.minutes !== svc.minutes) changed.push(`minutes ${svc.minutes} -> ${next.minutes}`);
   if (next.dailyCap !== svc.dailyCap) changed.push(`daily_cap ${svc.dailyCap ?? "none"} -> ${next.dailyCap ?? "none"}`);
   if (next.active !== svc.active) changed.push(`active ${next.active ? "on" : "off"}`);
+  if (next.public !== svc.public) changed.push(`public ${next.public ? "on" : "off"}`); // ticket 49; the words below are never in the audit
+  if (next.intakeEn !== svc.intakeEn) changed.push("intake_en");
+  if (next.intakeHi !== svc.intakeHi) changed.push("intake_hi");
+  if (next.screen !== svc.screen) changed.push(`screen ${next.screen ? "on" : "off"}`);
   if (!changed.length) return done(c, "nothingChanged", `svc-${key}`);
 
   const db = c.env.DB;
@@ -267,8 +324,11 @@ servicesPage.post("/edit", async (c) => {
   const stmts = [
     ...(isSeeded(key) ? [seedRowStmt(db, key)] : []),
     db
-      .prepare("UPDATE services SET name_en = ?2, name_hi = ?3, price_paise = ?4, minutes = ?5, daily_cap = ?6, active = ?7, updated_at = ?8, updated_by = ?9 WHERE key = ?1")
-      .bind(key, next.nameEn, next.nameHi, next.pricePaise, next.minutes, next.dailyCap, next.active ? 1 : 0, iso(Date.now()), m.id),
+      .prepare(
+        `UPDATE services SET name_en = ?2, name_hi = ?3, price_paise = ?4, minutes = ?5, daily_cap = ?6, active = ?7, updated_at = ?8, updated_by = ?9,
+           public = ?10, intake_en = ?11, intake_hi = ?12, screen = ?13 WHERE key = ?1`,
+      )
+      .bind(key, next.nameEn, next.nameHi, next.pricePaise, next.minutes, next.dailyCap, next.active ? 1 : 0, iso(Date.now()), m.id, next.public ? 1 : 0, next.intakeEn, next.intakeHi, next.screen ? 1 : 0),
     auditStmt(c, "SERVICE_UPDATE", `service:${key}`, changed.join("; ")),
   ];
   if (isSeeded(key) && next.pricePaise !== svc.pricePaise)
@@ -283,16 +343,20 @@ servicesPage.post("/add", async (c) => {
   const f = (await c.req.parseBody()) as Record<string, unknown>;
   if (one(f.csrf) !== (await token(c, "add"))) return c.text("Forbidden", 403);
   const { values, bad, next } = parse(f, undefined);
-  if (bad.length) return page(c, { flash: W(c.get("member")).notSaved, status: 400, form: { key: "new", values: { ...values, call_first: one(f.call_first) }, bad } });
+  if (bad.length) return page(c, { flash: W(c.get("member")).notSaved, status: 400, form: { key: "new", values: { ...values, call_first: one(f.call_first), screen: one(f.screen) }, bad } });
   const list = await readCatalogue(c.env.DB);
   const key = newKey(next.nameEn, list.map((s) => s.key));
   const sort = Math.max(0, ...list.map((s) => s.sort)) + 10;
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `INSERT INTO services (key, name_en, name_hi, pathway, minutes, price_paise, needs_call_first, daily_cap, active, public, sort, updated_at, updated_by)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, 0, ?9, ?10, ?11)`,
-    ).bind(key, next.nameEn, next.nameHi, next.pathway, next.minutes, next.pricePaise, next.callFirst ? 1 : 0, next.dailyCap, sort, iso(Date.now()), c.get("member").id),
-    auditStmt(c, "SERVICE_ADD", `service:${key}`, `${next.pathway} · ${next.minutes} min · ${next.pricePaise}${next.dailyCap ? ` · cap ${next.dailyCap}` : ""}`),
+      `INSERT INTO services (key, name_en, name_hi, pathway, minutes, price_paise, needs_call_first, daily_cap, active, public, sort, updated_at, updated_by,
+         intake_en, intake_hi, screen)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, 0, ?9, ?10, ?11, ?12, ?13, ?14)`,
+    ).bind(
+      key, next.nameEn, next.nameHi, next.pathway, next.minutes, next.pricePaise, next.callFirst ? 1 : 0, next.dailyCap, sort, iso(Date.now()), c.get("member").id,
+      next.intakeEn, next.intakeHi, next.screen ? 1 : 0,
+    ),
+    auditStmt(c, "SERVICE_ADD", `service:${key}`, `${next.pathway} · ${next.minutes} min · ${next.pricePaise}${next.dailyCap ? ` · cap ${next.dailyCap}` : ""}${next.screen ? " · screen" : ""}`),
   ]);
   await loadPrices(c.env);
   return done(c, "added", `svc-${key}`);

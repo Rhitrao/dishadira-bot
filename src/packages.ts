@@ -194,9 +194,10 @@ export async function packChoice(env: Env, choice: string | null, convId: number
       await send({ type: "text", text: cp.alreadyHolding }, "holding");
       return true;
     }
-    // One reusable OFFERED row per person: the existing session machinery (hold, link, webhook, refunds) takes it from here.
+    // One reusable OFFERED row per person: the existing session machinery (hold, link, webhook, refunds) takes it from here. A row of another
+    // catalogue service (ticket 49, src/offer.ts) is never reused for the single session.
     const existing = await env.DB
-      .prepare("SELECT id FROM sessions WHERE conversation_id = ?1 AND origin = 'SELF' AND state IN ('OFFERED', 'EXPIRED') ORDER BY id DESC LIMIT 1")
+      .prepare(`SELECT id FROM sessions WHERE conversation_id = ?1 AND origin = 'SELF' AND state IN ('OFFERED', 'EXPIRED') AND COALESCE(service_key, '${SESSION_KEY}') = '${SESSION_KEY}' ORDER BY id DESC LIMIT 1`)
       .bind(conv.id)
       .first<{ id: number }>();
     let sid = existing?.id ?? 0;

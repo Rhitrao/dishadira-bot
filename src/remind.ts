@@ -2,6 +2,7 @@
 // Free text inside the 24-hour window, the `reminder` template outside it. The dedupe key is per booking (intro or session + slot),
 // so a second run, or a rescheduled call, never sends the same reminder twice. While SENDS is paused nothing is written at all,
 // so no dedupe row blocks the reminder if Rohit resumes sends the same evening.
+import { isSeeded, serviceOf } from "./catalogue";
 import { copyFor, langOf } from "./copy";
 import type { Env } from "./env";
 import { sendOrTemplate } from "./send";
@@ -13,7 +14,7 @@ const DAY = 86_400_000;
 export const REMINDER_AT = "18:30"; // IST: when the day-before reminders go (src/index.ts runs them from the 2-minute cron)
 const dayStartUtc = (ymd: string) => iso(Date.parse(`${ymd}T00:00:00+05:30`));
 
-type Row = { id: number; slotId: number; conv: number; locale: string; start: string };
+type Row = { id: number; slotId: number; conv: number; locale: string; start: string; serviceKey: string | null };
 
 export async function sendReminders(env: Env, nowMs = Date.now()): Promise<number> {
   if (!(await sendsOn(env))) return 0;
@@ -28,7 +29,7 @@ export async function sendReminders(env: Env, nowMs = Date.now()): Promise<numbe
   const q = (table: "intros" | "sessions", states: string, kind: string) =>
     env.DB
       .prepare(
-        `SELECT t.id AS id, s.id AS slotId, c.id AS conv, c.locale AS locale, s.start_utc AS start
+        `SELECT t.id AS id, s.id AS slotId, c.id AS conv, c.locale AS locale, s.start_utc AS start, t.service_key AS serviceKey
          FROM ${table} t JOIN slots s ON s.id = t.slot_id JOIN conversations c ON c.id = t.conversation_id
          WHERE t.state IN ${states} AND s.kind = '${kind}' AND s.state = 'BOOKED' AND s.start_utc >= ?1 AND s.start_utc < ?2 ORDER BY s.start_utc`,
       )
@@ -44,11 +45,16 @@ export async function sendReminders(env: Env, nowMs = Date.now()): Promise<numbe
       const en = formatIstLang(r.start, "en");
       const hi = formatIstLang(r.start, "hi");
       const p = lang === "hi" ? hi : en;
+      // Ticket 49: a catalogue service is named. The approved `reminder` template reads "your {{1}} with Shantha Rao is tomorrow, …
+      // Please keep your phone with you." (Hindi: "आपकी बुकिंग ({{1}})"), which fits a reading or a hypnosis session as well, so {{1}} is its name.
+      const svc = kind === "session" && r.serviceKey && !isSeeded(r.serviceKey) ? serviceOf(r.serviceKey) : undefined;
+      const text = svc ? cp.reminderService(lang === "hi" ? svc.nameHi : svc.nameEn, p.day, p.time) : kind === "call" ? cp.reminderCall(p.day, p.time) : cp.reminderSession(p.day, p.time);
+      const word = (l: "en" | "hi") => (svc ? (l === "hi" ? svc.nameHi : svc.nameEn) : copyFor(l)[kind === "call" ? "wordCall" : "wordSession"]);
       const res = await sendOrTemplate(
         env,
         r.conv,
-        { type: "text", text: kind === "call" ? cp.reminderCall(p.day, p.time) : cp.reminderSession(p.day, p.time) },
-        { type: "template", name: "reminder", params: [copyFor("en")[kind === "call" ? "wordCall" : "wordSession"], en.day, en.time], paramsHi: [copyFor("hi")[kind === "call" ? "wordCall" : "wordSession"], hi.day, hi.time] },
+        { type: "text", text },
+        { type: "template", name: "reminder", params: [word("en"), en.day, en.time], paramsHi: [word("hi"), hi.day, hi.time] },
         `reminder:${kind}:${r.id}:${r.slotId}`,
       ).catch(() => "FAILED");
       if (res === "SENT") sent++;
