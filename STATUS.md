@@ -1,7 +1,7 @@
 # STATUS
 Updated: 2026-11-20 (Ticket 49: catalogue services behind NEW_SERVICES, the question after payment, the health questions, reading-safety replies)
 
-## Ticket 49 (PR PRNUM, migration 0022_service_intake, CONTRACT v18; based on main with #68)
+## Ticket 49 (PR https://github.com/Rhitrao/dishadira-bot/pull/71, migration 0022_service_intake, CONTRACT v18; based on main with #68)
 Rohit, 20 Nov 2026: the bot can offer the catalogue's new services (a Tarot reading, guided hypnosis …) on the **test** bot; launching them on live waits for Razorpay's written approval. On live nothing new reaches customers except the two reading-safety replies.
 - **Switch** (wrangler.toml, src/env.ts): `NEW_SERVICES` top level "false", test "true", live "false". `isOffered` (src/catalogue.ts): flag "true" and the row active and public, never the seeded two. With "false" the bot is byte-for-byte as before (test/offer.test.ts compares a whole chat with and without an offered Tarot reading; every existing test unchanged except Ticket 48's calendar tooltip, below).
 - **Book list** (src/booking.ts `bookListOut`): with at least one more service offered, Book (the menu button, "book", the router's book topic) shows one list: "Start here" (₹99 first call → `book_call`, which is the old Book with its "you already have a call" check; Single session → `pk_single`, with its soft nudge), then a section per pathway (Release / Understand / Rewire) with each offered service: title its name (cut to 24), description "30 min · ₹499 · voice call" (+ "· after the ₹99 call"), ≤10 rows (at most 8 services, the owner's order).
