@@ -4,6 +4,7 @@
 // Server-rendered, no scripts; every change is a POST with Origin (checked in src/console.ts) + a per-form member CSRF token, and
 // every button and every POST asks the same can() (src/auth.ts), through the helpers below, so a hidden button and a refused POST agree.
 // Outcome taps use the same write as /amma (recordOutcome in src/outcomes.ts); the cron applies them after the undo window.
+import { cardTestLine } from "./cardtest";
 import { sessionLinkButton } from "./sessionlink";
 import { todayAddNote, todayNotes } from "./notes";
 import type { D1Result } from "@cloudflare/workers-types";
@@ -465,12 +466,13 @@ export async function todayPage(c: ConsoleCtx, o: { flash?: string | null; statu
   // Ticket 46: no "Add your business name" card any more: without one, the frame shows the brand (config.brand); Settings → Business
   // still sets it.
   const ws = await env.DB.prepare("SELECT name FROM workspaces WHERE id = ?1").bind(m.workspaceId).first<{ name: string }>();
+  const cardLine = isOwner ? await cardTestLine(env.DB, consoleLang(m.locale)) : null; // ticket 50: the owner only, while the test runs
   const stats = await statsStrip(env, m, { now, todayYmd, day, scope, live });
 
   // A gentle greeting by the hour in India, with the date, above the screen's question.
   const hour = Math.floor(istMinutes(iso(now)) / 60);
   const eyebrow = `${cc.greeting(hour, firstName(m.displayName, ""))} · ${dayName(iso(now), m.locale)}`;
-  const body = html`${TODAY_CSS}${screenHead("today", m.locale, { eyebrow })}${stats}
+  const body = html`${TODAY_CSS}${screenHead("today", m.locale, { eyebrow })}${stats}${cardLine ? html`<p class="muted" data-card-test>${cardLine}</p>` : ""}
 ${safety.length ? section(cc.secSafety, safetyCards, safety.length) : ""}
 ${replies && waiting.length ? section(cc.secWaiting, waitingCards, waiting.length) : ""}
 ${approvals.length ? section(cc.secApprovals, approvals, approvals.length) : ""}
