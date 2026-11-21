@@ -1,7 +1,7 @@
 # STATUS
 Updated: 2026-11-21 (Ticket 52: the Karmic Coaching front door behind KARMIC_FRONT_DOOR)
 
-## Ticket 52 (branch karmic-front-door, migration 0024_topic, CONTRACT v20; based on main 1e890ed)
+## Ticket 52 (PR https://github.com/Rhitrao/dishadira-bot/pull/74, branch karmic-front-door, migration 0024_topic, CONTRACT v20; based on main 1e890ed)
 Rohit, 21 Nov 2026: "Disha Dira · Karmic Coaching with Shantha Rao". Customers choose by what they need help with; the ₹99 call becomes the Karmic Clarity Call. Behind a new flag; on live nothing changes except Instagram/Messenger's reading-safety replies.
 - **Numbering (needs sorting at merge)**: open PRs #70 ("Ticket 50"), #72 ("Ticket 51", CONTRACT v20) and #73 (**also "Ticket 52"**, time off for part of a day, CONTRACT v21, no migration) were open when this was built. This PR takes CONTRACT v20 (main is v19) and migration 0024. Whichever of #72 / #73 / this merges second renumbers its CONTRACT version (and #73 or this one its ticket number). #73 also touches src/mybookings.ts, src/packages.ts and src/calendar.ts: small conflicts likely.
 - **Switch** (wrangler.toml, src/env.ts): `KARMIC_FRONT_DOOR` top level "false", test "true", live "false". With "false" every message is byte-for-byte as before (test/frontdoor.test.ts runs a whole chat with the flag unset and "false": identical, and no front-door word or id in it; every existing test passes unchanged except the one below).

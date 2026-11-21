@@ -2,7 +2,7 @@
 // the Karmic Clarity Call recommended first, the topic's services to book directly (with NEW_SERVICES on too), the topic kept on the booking
 // and shown to the team, the ₹99 call's new name, and the booking_confirmed template behind config. The Tarot reading and the hypnosis
 // session exist only in these tests. All data synthetic.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { D1Database } from "@cloudflare/workers-types";
 import app from "../src/index";
 import { alertPayload } from "../src/alerts";
@@ -40,6 +40,9 @@ async function addServices(db: D1Database, o: { callFirst?: boolean } = {}) {
     db.prepare("INSERT INTO services (key, name_en, name_hi, pathway, minutes, price_paise, active, public, sort) VALUES ('guided_hypnosis', 'Guided hypnosis', 'गाइडेड हिप्नोसिस', 'REWIRE', 60, 150000, 1, 1, 40)"),
   ]);
 }
+
+// These drive whole chats through the Worker (two in the first test); CI's 20 seconds a test is too short for them.
+vi.setConfig({ testTimeout: 90_000 });
 
 const w = new Wa();
 beforeEach(() => w.start());

@@ -1213,7 +1213,7 @@ built.set(`${JSON.stringify(DEFAULT_PRICES)}:karmic`, karmicCopy);
 // Ticket 52: whether the bot's words are the Karmic front door's. Like the prices, set at the start of every request and cron run
 // (src/index.ts) from the KARMIC_FRONT_DOOR env flag, so the synchronous copyFor() follows it. Off unless set.
 let karmic = false;
-export const setFrontDoorWords = (env: { KARMIC_FRONT_DOOR?: string }) => void (karmic = env.KARMIC_FRONT_DOOR === "true");
+export const setFrontDoorWords = (env: { KARMIC_FRONT_DOOR?: string } | undefined) => void (karmic = env?.KARMIC_FRONT_DOOR === "true"); // no bindings (a bare request): off
 export const karmicWords = (): boolean => karmic;
 
 export function copyFor(locale: string | null | undefined): Copy {
