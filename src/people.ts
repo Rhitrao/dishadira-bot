@@ -130,12 +130,25 @@ details.confirm.calm .panel{background:var(--accent-tint)}
 `;
 
 // ---------- the list ----------
-type Filter = "all" | "waiting" | "upcoming" | "package" | "blocked";
+type Filter = "all" | "waiting" | "upcoming" | "package" | "packageIdle" | "blocked";
+
+// Ticket 51: a package customer's sessions left (credits of their paid packages), their last package session, and whether one is booked ahead.
+// "Not booked": sessions left, none booked ahead, and nothing since 14 days ago (their last session, or the purchase if they have had none).
+// ?2 is now (ISO). A package session is a credit used by BOOK; its time is its slot's start.
+export const IDLE_DAYS = 14;
+const PACK_LEFT = "(SELECT COALESCE(SUM(cr.delta), 0) FROM credits cr JOIN packages k ON k.id = cr.package_id WHERE k.conversation_id = c.id AND k.state = 'PAID')";
+const PACK_SIZE = "(SELECT COALESCE(SUM(k.size), 0) FROM packages k WHERE k.conversation_id = c.id AND k.state = 'PAID')";
+const PACK_SESSIONS = "FROM credits cr JOIN packages k ON k.id = cr.package_id JOIN sessions se ON se.id = cr.session_id JOIN slots s ON s.id = se.slot_id WHERE k.conversation_id = c.id AND k.state = 'PAID' AND cr.reason = 'BOOK' AND se.state IN ('CONFIRMED', 'COMPLETED', 'NO_SHOW')";
+const PACK_LAST = `(SELECT MAX(s.start_utc) ${PACK_SESSIONS} AND s.start_utc <= ?2)`;
+const PACK_AHEAD = `EXISTS (SELECT 1 ${PACK_SESSIONS} AND s.start_utc > ?2)`;
+const PACK_BOUGHT = "(SELECT MAX(cr.at) FROM credits cr JOIN packages k ON k.id = cr.package_id WHERE k.conversation_id = c.id AND k.state = 'PAID' AND cr.reason = 'PURCHASE')";
+const PACK_IDLE = `(${PACK_LEFT} > 0 AND NOT ${PACK_AHEAD} AND COALESCE(${PACK_LAST}, ${PACK_BOUGHT}) < strftime('%Y-%m-%dT%H:%M:%SZ', ?2, '-${IDLE_DAYS} days'))`;
 const FILTERS: { id: Filter; label: keyof PeopleCopy; where: string }[] = [
   { id: "all", label: "filterAll", where: "1 = 1" },
   { id: "waiting", label: "filterWaiting", where: "c.mode = 'HUMAN'" },
   { id: "upcoming", label: "filterUpcoming", where: "EXISTS (SELECT 1 FROM slots s WHERE s.owner_id = c.id AND s.state = 'BOOKED' AND s.end_utc > ?2 AND (?3 < 0 OR s.practitioner_id = ?3))" },
   { id: "package", label: "filterPackage", where: "EXISTS (SELECT 1 FROM packages k WHERE k.conversation_id = c.id AND k.state = 'PAID')" },
+  { id: "packageIdle", label: "filterPackageIdle", where: PACK_IDLE },
   { id: "blocked", label: "filterBlocked", where: "c.mode = 'BLOCKED'" },
 ];
 const filterOf = (v: string | undefined) => FILTERS.find((f) => f.id === v) ?? FILTERS[0];
@@ -161,14 +174,15 @@ export function cleanQuery(raw: string | undefined, full = false): string {
 // Whether this member searches and sees full numbers on People: the owner; a practitioner (whose list holds only her own customers).
 const fullNumbers = (m: Member) => seesNumber(m, isPractitioner(m) ? m.id : null);
 
-type ListRow = { id: number; waId: string; name: string | null; mode: string; lastUserAt: string | null; nextAt: string | null };
+type ListRow = { id: number; waId: string; name: string | null; mode: string; lastUserAt: string | null; nextAt: string | null; packLeft?: number; packSize?: number; packLast?: string | null; packBought?: string | null };
 
 async function listPeople(env: Env, m: Member, q: string, f: Filter, nowMs: number): Promise<ListRow[]> {
   const s = searchClause(q, fullNumbers(m));
   const where = filterOf(f).where;
+  const packCols = f === "package" || f === "packageIdle" ? `, ${PACK_LEFT} AS packLeft, ${PACK_SIZE} AS packSize, ${PACK_LAST} AS packLast, ${PACK_BOUGHT} AS packBought` : "";
   const { results } = await env.DB.prepare(
     `SELECT c.id, c.wa_id AS waId, c.display_name AS name, c.mode, c.last_user_at AS lastUserAt,
-       (SELECT MIN(s.start_utc) FROM slots s WHERE s.owner_id = c.id AND s.state = 'BOOKED' AND s.end_utc > ?2 AND (?3 < 0 OR s.practitioner_id = ?3)) AS nextAt
+       (SELECT MIN(s.start_utc) FROM slots s WHERE s.owner_id = c.id AND s.state = 'BOOKED' AND s.end_utc > ?2 AND (?3 < 0 OR s.practitioner_id = ?3)) AS nextAt${packCols}
      FROM conversations c WHERE (${s.sql}) AND (${where}) AND ${SCOPE}
      ORDER BY COALESCE(c.last_user_at, c.created_at) DESC, c.id DESC LIMIT ?4`,
   )
@@ -196,7 +210,8 @@ function listHtml(o: { m: Member; p: PeopleCopy; rows: ListRow[]; q: string; f: 
     f !== "all" ? html`<input type="hidden" name="f" value="${f}">` : ""
   }<input id="people-q" type="search" name="q" value="${q}" placeholder="${fullNumbers(m) ? cc.searchPlaceholderFull : cc.searchPlaceholder}" autocomplete="off"><button class="btn" type="submit">${cc.searchButton}</button></form>`;
   const items = o.rows.map((r) => {
-    const sub = [r.lastUserAt ? p.lastMessage(agoText(p, r.lastUserAt, o.nowMs)) : p.noMessageYet, r.nextAt ? p.nextShort(when(p, r.nextAt, loc)) : ""].filter(Boolean).join(" · ");
+    const pack = r.packSize !== undefined ? [p.packLeft(r.packLeft ?? 0, r.packSize), r.packLast ? p.packLast(agoText(p, r.packLast, o.nowMs)) : p.packNone] : [];
+    const sub = [...pack, r.lastUserAt ? p.lastMessage(agoText(p, r.lastUserAt, o.nowMs)) : p.noMessageYet, r.nextAt ? p.nextShort(when(p, r.nextAt, loc)) : ""].filter(Boolean).join(" · ");
     const end = r.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : r.mode === "BLOCKED" ? statusChip(p.chipBlocked, "danger") : "";
     // The row is a link, so the number in it is text (the person page has it as a tel: link).
     const num = fullNumbers(m) ? formatNumber(r.waId) : last4(r.waId);

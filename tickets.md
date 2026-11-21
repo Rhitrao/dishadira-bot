@@ -686,3 +686,12 @@ Rohit, 20 Nov 2026, after the research and council on a gamified tarot app: do n
 7. **Numbers**: `cardStats(db, since)`: people who tried CARD, people on 3+ days, paid ₹99 calls from them, and all paid ₹99 calls in the same time. (A page for them is a later ticket if Rohit wants one.)
 - Rules: no merge or deploy; no Cloudflare, Meta or Razorpay changes; synthetic data only.
 - Tests: the word; three different cards over 1,000 draws; the same day, another theme; the soft line's days; Hindi; CARD as the first message; no cards after a crisis message; a crisis message with CARD; a blocked chat; the assistant never called; no banned word in any text; the wipe and Remove their data; the counts.
+
+### Ticket 51: the package tracker (CONTRACT v20)
+Rohit, 21 Nov 2026 (the "Ticket 43" of the future-work list, first part only): a tracker for the owner and Amma; nothing is sent to customers. No migration.
+1. People → "Has a package": each row adds "N of M left", "last session <ago>" (or "no session booked yet"), from the credits ledger and the package sessions' slots.
+2. A new People filter "Package, not booked" (English and Hindi): a paid package with sessions left, no package session booked ahead, and no package session in the last 14 days (the purchase counts if there was none).
+3. Rights, scope and numbers are People's own (owner all; practitioner her own customers; staff the last 4).
+- Not in this ticket (later, each its own ticket): a rebook nudge to customers (needs a Meta template and approval), a fixed weekly slot (touches the booking engine).
+- Rules: no merge or deploy; synthetic data only.
+- Tests: the columns on "Has a package"; the idle filter over six cases (idle, active, never booked, one ahead, new, none left); an empty result; practitioner scope; no package words on other filters.

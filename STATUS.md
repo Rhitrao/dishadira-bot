@@ -1,5 +1,13 @@
 # STATUS
-Updated: 2026-11-20 (Ticket 49: the 14-day CARD test)
+Updated: 2026-11-21 (Ticket 51: the package tracker)
+
+## Ticket 51 (branch package-tracker, no migration, CONTRACT v20; based on main with #69, not on Ticket 50 #70)
+Rohit, 21 Nov 2026: the package tracker (first part of the old "Ticket 43"): for the owner and Amma, nothing sent to customers.
+- **src/people.ts**: People → "Has a package" rows add sessions left and the last package session; new filter "Package, not booked" (sessions left, none ahead, nothing for 14 days; `IDLE_DAYS`). **src/people-copy.ts**: the words, English and Hindi (Hindi to be read).
+- Checks: `npm run typecheck` clean; test/packagetracker.test.ts 5/5; people and copy test files rerun green. The whole suite was not rerun.
+- Not built: the rebook nudge (a Meta template and its approval first) and a fixed weekly slot (booking engine); say which next. The practitioner-scope test shows only that she does not see others' customers; a fuller one needs her own package sessions.
+- Merge order: this branch, #70 (Ticket 50) and Ticket 52 each edit CONTRACT.md, STATUS.md and tickets.md, so the second and third to merge will show a small conflict in those three files (keep both entries).
+- Next: Rohit merges, runs Actions → Deploy → live, opens People → Package, not booked.
 
 ## Ticket 49 (branch card-test, migration 0022_card_test, CONTRACT v18; based on main with #68)
 Rohit, 20 Nov 2026: run the 14-day CARD test (no app, no new Worker) after the tarot research and council; Amma's yes, her certificate and the foundation's answer are done (Rohit, in chat). Pass bar: 5 paid ₹99 calls from CARD users.
