@@ -1,5 +1,5 @@
 # CONTRACT — Disha Dira v1
-Version: 2026-11-20 (v19: ticket 49 (catalogue services; main also has a ticket 49, the CARD test): the bot may offer catalogue services behind the NEW_SERVICES env flag, with a question after payment and two health questions before booking; two fixed reading-safety replies on every bot; v18: ticket 49: the 14-day CARD test: a person who sends the bare word CARD gets three pre-written cards for one theme a day (WORK, RELATIONSHIPS or ENERGY), the same cards again the same IST day, never unprompted, never the AI, nothing about Pranic Healing; table card_draws; v17: ticket 48: services and their price and length come from a catalogue the owner edits in /app Settings; seeded with today's ₹99 call and ₹799 session; new services stay off and unoffered until a later ticket and Rohit's go-ahead; v16: ticket 47, the owner's requests of 4 Nov 2026: the team's notes for each customer (before, during and after a call or session) and a gist above each chat; v15: ticket 46, the owner's decision of 4 Nov 2026: customers' numbers visible in /app to the owner and to the practitioner for her own customers; v14: ticket 45, the owner's request of 4 Nov 2026: a phone alert (Web Push) to the owner and the practitioner when a customer books and pays; v13: ticket 41, the owner's requests of 4 Nov 2026: calls and sessions are voice calls only, the three questions after a paid ₹99 call, out-of-scope concerns, the media reply, and safety-chat photos for the practitioner; v12: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v11: ticket 38: customer photos and files viewed on demand, never stored, and /app the live console; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
+Version: 2026-11-21 (v20: ticket 52: the Karmic Coaching front door behind the KARMIC_FRONT_DOOR env flag: the bot asks what the person would like help with (five fixed topics, kept on the booking as "Came for", not health data), recommends the ₹99 call first as the "Karmic Clarity Call", and names it so; Instagram and Messenger get the reading-safety replies; the booking_confirmed template drafted, off until approved; v19: ticket 49 (catalogue services; main also has a ticket 49, the CARD test): the bot may offer catalogue services behind the NEW_SERVICES env flag, with a question after payment and two health questions before booking; two fixed reading-safety replies on every bot; v18: ticket 49: the 14-day CARD test: a person who sends the bare word CARD gets three pre-written cards for one theme a day (WORK, RELATIONSHIPS or ENERGY), the same cards again the same IST day, never unprompted, never the AI, nothing about Pranic Healing; table card_draws; v17: ticket 48: services and their price and length come from a catalogue the owner edits in /app Settings; seeded with today's ₹99 call and ₹799 session; new services stay off and unoffered until a later ticket and Rohit's go-ahead; v16: ticket 47, the owner's requests of 4 Nov 2026: the team's notes for each customer (before, during and after a call or session) and a gist above each chat; v15: ticket 46, the owner's decision of 4 Nov 2026: customers' numbers visible in /app to the owner and to the practitioner for her own customers; v14: ticket 45, the owner's request of 4 Nov 2026: a phone alert (Web Push) to the owner and the practitioner when a customer books and pays; v13: ticket 41, the owner's requests of 4 Nov 2026: calls and sessions are voice calls only, the three questions after a paid ₹99 call, out-of-scope concerns, the media reply, and safety-chat photos for the practitioner; v12: ticket 40, the owner's decision of 4 Nov 2026 ("Build all"): the after-call session reminder, the review and referral ask, and the team's session link; v11: ticket 38: customer photos and files viewed on demand, never stored, and /app the live console; v10: ticket 37: the owner's chat export for analysis; v9: ticket 36: the team's "Take over this chat", and the time step's second miss goes to the team; v8: the owner's requests of 1 Nov 2026, ticket 35: automatic follow-ups; v7: Monday to Saturday, holidays and "she calls you", the owner's requests of 29 Oct 2026, ticket 30; v6: console decisions of 27 Oct 2026, ticket 26; v5: sessions ₹799 and packages; chat wipe by env; v4: English + Hindi, gatekeeper, AI answers; see docs/AGENT.md). Governs implementation; owner decisions govern live activation.
 Precedence: CONTRACT.md > the assigned ticket > CLAUDE.md > STATUS.md. Conflict: see "Escalate".
 Roles: Amma (Shantha Rao) = practitioner; uses ONE page (/amma), which shows no chats. In the console (/app) a practitioner may read,
   read-only, the chats of customers booked with them, never anyone else's. Rohit = owner, sole operator.
@@ -35,6 +35,16 @@ Hours, copy, FAQ answers, limits and the default prices live in one config modul
   something to me" (black magic, nazar, jadoo, tona, bhoot-pret …) and asks to predict death, illness, pregnancy, exam or court results
   or exact dates with fixed calm replies (English and Hindi; nothing confirmed, removed or predicted; a doctor for health; no strike or
   block); crisis and emergency come first (docs/AGENT.md §3.2 step 11c).
+  v20 (ticket 52, Karmic Coaching, Rohit 21 Nov 2026): behind the env flag KARMIC_FRONT_DOOR (top level and live "false", test "true"; only
+  Rohit changes it) the bot asks "What would you like help with?" after the language choice and on Book (five fixed topics: relationships and
+  family, feeling heavy or drained, a decision or direction, a habit or pattern, not sure yet; plus Sessions & packages and Help), and every
+  topic recommends the ₹99 call first, which its own words then call the "Karmic Clarity Call (₹99, 15 min)" (greeting brand line "Disha Dira ·
+  Karmic Coaching with Shantha Rao", menu button "Book", pay message, confirmation, My bookings, its own reminder text, phone alerts; approved
+  templates and which one is sent never change). With NEW_SERVICES on too, the topic's pathways' offered services (and the ₹799 session,
+  RELEASE) can be booked directly. The tapped topic (a fixed key, never free text, not health data, no exception to "never ask for health
+  details") is kept on the booking it led to (within 24 hours) and shown to the owner and the booking's practitioner as "Came for: …"; it is
+  wiped with the name. With the flag "false" every message is exactly as before. Instagram and Messenger give the two reading-safety replies
+  at once, whatever the flags.
 
 Stack
 One TypeScript Worker (Hono) + D1 + Cron Triggers + Cloudflare Access + Cloudflare email (send only to verified addresses:
@@ -75,7 +85,8 @@ PAID and REFUNDED never move backwards. A verified later success supersedes FAIL
 Data (D1)
 Tables: conversations, events, messages, slots, intros, sessions, payments, refunds, blocks, outcomes, attention, audit_log, settings,
   person_state (strikes, quiet_until, AI reply counters, no_sell_until, opt-out), packages (buyer, size, price, payment),
-  credits (ledger: +N on purchase, -1 per booking, +1 on timely cancel, refunds); v16: notes, gists; v18: card_draws.
+  credits (ledger: +N on purchase, -1 per booking, +1 on timely cancel, refunds); v16: notes, gists; v18: card_draws; v20: intros.topic,
+  sessions.topic and conversations.topic_pick / topic_pick_at (the front door's topic, wiped with the name).
 conversations: unique wa_id, display name, locale, mode, last_user_at, source_ad_id, ad_click_id, ad_headline (first ad only, ticket 15), consent_at.
 events: unique(provider, event_key); minimal payload; status; error. Receipt is not processing.
 slots: kind (CALL|SESSION), UNIQUE(kind, start_utc), owner id, hold_until. Availability by conditional SQL only.
@@ -158,7 +169,8 @@ After the call (v12, owner's decision 4 Nov 2026; each a 1:1 message to one cust
   session_reminder and review_ask (both `approved: false` until Meta approves them; skipped and counted until then).
 Outside the 24-hour window only approved templates: call_booked, session_offer, session_confirmed, reminder,
   payment_update, package_confirmed, session_booked, follow_up (no variables; Hindi follow_up_hi), and v12's session_reminder,
-  review_ask (MARKETING) and session_link (UTILITY). All others UTILITY. follow_up stays
+  review_ask (MARKETING) and session_link (UTILITY), and v20's booking_confirmed (UTILITY, a catalogue service's confirmation; drafted,
+  `approved: false` until Meta approves it; until then Ticket 49's team item). All others UTILITY. follow_up stays
   `approved: false` in config until Meta approves it. If a needed template isn't approved, raise attention instead of sending.
 
 Amma's page (/amma)
@@ -220,7 +232,7 @@ Test and live credentials and data never mix; going live switches the Worker to 
 
 Release and process
 Release-test families: inventory/holds; money/refunds; replay/recovery; access; window/templates; switches/blocks.
-Runtime flags default safe: OWNER_APPROVED=false, NEW_BOOKINGS=false, SENDS=false, AI_REPLIES=false, NEW_SERVICES=false (v19), PAYMENT_MODE=test.
+Runtime flags default safe: OWNER_APPROVED=false, NEW_BOOKINGS=false, SENDS=false, AI_REPLIES=false, NEW_SERVICES=false (v19), KARMIC_FRONT_DOOR=false (v20), PAYMENT_MODE=test.
 Only Rohit changes flags, outside a coding session.
 One small PR per ticket; honest commits, no squash, no backdating; never merge or deploy without Rohit's direction.
 Each session: read CONTRACT.md, STATUS.md, the assigned ticket and only the files it needs. Stop at ticket scope.
