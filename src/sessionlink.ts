@@ -25,7 +25,7 @@ import { noSellActiveFor, personState } from "./noise";
 import { razorpay } from "./pay/razorpay";
 import { sendMessage, templateVariant, type TemplateName } from "./send";
 import { openOfferId, startSession, type Session } from "./session";
-import { availableSlots, generateSlots, isHoliday, iso, istDay, nextWorkingDays, type Slot } from "./slots";
+import { availableSlots, generateSlots, isHoliday, isTimeOff, iso, istDay, nextWorkingDays, type Slot } from "./slots";
 import { bookingsOpen } from "./switches";
 import { clock, dayName, emptyState, firstName, last4, section } from "./ui";
 
@@ -239,7 +239,7 @@ sessionLink.post("/:id{[0-9]+}/hold", async (c) => {
   if (await holdingNow(c.env, t.convId, now)) return screen(c, t, w.holding, 409);
   const slot = generateSlots(istDay(Date.parse(startUtc)), "SESSION").find((x) => x.startUtc === startUtc);
   if (!slot) return screen(c, t, w.pickTime, 400);
-  if (Date.parse(startUtc) <= now + config.booking.leadMinutes * MIN || (await isHoliday(c.env.DB, istDay(Date.parse(startUtc))))) return screen(c, t, w.taken, 409);
+  if (Date.parse(startUtc) <= now + config.booking.leadMinutes * MIN || (await isHoliday(c.env.DB, istDay(Date.parse(startUtc)))) || (await isTimeOff(c.env.DB, slot.startUtc, slot.endUtc))) return screen(c, t, w.taken, 409);
   const busy = await c.env.DB.prepare("SELECT 1 FROM slots WHERE (state = 'BOOKED' OR hold_until > ?3) AND start_utc < ?2 AND end_utc > ?1").bind(slot.startUtc, slot.endUtc, iso(now)).first();
   if (busy) return screen(c, t, w.taken, 409);
   const ses = await sessionFor(c.env, t, m);

@@ -25,7 +25,7 @@ import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
 import { callButton, pausedOut } from "./menu";
 import { frontDoorOn, pickedTopic } from "./frontdoor";
-import { bind, capSql, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
+import { bind, capSql, formatIstLang, generateSlots, isHoliday, isTimeOff, iso, istDay, PRACTITIONER_SQL } from "./slots";
 import { defaultService, SESSION_KEY } from "./catalogue";
 
 const nowIso = () => iso(Date.now());
@@ -358,7 +358,7 @@ export async function bookCredit(db: D1Database, convId: number, service: string
   const slot = generateSlots(istDay(Date.parse(startUtc)), "SESSION").find((s) => s.startUtc === startUtc);
   if (!slot) return { ok: false, reason: "SLOT_TAKEN" };
   if (startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000)) return { ok: false, reason: "TOO_SOON" }; // passed, or too soon (ticket 31, B1)
-  if (await isHoliday(db, istDay(Date.parse(startUtc)))) return { ok: false, reason: "SLOT_TAKEN" }; // a day off takes no new booking
+  if ((await isHoliday(db, istDay(Date.parse(startUtc)))) || (await isTimeOff(db, slot.startUtc, slot.endUtc))) return { ok: false, reason: "SLOT_TAKEN" }; // a day off, or time off (ticket 55), takes no new booking
   const now = iso(nowMs);
   const cap = capSql(defaultService("SESSION"), slot.startUtc); // the day caps, as holdSlot (ticket 48)
   const params = { conv: convId, start: slot.startUtc, end: slot.endUtc, now, service, who: forWhom, lang, max: config.sessionRules.maxUpcoming, ...cap.params };
