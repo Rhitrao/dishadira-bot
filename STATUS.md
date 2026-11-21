@@ -1,5 +1,13 @@
 # STATUS
-Updated: 2026-11-22 (Ticket 53: the CARD test numbers)
+Updated: 2026-11-22 (Ticket 54: the package tracker)
+
+## Ticket 54 (PR #72, branch package-tracker, no migration, CONTRACT v22; stacked on #70, so merge #70 first; first numbered Ticket 51)
+Rohit, 21 Nov 2026: the package tracker (first part of the old "Ticket 43"): for the owner and Amma, nothing sent to customers.
+- **src/people.ts**: People → "Has a package" rows add sessions left and the last package session; new filter "Package, not booked" (sessions left, none ahead, nothing for 14 days; `IDLE_DAYS`). **src/people-copy.ts**: the words, English and Hindi (Hindi to be read).
+- Checks: `npm run typecheck` clean; test/packagetracker.test.ts 5/5; people and copy test files rerun green. The whole suite was not rerun.
+- Not built: the rebook nudge (a Meta template and its approval first) and a fixed weekly slot (booking engine); say which next. The practitioner-scope test shows only that she does not see others' customers; a fuller one needs her own package sessions.
+- Merge order: this branch is stacked on #70 (Ticket 53); merge #70 first. #73 (Ticket 55) is stacked on this one.
+- Next: Rohit merges, runs Actions → Deploy → live, opens People → Package, not booked.
 
 ## Ticket 53 (PR #70, branch card-numbers, no migration, CONTRACT v21; rebased onto main with #71 and #74; first numbered Ticket 50)
 Rohit, 20 Nov 2026: "do the next ticket" (he chose all three listed; this is the first, 43 and 44 follow as their own tickets). Answers Ticket 49's open question 1: the CARD numbers on Today and in the 9 pm summary.
