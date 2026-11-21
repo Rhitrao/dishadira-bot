@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { D1Database } from "@cloudflare/workers-types";
 import app from "../src/index";
 import { config } from "../src/config";
-import { allCopy } from "../src/copy";
+import { allCopy, karmicCopy, setFrontDoorWords } from "../src/copy";
 import { matchTopic } from "../src/router";
 import { cleanSocial, detectLang, FOLLOWING, METADATA, socialLines, socialWords, topicOf } from "../src/social";
 import { iso } from "../src/slots";
@@ -1420,5 +1420,58 @@ describe("ticket 34: insults, threats and sexual messages, as on WhatsApp", () =
     expect(await contact("messenger", "K1")).toMatchObject({ offences: 0, blocked_at: null });
     await post(dm("messenger", "K1", "how much is a session"));
     expect(bodyOf(sent().at(-1))).toBe(withLink(en().lines.price));
+  });
+});
+
+describe("ticket 52: the reading-safety replies on Instagram and Messenger, and the Karmic Clarity Call's name", () => {
+  afterEach(() => setFrontDoorWords({}));
+
+  it("black magic, nazar and the like: the reading-safety reply at once (no follow ask first), with [Book on WhatsApp]; a prediction: its reply with [Message on WhatsApp]", async () => {
+    await post(dm("instagram", "IGR1", "Someone did black magic on my family, please remove it"));
+    expect(sent()).toHaveLength(1);
+    const spell = sent()[0];
+    expect(bodyOf(spell)).toBe(allCopy.en.readingSpell);
+    expect(buttonsOf(spell)).toEqual([{ type: "web_url", url: WA_BOOK_IG, title: "Book on WhatsApp" }]);
+    expect(JSON.stringify(sent())).not.toContain(allCopy.en.answerConcern); // the old black-magic answer is gone
+    await post(dm("instagram", "IGR1", "When will I get pregnant?"));
+    const predict = sent().at(-1);
+    expect(bodyOf(predict)).toBe(allCopy.en.readingPredict);
+    expect(buttonsOf(predict).map((b) => b.title)).toEqual(["Message on WhatsApp"]);
+    // The same again within the same-answer minutes: nothing.
+    const before = sent().length;
+    await post(dm("instagram", "IGR1", "nazar lagi hai kya"));
+    expect(sent()).toHaveLength(before);
+    // Messenger, in Hindi.
+    await post(dm("messenger", "PR1", "मेरे ऊपर किसी ने काला जादू किया है"));
+    expect(bodyOf(sent().at(-1))).toBe(`${allCopy.hi.readingSpell}\n\nWhatsApp पर बुक करें: ${WA_BOOK_HI}`);
+    // Crisis keeps priority; insults keep their own rule.
+    await post(dm("instagram", "IGR2", "I want to die, is it black magic?"));
+    expect(bodyOf(sent().at(-1))).toBe(allCopy.en.crisis.replaceAll("*", ""));
+    const n = sent().length;
+    await post(dm("instagram", "IGR3", "black magic you idiot"));
+    expect(sent()).toHaveLength(n); // an insult: no reply, as before
+  });
+
+  it("KARMIC_FRONT_DOOR 'true': the price, booking and short-link replies name the Karmic Clarity Call (₹99, 15 min); 'false': as before", async () => {
+    const off = socialWords("en");
+    expect(JSON.stringify(off)).not.toContain("Karmic");
+    expect(JSON.stringify(socialWords("hi"))).not.toContain("कार्मिक");
+    setFrontDoorWords({ KARMIC_FRONT_DOOR: "true" });
+    const on = socialWords("en");
+    for (const t of [on.guide, on.guideMember, on.welcomeBack, on.commentBook, on.askAgain, on.lines.price, on.lines.book, on.lines.call]) expect(t).toContain("Karmic Clarity Call (₹99, 15 min)");
+    expect(on.lines.black_magic).toBe(karmicCopy.en.readingSpell);
+    expect(on.qrTitles.book).toBe("Book Clarity Call");
+    expect(on.prefill).toBe("Hi, I'd like to book a Karmic Clarity Call");
+    expect(on.ask).toBe(off.ask);
+    const hiOn = socialWords("hi");
+    for (const t of [hiOn.guide, hiOn.welcomeBack, hiOn.lines.price, hiOn.lines.book, hiOn.lines.call]) expect(t).toContain("कार्मिक क्लैरिटी कॉल (₹99, 15 मिनट)");
+    for (const w of [on, hiOn]) expect([...w.qrTitles.book].length).toBeLessThanOrEqual(20);
+    // Through the webhook: a follower's first DM gets the way to book in the new words, and the WhatsApp text prefilled to match.
+    (flags as Record<string, string>).KARMIC_FRONT_DOOR = "true";
+    followsFirst = true;
+    await post(dm("instagram", "IGK1", "hello"));
+    const m = sent()[0];
+    expect(bodyOf(m)).toBe(on.guideMember);
+    expect(decodeURIComponent(buttonsOf(m)[0].url)).toContain("Hi, I'd like to book a Karmic Clarity Call (ref: IG");
   });
 });

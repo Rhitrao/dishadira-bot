@@ -1084,7 +1084,7 @@ const hi: Copy = {
   topicMoreSection: "कुछ और",
   topicTitles: {
     RELATIONSHIPS: "रिश्ते और परिवार", HEAVY: "मन भारी या थका हुआ", DECISION: "कोई फ़ैसला या दिशा", HABIT: "कोई आदत या पैटर्न",
-    NOT_SURE: "अभी पक्का नहीं",
+    NOT_SURE: "अभी पता नहीं",
   },
   topicDescs: {
     RELATIONSHIPS: "जीवनसाथी, माता-पिता, बच्चे या आपके करीबी लोग",

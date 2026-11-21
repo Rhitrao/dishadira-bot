@@ -627,6 +627,14 @@ async function handle(env: Env, ev: Event, nowMs: number): Promise<void> {
     return void (await saveContact(env, r, nowMs));
   }
 
+  // Ticket 52 (CONTRACT v20): "someone did something to me" or a request to predict gets its reading-safety reply at once, at any step, with no
+  // follow ask before it (as on WhatsApp, where it comes before any answer); the same reply again within config.social.sameAnswerMinutes: nothing.
+  const reading = text && !junk ? readingSafety(text) : null;
+  if (reading) {
+    await answerQuestion(env, r, w, reading === "READING_SPELL" ? "black_magic" : "predict", nowMs);
+    return void (await saveContact(env, r, nowMs));
+  }
+
   const question = ev.kind === "tap" ? qrTopic(ev.payload) : null; // a quick reply, or an ice breaker before the first message
   if (r.step !== "LINKED") r.topic ??= text ? topicOf(text) : question;
   // A typed "following", "done", "ok", "haan", "follow kar diya"... at the follow ask counts as the tap ("not yet", "how do I follow" don't).

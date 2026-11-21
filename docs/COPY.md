@@ -331,7 +331,7 @@ Only while the `KARMIC_FRONT_DOOR` env flag is "true" (the test bot). After the 
 | The line under it (max 72 letters) | Work, a choice, or which way to go | काम, कोई चुनाव, या किस राह जाएँ |
 | List row (max 24 letters) | A habit or pattern | कोई आदत या पैटर्न |
 | The line under it (max 72 letters) | Something you keep doing and would like to change | कोई आदत जो बार-बार होती है और आप बदलना चाहते हैं |
-| List row (max 24 letters) | Not sure yet | अभी पक्का नहीं |
+| List row (max 24 letters) | Not sure yet | अभी पता नहीं |
 | The line under it (max 72 letters) | Talk it through with Shantha Rao first | पहले शांता राव जी से बात करके देखें |
 | The list's second section, with the rows Sessions & packages and Help (max 24 letters) | Something else | कुछ और |
 | After the tap on "Relationships & family": this line, then the next one | Thank you for sharing. Relationships and family can weigh on us a lot. | बताने के लिए धन्यवाद। रिश्ते और परिवार की बातें मन पर बहुत असर डालती हैं। |

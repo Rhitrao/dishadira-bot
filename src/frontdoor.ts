@@ -90,7 +90,7 @@ export const TOPIC_LABELS: Record<Lang, Record<TopicKey, string>> = {
   },
   hi: {
     RELATIONSHIPS: "रिश्ते और परिवार", HEAVY: "मन भारी या थका हुआ", DECISION: "कोई फ़ैसला या दिशा",
-    HABIT: "कोई आदत या पैटर्न बदलना", NOT_SURE: "अभी पक्का नहीं",
+    HABIT: "कोई आदत या पैटर्न बदलना", NOT_SURE: "अभी पता नहीं",
   },
 };
 export const cameFor = (topic: string | null | undefined, lang: Lang): string | null =>
