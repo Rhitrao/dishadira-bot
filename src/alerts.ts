@@ -16,6 +16,7 @@ import type { Env } from "./env";
 import { allowedEndpoint, pushOn, sendPush, validKeys, vapidKeys, type VapidKeys } from "./push";
 import { iso, istDay } from "./slots";
 import { otherServiceName } from "./catalogue";
+import { karmicWords } from "./copy";
 import { CONSOLE_CSP, clock, dayName, rows } from "./ui";
 
 const MIN = 60_000;
@@ -29,7 +30,8 @@ const en = {
   // the notification
   title: "New booking",
   titleMany: "New bookings",
-  call: (amount: string, when: string) => `${amount} call · ${when}`,
+  // Ticket 52: while KARMIC_FRONT_DOOR is "true" the ₹99 call is the Karmic Clarity Call ("Karmic Clarity Call · ₹99 · Today, 4:15 pm").
+  call: (amount: string, when: string) => (karmicWords() ? `Karmic Clarity Call · ${amount} · ${when}` : `${amount} call · ${when}`),
   session: (amount: string, when: string) => `${amount} session · ${when}`,
   service: (name: string, amount: string, when: string) => `${name} · ${amount} · ${when}`, // ticket 49: a catalogue service by its name
   pack: (n: number) => `Package of ${n} paid`,
@@ -83,7 +85,7 @@ type Words = { [K in keyof typeof en]: (typeof en)[K] extends (...a: infer A) =>
 const hi: Words = {
   title: "नई बुकिंग",
   titleMany: "नई बुकिंग",
-  call: (amount, when) => `${amount} कॉल · ${when}`,
+  call: (amount, when) => (karmicWords() ? `कार्मिक क्लैरिटी कॉल · ${amount} · ${when}` : `${amount} कॉल · ${when}`),
   session: (amount, when) => `${amount} सेशन · ${when}`,
   service: (name, amount, when) => `${name} · ${amount} · ${when}`,
   pack: (n) => `${n} सेशन का पैकेज: पेमेंट हो गया`,

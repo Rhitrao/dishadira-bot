@@ -10,7 +10,8 @@ import { startIntent } from "../intent";
 import { paymentCleared, personState, quietActive, noSellActiveFor } from "../noise";
 import { creditPackage } from "../packages";
 import { REMINDER_AT } from "../remind";
-import { raiseAttention, sendMessage, sendOrTemplate } from "../send";
+import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "../send";
+import { callButton } from "../menu";
 import { formatIstLang, iso, istDay } from "../slots";
 import { sendsOn } from "../switches";
 import { queueBookingAlert } from "../alerts";
@@ -103,7 +104,7 @@ async function tellReleased(env: Env, pay: Payment, table: "intros" | "sessions"
   // Ticket 49: a catalogue service's own row (cat_<key>) asks its questions again before a new time is held.
   const key = table === "sessions" ? (await db.prepare("SELECT service_key AS k FROM sessions WHERE id = ?1").bind(pay.target_id).first<{ k: string | null }>())?.k : null;
   const button =
-    table === "intros" ? { id: "menu_book", title: cp.btnBook }
+    table === "intros" ? callButton(env, cp) // ticket 52: straight to the call's steps while the front door is on
     : key && !isSeeded(key) ? { id: `cat_${key}`, title: cp.btnChooseTime }
     : { id: t.introId !== null ? `sess_offer_${pay.target_id}` : "go_s", title: cp.btnChooseTime };
   await sendMessage(env, c.id, { type: "buttons", body: cp.holdReleased, buttons: [button] }, `released:${pay.id}`);
@@ -342,7 +343,12 @@ async function confirmSession(env: Env, convId: number, paymentId: number, start
   const svc = ses?.k && !isSeeded(ses.k) ? serviceOf(ses.k) : undefined;
   if (ses && svc) {
     const name = lang === "hi" ? svc.nameHi : svc.nameEn;
-    const res = await sendMessage(env, convId, { type: "text", text: copyFor(lang).serviceConfirmed(name, p.day, p.time, reminderReaches(startUtc)) }, `paid:${paymentId}`);
+    const text: Out = { type: "text", text: copyFor(lang).serviceConfirmed(name, p.day, p.time, reminderReaches(startUtc)) };
+    // Ticket 52: once Meta approves the drafted `booking_confirmed` template (docs/TEMPLATES.md 12) and config says so, it goes outside the
+    // window, naming the service; until then exactly as above (free text inside the window; outside it the OUTSIDE_WINDOW item).
+    const res = config.templates.booking_confirmed.approved
+      ? await sendOrTemplate(env, convId, text, { type: "template", name: "booking_confirmed", params: [svc.nameEn, en.day, en.time], paramsHi: [svc.nameHi, hi.day, hi.time] }, `paid:${paymentId}`)
+      : await sendMessage(env, convId, text, `paid:${paymentId}`);
     if (res === "SENT" || res === "UNKNOWN") await startIntake(env, convId, ses.id);
     return;
   }

@@ -20,6 +20,7 @@ import { rupees, serviceName, type ForWhom } from "./copy";
 import type { Env } from "./env";
 import { aboutHtml, OUT_OF_SCOPE, seesAbout } from "./intent";
 import { INTAKE_LINE } from "./offer";
+import { cameFor } from "./frontdoor";
 import { heartbeatStale } from "./mail";
 import { isOutcomeValue, recordOutcome, undoOutcome, type OutcomeValue } from "./outcomes";
 import { razorpay } from "./pay/razorpay";
@@ -157,6 +158,7 @@ export type Booking = {
   profession: string | null; helpArea: string | null; outOfScope: number; // ticket 41 (src/intent.ts)
   serviceKey: string | null; // ticket 48: the catalogue row (NULL before 0021)
   intake: string | null; // ticket 49: their answer to the service's question after payment (src/offer.ts)
+  topic: string | null; // ticket 52: the topic tapped at the front door (src/frontdoor.ts)
 };
 
 const PAID = "('PAID','REFUND_PENDING','REFUNDED','REFUND_FAILED')";
@@ -167,7 +169,7 @@ const CALLS_SQL = (where: string) => `SELECT 'CALL' AS kind, i.id, i.slot_id AS 
     c.id AS convId, c.display_name AS name, c.wa_id AS waId, c.locale, i.service, i.call_lang AS callLang, i.for_whom AS forWhom,
     i.practitioner_id AS practitionerId, NULL AS origin, NULL AS packSize, NULL AS packNo, 0 AS firstBuy, ${prices().intro} AS amount,
     o.id AS oid, o.value, o.tapped_at AS tappedAt, o.undo_until AS undoUntil, o.applied_at AS appliedAt,
-    i.profession, i.help_area AS helpArea, ${SCOPE("'intro:' || i.id")} AS outOfScope, COALESCE(i.service_key, s.service_key) AS serviceKey, NULL AS intake
+    i.profession, i.help_area AS helpArea, ${SCOPE("'intro:' || i.id")} AS outOfScope, COALESCE(i.service_key, s.service_key) AS serviceKey, NULL AS intake, i.topic
   FROM intros i JOIN slots s ON s.id = i.slot_id JOIN conversations c ON c.id = i.conversation_id
   LEFT JOIN outcomes o ON o.intro_id = i.id AND o.slot_id = i.slot_id
   WHERE s.kind = 'CALL' AND i.state IN ('PAID','RESCHEDULED','CALLED_SESSION','CALLED_NOT_FIT','MISSED','RUDE') AND (?3 IS NULL OR i.practitioner_id = ?3) AND ${where}`;
@@ -182,7 +184,7 @@ const SESSIONS_SQL = (where: string) => `SELECT 'SESSION' AS kind, se.id, se.slo
     o.id AS oid, o.value, o.tapped_at AS tappedAt, o.undo_until AS undoUntil, o.applied_at AS appliedAt,
     (SELECT x.profession FROM intros x WHERE x.conversation_id = c.id AND x.profession IS NOT NULL ORDER BY x.id DESC LIMIT 1) AS profession,
     (SELECT x.help_area FROM intros x WHERE x.conversation_id = c.id AND x.help_area IS NOT NULL ORDER BY x.id DESC LIMIT 1) AS helpArea,
-    ${SCOPE("'session:' || se.id")} AS outOfScope, COALESCE(se.service_key, s.service_key) AS serviceKey, se.intake_answer AS intake
+    ${SCOPE("'session:' || se.id")} AS outOfScope, COALESCE(se.service_key, s.service_key) AS serviceKey, se.intake_answer AS intake, se.topic
   FROM sessions se JOIN slots s ON s.id = se.slot_id JOIN conversations c ON c.id = se.conversation_id
   LEFT JOIN intros i ON i.id = se.intro_id LEFT JOIN outcomes o ON o.session_id = se.id
   WHERE s.kind = 'SESSION' AND se.state IN ('CONFIRMED','CREDIT_BOOKED','NOT_FIT') AND (?3 IS NULL OR se.practitioner_id = ?3) AND ${where}`;
@@ -274,6 +276,9 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number, hero = false) 
   if (await seesAbout(c.env.DB, m, b.practitionerId)) extra = html`${aboutHtml(b, m.locale)}${extra}`;
   // Ticket 49: their answer to the service's question after payment, for the owner and the session's practitioner only (as notes).
   if (b.intake && maySeeNotes(m, b.practitionerId)) extra = html`<p class="muted about">${INTAKE_LINE[lang](b.intake)}</p>${extra}`;
+  // Ticket 52: what they came for (the topic tapped at the front door), for the owner and the booking's practitioner (as above).
+  const came = maySeeNotes(m, b.practitionerId) ? cameFor(b.topic, lang) : null;
+  if (came) extra = html`<p class="muted about">${came}</p>${extra}`;
   // A call: "Send session link (₹799)" for whoever may book for them (ticket 40, src/sessionlink.ts).
   const slink = b.kind === "CALL" ? await sessionLinkButton(c.env, m, b.convId) : "";
   if (slink) extra = html`${extra}<div class="acts">${slink}</div>`;

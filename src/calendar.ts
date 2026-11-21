@@ -13,6 +13,7 @@ import { config } from "./config";
 import { minutesFor, otherServiceLabel, otherServiceName } from "./catalogue";
 import { maySeeNotes } from "./notes";
 import { INTAKE_LINE } from "./offer";
+import { cameFor } from "./frontdoor";
 import { appPage, auditStmt, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { addHoliday, anyDate, bookingsOn, holidayBounds, holidayDate, holidaysBetween, removeHoliday, upcomingHolidays } from "./holidays";
 import { consoleCopy, consoleLang, type ConsoleCopy } from "./console-copy";
@@ -43,6 +44,7 @@ export type Entry = {
   convId: number; name: string | null; waId: string; service: string; forWhom: ForWhom | null; practitionerId: number | null;
   packSize: number | null; packNo: number | null; serviceKey: string | null; // ticket 48: the catalogue row (NULL before 0021)
   intake: string | null; // ticket 49: their answer to the service's question after payment (owner and practitioner only)
+  topic: string | null; // ticket 52: the topic tapped at the front door (owner and practitioner only)
 };
 // A booking that still holds its time (or held it: done, missed), and a hold that hasn't lapsed. Cancelled and expired ones free the time.
 const CALL_STATES = "('PAID','RESCHEDULED','CALLED_SESSION','CALLED_NOT_FIT','MISSED','RUDE')";
@@ -52,7 +54,7 @@ const LIVE_HOLD = "(x.state = 'HELD' AND s.state = 'HELD' AND s.hold_until > ?4 
 export async function entriesBetween(env: Env, fromUtc: string, toUtc: string, practitionerId: number | null, nowMs: number): Promise<Entry[]> {
   const common = `s.start_utc AS startUtc, s.end_utc AS endUtc, x.state, CASE WHEN x.state = 'HELD' THEN s.hold_until END AS holdUntil,
     c.id AS convId, c.display_name AS name, c.wa_id AS waId, x.service, x.for_whom AS forWhom, COALESCE(x.practitioner_id, s.practitioner_id) AS practitionerId,
-    COALESCE(x.service_key, s.service_key) AS serviceKey`;
+    COALESCE(x.service_key, s.service_key) AS serviceKey, x.topic`;
   const scope = "(?3 IS NULL OR COALESCE(x.practitioner_id, s.practitioner_id) = ?3) AND s.start_utc >= ?1 AND s.start_utc < ?2";
   const [calls, sessions] = await env.DB.batch([
     env.DB.prepare(
@@ -392,9 +394,14 @@ function entryRow(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, string
     status: bookingChip(e.state, m.locale),
     call: full ? callButton(e.waId, cc.call) : "",
     action: { label: cc.open, href: personHref(e), kind: "secondary" }, // ticket 47: the booking chosen for a note
-    extra: e.intake && maySeeNotes(m, e.practitionerId) ? html`<p class="muted about">${INTAKE_LINE[lang](e.intake)}</p>` : "", // ticket 49
+    extra: maySeeNotes(m, e.practitionerId) ? aboutLines(e, lang) : "", // ticket 49 (their question), ticket 52 (what they came for)
   });
 }
+
+const aboutLines = (e: Entry, lang: "en" | "hi") => {
+  const came = cameFor(e.topic, lang);
+  return html`${came ? html`<p class="muted about">${came}</p>` : ""}${e.intake ? html`<p class="muted about">${INTAKE_LINE[lang](e.intake)}</p>` : ""}`;
+};
 
 type DayArgs = { ymd: string; entries: Entry[]; busy: { startUtc: string; endUtc: string }[]; m: Member; cc: ConsoleCopy; nowMs: number; p: number | null; many: Map<number, string> | null; holiday: boolean };
 

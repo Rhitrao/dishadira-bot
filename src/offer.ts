@@ -20,6 +20,7 @@ import { sendSessionDays } from "./session";
 import { clearStep, sendStep, type OpenStep } from "./steps";
 import { bookingsOpen } from "./switches";
 import { iso, PRACTITIONER_SQL } from "./slots";
+import { pickedTopic } from "./frontdoor";
 
 const KEY = "([a-z0-9_]{2,40})";
 const CAT = new RegExp(`^cat_${KEY}$`);
@@ -31,7 +32,7 @@ const nowIso = () => iso(Date.now());
 const nameOf = (s: Service, lang: Lang) => (lang === "hi" ? s.nameHi : s.nameEn);
 
 // The ₹99 call instead, with Help beside it: after "only after the first call", and after a "yes" to the screen.
-const callFirstOut = (cp: Copy, body: string): Out => ({ type: "buttons", body, buttons: [{ id: "book_call", title: cp.btnBook }, { id: "menu_how", title: cp.btnHelp }] });
+const callFirstOut = (cp: Copy, body: string): Out => ({ type: "buttons", body, buttons: [{ id: "book_call", title: cp.btnBookCall }, { id: "menu_how", title: cp.btnHelp }] });
 const screenOut = (cp: Copy, key: string, q: 1 | 2): Out => ({
   type: "buttons",
   body: q === 1 ? cp.screenQ1 : cp.screenQ2,
@@ -114,13 +115,14 @@ export async function offerChoice(env: Env, choice: string | null, convId: numbe
     .bind(conv.id, key)
     .first<{ id: number }>();
   let sid = existing?.id ?? 0;
+  const topic = await pickedTopic(db, conv.id); // ticket 52: the topic tapped at the front door, if any
   if (sid) {
-    await db.prepare("UPDATE sessions SET state = 'OFFERED', call_lang = ?2, updated_at = ?3 WHERE id = ?1").bind(sid, lang, nowIso()).run();
+    await db.prepare("UPDATE sessions SET state = 'OFFERED', call_lang = ?2, updated_at = ?3, topic = ?4 WHERE id = ?1").bind(sid, lang, nowIso(), topic).run();
   } else {
     // `service` (HEALING / PROTECTION) and who it is for belong to the pranic-healing session; a catalogue service is for the person themself.
     const ins = await db
-      .prepare(`INSERT INTO sessions (conversation_id, service, for_whom, call_lang, origin, practitioner_id, service_key) VALUES (?1, 'HEALING', 'SELF', ?2, 'SELF', ${PRACTITIONER_SQL}, ?3)`)
-      .bind(conv.id, lang, key)
+      .prepare(`INSERT INTO sessions (conversation_id, service, for_whom, call_lang, origin, practitioner_id, service_key, topic) VALUES (?1, 'HEALING', 'SELF', ?2, 'SELF', ${PRACTITIONER_SQL}, ?3, ?4)`)
+      .bind(conv.id, lang, key, topic)
       .run();
     sid = ins.meta.last_row_id;
   }

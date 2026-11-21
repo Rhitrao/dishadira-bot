@@ -1,6 +1,6 @@
 // Builds docs/COPY.md from src/copy.ts, so the review document can never drift from what the bot sends.
 // test/copy.test.ts fails when the file is out of date; regenerate it with:  UPDATE_COPY_DOC=1 npx vitest run test/copy.test.ts
-import { allCopy, type Copy, type Lang } from "../src/copy";
+import { allCopy, karmicCopy, type Copy, type Lang } from "../src/copy";
 
 type Entry = [path: string, where: string];
 
@@ -51,7 +51,8 @@ const sample: Record<string, (c: Copy, lang: Lang) => string> = {
   intakeAsk: (c) => c.intakeAsk("{question}"),
 };
 
-const sections: { title: string; intro?: string; entries: Entry[] }[] = [
+// `karmic`: the section shows the words while KARMIC_FRONT_DOOR is "true" (ticket 52), from karmicCopy.
+const sections: { title: string; intro?: string; entries: Entry[]; karmic?: boolean }[] = [
   {
     title: "1. First message and menu",
     intro: "What a customer sees first. The greeting is one message in both languages, followed by two buttons: English and हिंदी.",
@@ -339,14 +340,66 @@ const sections: { title: string; intro?: string; entries: Entry[] }[] = [
       ["readingPredict", "A request to predict death, illness, pregnancy, exam or court results, or an exact date: buttons Help, Talk to a person"],
     ],
   },
+  {
+    title: "8f. The Karmic Coaching front door (ticket 52)",
+    intro:
+      "Only while the `KARMIC_FRONT_DOOR` env flag is \"true\" (the test bot). After the language choice, and on Book, the bot asks what the person would like help with (a list: five topics, then Sessions & packages and Help). Every topic recommends the Karmic Clarity Call first; with `NEW_SERVICES` on too, a second message lists the services that can be booked directly for that topic. The topic is kept on the booking for the team (\"Came for: …\"); it is not health data. The Hindi is for review.",
+    entries: [
+      ["topicBody", "\"What would you like help with?\" (a list; button below)"],
+      ["topicButton", "The list's button (max 20 letters)"],
+      ["topicSection", "The list's first section (max 24 letters)"],
+      ...(["RELATIONSHIPS", "HEAVY", "DECISION", "HABIT", "NOT_SURE"] as const).flatMap((t): Entry[] => [
+        [`topicTitles.${t}`, "List row (max 24 letters)"],
+        [`topicDescs.${t}`, "The line under it (max 72 letters)"],
+      ]),
+      ["topicMoreSection", "The list's second section, with the rows Sessions & packages and Help (max 24 letters)"],
+      ...(["RELATIONSHIPS", "HEAVY", "DECISION", "HABIT", "NOT_SURE"] as const).map((t): Entry => [`topicLines.${t}`, `After the tap on "${allCopy.en.topicTitles[t]}": this line, then the next one`]),
+      ["clarityPitch", "Below the line above, in the same message (buttons: Book ₹99 call, Help)"],
+      ["btnBookCall", "The button that books the ₹99 call itself (max 20 letters; also under the reading-safety reply and \"only after the first call\")"],
+      ["directBody", "Only with NEW_SERVICES on: the topic's services, to book directly (a list; button below; rows as in 8e)"],
+      ["directButton", "That list's button (max 20 letters)"],
+      ["myCallWord", "My bookings: a booked ₹99 call (with the flag on, see 8g)"],
+    ],
+  },
+  {
+    title: "8g. With the front door on: the words that change (ticket 52)",
+    karmic: true,
+    intro:
+      "While `KARMIC_FRONT_DOOR` is \"true\", these messages read as below instead of as in the sections above: the brand line above the greeting (its disclosure unchanged), \"Book\" on the menu, and the ₹99 call named the Karmic Clarity Call wherever the bot's own words name it. Approved Meta templates never change. Instagram and Messenger name it the same way in their price, booking and short-link replies.",
+    entries: [
+      ["greeting", "Greeting (then the buttons English / हिंदी)"],
+      ["btnBook", "Menu button (max 20 letters): opens \"What would you like help with?\""],
+      ["payBody", "Pay message for the call"],
+      ["stillHeld", "The same time tapped again while it is still held"],
+      ["confirmed", "Call confirmed (inside the 24-hour window; outside it the approved call_booked template, unchanged)"],
+      ["reminderCall", "Day-before reminder (inside the window; outside it the approved reminder template, unchanged)"],
+      ["myCallWord", "My bookings: a booked call"],
+      ["callRequest", "\"Call me\", \"number please\""],
+      ["fallbackQuestion", "The assistant's safe fallback for a question"],
+      ["faqAnswers.price", "Help → Price"],
+      ["packagesBody", "Sessions & packages (list)"],
+      ["rowIntroTitle", "Its first row (max 24 letters)"],
+      ["rowIntroDesc", "The line under it (max 72 letters)"],
+      ["softGate", "Soft nudge before a session or package (buttons: Book ₹99 call, Continue)"],
+      ["autoFollowUp1", "Automatic follow-up, 60 minutes"],
+      ["autoFollowUp2", "Automatic follow-up, 20 hours"],
+      ["offerBody", "The Book list of ticket 49 (not shown while the front door is on)"],
+      ["offerRowDesc", "The line under a service's row"],
+      ["offerCallFirst", "A service offered only after the first call"],
+      ["screenToCall", "A \"Yes\" to a health question"],
+      ["readingSpell", "\"Someone did something to me\""],
+    ],
+  },
 ];
 
 const get = (c: Copy, path: string): unknown => path.split(".").reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], c);
 const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\n/g, " ⏎ ");
 
 export function copyKeys(): string[] {
-  return sections.flatMap((s) => s.entries.map(([path]) => path));
+  return sections.filter((s) => !s.karmic).flatMap((s) => s.entries.map(([path]) => path));
 }
+// The keys section 8g shows with the flag on: every key whose words change with it.
+export const karmicKeys = (): string[] => sections.filter((s) => s.karmic).flatMap((s) => s.entries.map(([path]) => path));
 
 export function renderCopyDoc(): string {
   const out: string[] = [
@@ -366,9 +419,10 @@ export function renderCopyDoc(): string {
     out.push("| Where it appears | English | हिंदी |", "|---|---|---|");
     for (const [path, where] of sec.entries) {
       const text = (lang: Lang) => {
-        const v = get(allCopy[lang], path);
+        const c = (sec.karmic ? karmicCopy : allCopy)[lang];
+        const v = get(c, path);
         const key = path.split(".").pop()!;
-        if (typeof v === "function") return sample[key](allCopy[lang], lang);
+        if (typeof v === "function") return sample[key](c, lang);
         return String(v);
       };
       out.push(`| ${cell(where)} | ${cell(text("en"))} | ${cell(text("hi"))} |`);

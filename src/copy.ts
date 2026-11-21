@@ -8,6 +8,7 @@ export type Lang = "en" | "hi";
 export type FaqId = (typeof config.faqIds)[number];
 export type ForWhom = "SELF" | "FAMILY" | "PET";
 export type IntentArea = (typeof config.intent.areas)[number];
+export type TopicKey = (typeof config.frontDoor.topics)[number];
 
 // Any locale we do not know (an old row, a typo) reads as English.
 export const langOf = (locale: string | null | undefined): Lang => (locale === "hi" ? "hi" : "en");
@@ -357,6 +358,20 @@ export type Copy = {
   intakeThanks: string;
   readingSpell: string; // (a) "someone did something to me": never confirmed, nothing removed, the ₹99 call
   readingPredict: string; // (b) death, illness, pregnancy, exam or court results, exact dates: not predicted; a doctor for health
+  // Ticket 52 (CONTRACT v20): the Karmic Coaching front door behind KARMIC_FRONT_DOOR (src/frontdoor.ts). These keys are used only while the
+  // flag is "true"; with it on, some keys above also read differently (KARMIC below: the ₹99 call is the Karmic Clarity Call).
+  btnBookCall: string; // max 20 chars: the button that books the ₹99 call itself (id book_call)
+  myCallWord: string; // My bookings: what a booked ₹99 call is called
+  topicBody: string; // "What would you like help with?" (a list)
+  topicButton: string; // max 20 chars
+  topicSection: string; // max 24 chars
+  topicMoreSection: string; // max 24 chars: Sessions & packages, Help
+  topicTitles: Record<TopicKey, string>; // max 24 chars each
+  topicDescs: Record<TopicKey, string>; // max 72 chars each
+  topicLines: Record<TopicKey, string>; // one warm line after the tap, above clarityPitch
+  clarityPitch: string; // what the Karmic Clarity Call is (buttons: Book ₹99 call, Help)
+  directBody: string; // "Or book directly" (a list of the topic's services), only with NEW_SERVICES on too
+  directButton: string; // max 20 chars
   amma: AmmaCopy;
 };
 
@@ -371,10 +386,12 @@ const GREETING =
   "आपको जवाब देने के लिए आपके मैसेज हमारे असिस्टेंट और AI सेवा प्रदाता द्वारा प्रोसेस किए जाते हैं। प्राइवेसी: disha-dira.com/privacy.html\n\n" +
   "Please choose your language / कृपया भाषा चुनें:";
 const CHOOSE_LANGUAGE = "Please choose your language / कृपया भाषा चुनें:";
+// Ticket 52: the brand line above the greeting while KARMIC_FRONT_DOOR is "true" (the disclosure below it stays word for word).
+export const BRAND_LINE = "Disha Dira · Karmic Coaching with Shantha Rao";
 
 // Every message with a price in it is built from one set of prices. The body below is the builder's, left unindented so the wording
 // reads as before; copyFor() builds it once per set of prices.
-function buildCopy(P: Prices): Record<Lang, Copy> {
+function buildCopy(P: Prices, karmic = false): Record<Lang, Copy> {
 const intro = rupees(P.intro);
 const sessionPrice = rupees(P.single);
 const p10 = P.pack10;
@@ -384,6 +401,9 @@ const packPrice = (n: number) => rupees(n === p10.sessions ? p10.paise : p20.pai
 const VOICE = "a voice call by phone (audio only, no video)";
 const VOICE_HI = "फ़ोन पर वॉइस कॉल (सिर्फ़ आवाज़, वीडियो नहीं)";
 const P_CALL_MIN = config.slots.callMinutes; // ticket 49: the first call's length, as the other call lines say it
+// Ticket 52: the ₹99 call's name while KARMIC_FRONT_DOOR is "true".
+const CLARITY = `Karmic Clarity Call (${intro}, ${P_CALL_MIN} min)`;
+const CLARITY_HI = `कार्मिक क्लैरिटी कॉल (${intro}, ${P_CALL_MIN} मिनट)`;
 // "Use Priya" / "यही नाम: Priya": the WhatsApp name, shortened so the button stays within WhatsApp's 20 characters.
 const fitName = (prefix: string, name: string) => {
   const room = 20 - [...prefix].length;
@@ -726,6 +746,34 @@ const en: Copy = {
   readingPredict:
     "Readings and sessions don't predict things like death, illness, pregnancy, exam or court results, or exact dates, so we can't answer that. " +
     "For anything about your health, please always see a doctor.",
+  btnBookCall: `Book ${intro} call`,
+  myCallWord: "call",
+  topicBody: "What would you like help with? Choose one below, or type it in your own words.",
+  topicButton: "Choose",
+  topicSection: "Choose a topic",
+  topicMoreSection: "Something else",
+  topicTitles: {
+    RELATIONSHIPS: "Relationships & family", HEAVY: "Feeling heavy or drained", DECISION: "A decision or direction", HABIT: "A habit or pattern",
+    NOT_SURE: "Not sure yet",
+  },
+  topicDescs: {
+    RELATIONSHIPS: "Partner, parents, children or people close to you",
+    HEAVY: "Low, tired or weighed down lately",
+    DECISION: "Work, a choice, or which way to go",
+    HABIT: "Something you keep doing and would like to change",
+    NOT_SURE: "Talk it through with Shantha Rao first",
+  },
+  topicLines: {
+    RELATIONSHIPS: "Thank you for sharing. Relationships and family can weigh on us a lot.",
+    HEAVY: "Thank you for sharing. We're sorry you've been feeling this way.",
+    DECISION: "Thank you for sharing. It can help to talk a decision through.",
+    HABIT: "Thank you for sharing. Wanting to change a pattern is a good place to start.",
+    NOT_SURE: "That's completely fine.",
+  },
+  clarityPitch:
+    `A good first step is the ${CLARITY}: Shantha Rao calls you by phone (audio only, no video), listens to what's going on, and suggests what suits you.`,
+  directBody: "Or, if you already know what you'd like, you can book it directly:",
+  directButton: "See options",
   amma: ammaEn,
 };
 
@@ -1028,20 +1076,150 @@ const hi: Copy = {
   readingPredict:
     "रीडिंग और सेशन मौत, बीमारी, गर्भ, परीक्षा या कोर्ट के नतीजे, या कोई सटीक तारीख जैसी बातें नहीं बताते, इसलिए हम इसका जवाब नहीं दे सकते। " +
     "सेहत से जुड़ी किसी भी बात के लिए कृपया हमेशा डॉक्टर से मिलें।",
+  btnBookCall: `${intro} कॉल बुक करें`,
+  myCallWord: "कॉल",
+  topicBody: "आप किस बारे में मदद चाहेंगे? नीचे से एक चुनें, या अपने शब्दों में लिखें।",
+  topicButton: "चुनें",
+  topicSection: "विषय चुनें",
+  topicMoreSection: "कुछ और",
+  topicTitles: {
+    RELATIONSHIPS: "रिश्ते और परिवार", HEAVY: "मन भारी या थका हुआ", DECISION: "कोई फ़ैसला या दिशा", HABIT: "कोई आदत या पैटर्न",
+    NOT_SURE: "अभी पक्का नहीं",
+  },
+  topicDescs: {
+    RELATIONSHIPS: "जीवनसाथी, माता-पिता, बच्चे या आपके करीबी लोग",
+    HEAVY: "कुछ समय से उदास, थका हुआ या बोझिल लगना",
+    DECISION: "काम, कोई चुनाव, या किस राह जाएँ",
+    HABIT: "कोई आदत जो बार-बार होती है और आप बदलना चाहते हैं",
+    NOT_SURE: "पहले शांता राव जी से बात करके देखें",
+  },
+  topicLines: {
+    RELATIONSHIPS: "बताने के लिए धन्यवाद। रिश्ते और परिवार की बातें मन पर बहुत असर डालती हैं।",
+    HEAVY: "बताने के लिए धन्यवाद। हमें दुख है कि आप ऐसा महसूस कर रहे हैं।",
+    DECISION: "बताने के लिए धन्यवाद। किसी फ़ैसले के बारे में बात कर लेने से मदद मिलती है।",
+    HABIT: "बताने के लिए धन्यवाद। किसी पैटर्न को बदलने की इच्छा एक अच्छी शुरुआत है।",
+    NOT_SURE: "कोई बात नहीं।",
+  },
+  clarityPitch:
+    `पहला कदम ${CLARITY_HI} हो सकता है: शांता राव जी आपको फ़ोन पर कॉल करती हैं (सिर्फ़ आवाज़, वीडियो नहीं), आपकी बात सुनती हैं, और बताती हैं कि आपके लिए क्या ठीक रहेगा।`,
+  directBody: "या, अगर आप जानते हैं कि आपको क्या चाहिए, तो सीधे बुक कर सकते हैं:",
+  directButton: "विकल्प देखें",
   amma: ammaEn, // Amma's page copy stays English
 };
 
-return { en, hi };
+if (!karmic) return { en, hi };
+
+// ---- Ticket 52 (CONTRACT v20): KARMIC_FRONT_DOOR "true". The brand line above the greeting, "Book" on the menu (it opens "What would you like
+// help with?"), and the ₹99 call named the Karmic Clarity Call wherever the bot's own words name it. Approved templates never change.
+const karmicEn: Partial<Copy> = {
+  greeting: `${BRAND_LINE}\n\n${GREETING}`,
+  btnBook: "Book",
+  payBody: (day, time, until, link) =>
+    `Your ${CLARITY}: ${day} at ${time} is held for you until ${until} (India time).\n\n` +
+    `Tap "Pay ${intro}" below to open Razorpay's secure payment page. Pay by any UPI app, card or net banking. Please don't pay twice.\n\n` +
+    `If the button does not open, use this link: ${link}`,
+  stillHeld: (day, time, until, link) =>
+    `Your ${CLARITY}: ${day} at ${time} is still held for you until ${until} (India time). It is booked once you pay.\n\n` +
+    `Tap "Pay ${intro}" below to open Razorpay's secure payment page. Please don't pay twice.\n\n` +
+    `If the button does not open, use this link: ${link}`,
+  confirmed: (day, time, callLang) =>
+    `Thank you, your ${CLARITY} is booked. Shantha Rao will call you on ${day} at ${time} (India time), on the number you are messaging from. It is ${VOICE}, in ${callLang === "hi" ? "Hindi" : "English"}. ` +
+    "The call may come from a number you don't know, so please keep your phone nearby. This WhatsApp number is for messages only, not calls.",
+  reminderCall: (day, time) =>
+    `Reminder: your ${CLARITY} with Shantha Rao is tomorrow, ${day} at ${time} (India time). It is ${VOICE}. Please keep your phone with you.`,
+  myCallWord: CLARITY,
+  callRequest: `We don't take calls on this WhatsApp number. The quickest way to talk to Shantha Rao is the ${CLARITY}: you choose a time, and she calls you. It is ${VOICE}.`,
+  fallbackQuestion: `Thanks for asking. Shantha Rao can explain this properly on the ${CLARITY}, or you can ask a person from our team.`,
+  faqAnswers: {
+    ...en.faqAnswers,
+    price:
+      `The ${CLARITY} is the first step. A single session is ${sessionPrice}. ` +
+      `Packages: ${p10.sessions} sessions for ${packPrice(p10.sessions)} (${perSession(p10)} each) or ${p20.sessions} for ${packPrice(p20.sessions)} (${perSession(p20)} each), with no expiry.`,
+  },
+  packagesBody: `Sessions are ${config.slots.sessionMinutes} minutes, ${VOICE}. Choose an option. Most people start with the ${CLARITY}, so Shantha Rao can suggest what suits them.`,
+  rowIntroTitle: "Karmic Clarity Call",
+  rowIntroDesc: `${intro} · ${P_CALL_MIN} min · voice call with Shantha Rao (no video)`,
+  softGate: `Most people start with the ${CLARITY}, so Shantha Rao can understand what you need first. Would you like to do that, or continue?`,
+  autoFollowUp1: `Just checking in: did you find what you were looking for? If you'd like to talk to Shantha Rao, the ${CLARITY}, a voice call (no video), is the easiest way. You choose the time, and she calls you.`,
+  autoFollowUp2: `Whenever you're ready, you can book the ${CLARITY}, a voice call (no video) with Shantha Rao. ${hoursText("en", false)}`,
+  offerBody: `What would you like to book? Every call and session is ${VOICE}. Most people start with the ${CLARITY}, so Shantha Rao can suggest what suits them.`,
+  offerRowDesc: (minutes, price, callFirst) => `${minutes} min · ${price} · voice call${callFirst ? " · after the Clarity Call" : ""}`,
+  offerCallFirst: (name) =>
+    `Thank you for your interest. ${name} is offered after a first call with Shantha Rao, so she can understand what you're looking for and suggest what suits you. ` +
+    `The first call is the ${CLARITY}, ${VOICE}.`,
+  screenToCall: (name) =>
+    `Thank you for telling us. For your wellbeing, Shantha Rao would like to speak with you first on the ${CLARITY}, before a ${name}. ` +
+    "She will listen and suggest what suits you. Please keep following your doctor's advice.",
+  readingSpell:
+    "Thank you for telling us. We don't look into or confirm anything like that, and Shantha Rao doesn't remove anything or do any ritual for it. " +
+    `Her sessions work on how you feel and how you respond to what's happening around you. If you'd like to talk it over, the ${CLARITY} is a gentle first step. ` +
+    "If you ever feel unsafe, please call 112.",
+};
+const karmicHi: Partial<Copy> = {
+  greeting: `${BRAND_LINE}\n\n${GREETING}`,
+  btnBook: "बुक करें",
+  payBody: (day, time, until, link) =>
+    `आपकी ${CLARITY_HI}: ${day}, ${time} का समय आपके लिए ${until} बजे तक (भारतीय समय) रोका गया है।\n\n` +
+    `नीचे "${intro} भुगतान करें" बटन दबाएँ, Razorpay का सुरक्षित भुगतान पेज खुलेगा। किसी भी UPI ऐप, कार्ड या नेट बैंकिंग से भुगतान करें। कृपया दो बार भुगतान न करें।\n\n` +
+    `अगर बटन न खुले, तो यह लिंक खोलें: ${link}`,
+  stillHeld: (day, time, until, link) =>
+    `आपकी ${CLARITY_HI}: ${day}, ${time} का समय आपके लिए ${until} बजे तक (भारतीय समय) रोका हुआ है। भुगतान के बाद ही बुकिंग पक्की होगी।\n\n` +
+    `नीचे "${intro} भुगतान करें" बटन दबाएँ, Razorpay का सुरक्षित भुगतान पेज खुलेगा। कृपया दो बार भुगतान न करें।\n\n` +
+    `अगर बटन न खुले, तो यह लिंक खोलें: ${link}`,
+  confirmed: (day, time, callLang) =>
+    `धन्यवाद, आपकी ${CLARITY_HI} बुक हो गई है। शांता राव जी ${day} को ${time} बजे (भारतीय समय) आपको उसी नंबर पर कॉल करेंगी जिससे आप मैसेज कर रहे हैं। यह ${VOICE_HI} होगी, ${callLang === "hi" ? "हिंदी" : "अंग्रेज़ी"} में। ` +
+    "कॉल किसी अनजान नंबर से आ सकती है, इसलिए कृपया फ़ोन पास रखें। यह WhatsApp नंबर सिर्फ़ मैसेज के लिए है, कॉल के लिए नहीं।",
+  reminderCall: (day, time) =>
+    `याद दिला दें: शांता राव जी के साथ आपकी ${CLARITY_HI} कल, ${day} को ${time} बजे (भारतीय समय) है। यह ${VOICE_HI} है। कृपया फ़ोन अपने पास रखें।`,
+  myCallWord: CLARITY_HI,
+  callRequest: `इस WhatsApp नंबर पर हम कॉल नहीं लेते। शांता राव जी से बात करने का सबसे आसान तरीका ${CLARITY_HI} है: आप समय चुनें, और वे आपको कॉल करेंगी। यह ${VOICE_HI} होती है।`,
+  fallbackQuestion: `पूछने के लिए धन्यवाद। शांता राव जी ${CLARITY_HI} पर इसे अच्छे से समझा सकती हैं, या आप हमारी टीम के किसी व्यक्ति से बात कर सकते हैं।`,
+  faqAnswers: {
+    ...hi.faqAnswers,
+    price:
+      `पहला कदम ${CLARITY_HI} है। एक सेशन ${sessionPrice} का है। ` +
+      `पैकेज: ${p10.sessions} सेशन ${packPrice(p10.sessions)} में (${perSession(p10)} प्रति सेशन) या ${p20.sessions} सेशन ${packPrice(p20.sessions)} में (${perSession(p20)} प्रति सेशन), कोई समय-सीमा नहीं।`,
+  },
+  packagesBody: `हर सेशन ${config.slots.sessionMinutes} मिनट का होता है: ${VOICE_HI}। एक विकल्प चुनें। ज़्यादातर लोग ${CLARITY_HI} से शुरू करते हैं, ताकि शांता राव जी बता सकें कि उनके लिए क्या ठीक रहेगा।`,
+  rowIntroTitle: "कार्मिक क्लैरिटी कॉल",
+  rowIntroDesc: `${intro} · ${P_CALL_MIN} मिनट · शांता राव जी से वॉइस कॉल (वीडियो नहीं)`,
+  softGate: `ज़्यादातर लोग पहले ${CLARITY_HI} करते हैं, ताकि शांता राव जी आपकी ज़रूरत समझ सकें। क्या आप ऐसा करना चाहेंगे, या आगे बढ़ें?`,
+  autoFollowUp1: `हम बस यह जानना चाहते थे: क्या आपको वह मिल गया जो आप ढूँढ रहे थे? अगर आप शांता राव जी से बात करना चाहें, तो ${CLARITY_HI}, एक वॉइस कॉल (वीडियो नहीं), सबसे आसान तरीका है। समय आप चुनते हैं, और वे आपको कॉल करती हैं।`,
+  autoFollowUp2: `जब भी आप तैयार हों, शांता राव जी के साथ ${CLARITY_HI} बुक कर सकते हैं, एक वॉइस कॉल (वीडियो नहीं)। ${hoursText("hi", false)}`,
+  offerBody: `आप क्या बुक करना चाहेंगे? हर कॉल और सेशन ${VOICE_HI} होता है। ज़्यादातर लोग ${CLARITY_HI} से शुरू करते हैं, ताकि शांता राव जी बता सकें कि उनके लिए क्या ठीक रहेगा।`,
+  offerRowDesc: (minutes, price, callFirst) => `${minutes} मिनट · ${price} · वॉइस कॉल${callFirst ? " · क्लैरिटी कॉल के बाद" : ""}`,
+  offerCallFirst: (name) =>
+    `आपकी रुचि के लिए धन्यवाद। ${name} शांता राव जी के साथ पहली कॉल के बाद ही होती है, ताकि वे समझ सकें कि आप क्या चाहते हैं और बता सकें कि आपके लिए क्या ठीक रहेगा। ` +
+    `पहली कॉल ${CLARITY_HI} है, ${VOICE_HI}।`,
+  screenToCall: (name) =>
+    `बताने के लिए धन्यवाद। आपकी भलाई के लिए, ${name} से पहले शांता राव जी आपसे ${CLARITY_HI} पर बात करना चाहेंगी। ` +
+    "वे आपकी बात सुनेंगी और बताएँगी कि आपके लिए क्या ठीक रहेगा। कृपया अपने डॉक्टर की सलाह मानते रहें।",
+  readingSpell:
+    "बताने के लिए धन्यवाद। हम ऐसी किसी बात की जाँच या पुष्टि नहीं करते, और शांता राव जी इसके लिए कुछ हटाने या कोई विधि करने का काम नहीं करतीं। " +
+    `उनके सेशन इस पर काम करते हैं कि आप कैसा महसूस करते हैं और आसपास जो हो रहा है उस पर कैसे प्रतिक्रिया देते हैं। अगर आप इस बारे में बात करना चाहें, तो ${CLARITY_HI} एक आसान पहला कदम है। ` +
+    "अगर आप कभी असुरक्षित महसूस करें, तो 112 पर कॉल करें।",
+};
+return { en: { ...en, ...karmicEn }, hi: { ...hi, ...karmicHi } };
 }
 
 // The copy at config's prices (what tests and docs/COPY.md compare against), and the copy at the prices in force.
 export const allCopy: Record<Lang, Copy> = buildCopy(DEFAULT_PRICES);
 const built = new Map<string, Record<Lang, Copy>>([[JSON.stringify(DEFAULT_PRICES), allCopy]]);
 
+// Ticket 52: the same with KARMIC_FRONT_DOOR "true" (tests and docs/COPY.md compare against it).
+export const karmicCopy: Record<Lang, Copy> = buildCopy(DEFAULT_PRICES, true);
+built.set(`${JSON.stringify(DEFAULT_PRICES)}:karmic`, karmicCopy);
+
+// Ticket 52: whether the bot's words are the Karmic front door's. Like the prices, set at the start of every request and cron run
+// (src/index.ts) from the KARMIC_FRONT_DOOR env flag, so the synchronous copyFor() follows it. Off unless set.
+let karmic = false;
+export const setFrontDoorWords = (env: { KARMIC_FRONT_DOOR?: string }) => void (karmic = env.KARMIC_FRONT_DOOR === "true");
+export const karmicWords = (): boolean => karmic;
+
 export function copyFor(locale: string | null | undefined): Copy {
   const p = prices();
-  const key = JSON.stringify(p);
+  const key = JSON.stringify(p) + (karmic ? ":karmic" : "");
   let c = built.get(key);
-  if (!c) built.set(key, (c = buildCopy(p)));
+  if (!c) built.set(key, (c = buildCopy(p, karmic)));
   return c[langOf(locale)];
 }

@@ -271,6 +271,9 @@ export const config = {
     review_ask: { approved: false, language: "en", hi: { name: "review_ask_hi", approved: false, language: "hi" } },
     // The team's "Send session link" with a time held, once the window has closed (ticket 40, docs/TEMPLATES.md 11). Utility.
     session_link: { approved: false, language: "en", hi: { name: "session_link_hi", approved: false, language: "hi" } },
+    // Ticket 52 (CONTRACT v20, docs/TEMPLATES.md 12): the confirmation of a catalogue service (a Tarot reading …) paid when the 24-hour window
+    // has closed. A draft, not submitted. While it is false the bot sends nothing then and the team gets the OUTSIDE_WINDOW item (ticket 49).
+    booking_confirmed: { approved: false, language: "en", hi: { name: "booking_confirmed_hi", approved: false, language: "hi" } },
   },
   languages: ["en", "hi"],
   faqIds: ["what_is_this", "how_it_works", "price", "timings", "refund", "privacy"],
@@ -461,6 +464,20 @@ export const config = {
       "pass ho jaungi", "case jeetunga", "case jeetungi", "case jeet jaunga", "case ka result", "case ka faisla",
       "किस दिन होगा", "कौन सी तारीख", "कब मरूंगा", "कब मरूंगी", "पास होगा", "पास हो जाऊंगा", "पास हो जाऊंगी", "केस जीतूंगा", "केस का फैसला",
     ],
+  },
+  // Ticket 52 (CONTRACT v20): the Karmic Coaching front door, behind the KARMIC_FRONT_DOOR env flag (src/frontdoor.ts). Book asks what the
+  // person would like help with (five fixed topics, never free text, not health data) and recommends the ₹99 Karmic Clarity Call first; with
+  // NEW_SERVICES on too, the services of the topic's pathways can be booked directly (the single session is RELEASE).
+  frontDoor: {
+    topics: ["RELATIONSHIPS", "HEAVY", "DECISION", "HABIT", "NOT_SURE"],
+    pathways: {
+      RELATIONSHIPS: ["UNDERSTAND", "RELEASE"],
+      HEAVY: ["RELEASE"],
+      DECISION: ["UNDERSTAND"],
+      HABIT: ["REWIRE"],
+      NOT_SURE: [],
+    },
+    topicHours: 24, // a booking started within this many hours of the topic tap is "for" that topic
   },
   // Automatic replies to Instagram DMs and Facebook Messenger (ticket 32, src/social.ts), behind SOCIAL_REPLIES. Public addresses only.
   // Automatic follow-ups (ticket 35, src/followup.ts): on the channel they wrote on, to someone who sent a real message and hasn't booked.

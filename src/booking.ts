@@ -12,6 +12,7 @@ import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
 import { contactFor, razorpay } from "./pay/razorpay";
 import { pausedOut } from "./menu";
+import { frontDoorOn, pickedTopic, sendTopicList } from "./frontdoor";
 import { customerPayLink, existingPayLink, untilLabel } from "./paylink";
 import type { PaymentProvider } from "./pay/provider";
 import { raiseAttention, sendMessage, type ListSection, type Out } from "./send";
@@ -148,6 +149,16 @@ export const whoButtons = (cp: Copy, service: string, prefix = "who"): Out => ({
 // Handles every booking id above, plus the legacy slot_<SERVICE>_<startUtc>. Returns false for any other choice.
 export async function bookingChoice(env: Env, choice: string | null, convId: number, msgId: string, provider: PaymentProvider = razorpay(env)): Promise<boolean> {
   if (!choice) return false;
+  // Ticket 52: with KARMIC_FRONT_DOOR "true", "Book" asks what they'd like help with (src/frontdoor.ts); the call itself is book_call.
+  if (choice === "menu_book" && frontDoorOn(env)) {
+    const conv = await loadConv(env.DB, convId);
+    if (!conv) return false;
+    const cp = copyFor(conv.locale);
+    await clearStep(env.DB, conv.id);
+    if (!(await bookingsOpen(env))) await sendMessage(env, conv.id, pausedOut(cp), `${msgId}:book`);
+    else await sendTopicList(env, conv.id, cp, `${msgId}:topics`);
+    return true;
+  }
   // Ticket 49: "Book" shows the list of what can be booked when more services are offered; its call row (book_call) is the old "Book".
   if (choice === "menu_book") {
     const conv = await loadConv(env.DB, convId);
@@ -355,9 +366,10 @@ async function startBooking(env: Env, provider: PaymentProvider, conv: Conv, ser
   const slot = await db.prepare("SELECT id FROM slots WHERE kind = 'CALL' AND start_utc = ?1 AND owner_id = ?2").bind(startUtc, conv.id).first<{ id: number }>();
 
   // 3. Intro (HELD) and payment (CREATING), then the link. The call is in the language of this chat.
+  // Ticket 52: the topic they tapped at the front door, if any (src/frontdoor.ts).
   const intro = await db
-    .prepare(`INSERT INTO intros (conversation_id, slot_id, service, for_whom, call_lang, practitioner_id, service_key) VALUES (?1, ?2, ?3, ?4, ?5, ${PRACTITIONER_SQL}, '${CALL_KEY}')`)
-    .bind(conv.id, slot?.id ?? null, service, forWhom, lang)
+    .prepare(`INSERT INTO intros (conversation_id, slot_id, service, for_whom, call_lang, practitioner_id, service_key, topic) VALUES (?1, ?2, ?3, ?4, ?5, ${PRACTITIONER_SQL}, '${CALL_KEY}', ?6)`)
+    .bind(conv.id, slot?.id ?? null, service, forWhom, lang, await pickedTopic(db, conv.id))
     .run();
   const introId = intro.meta.last_row_id;
   const linkId = `di-intro-${introId}`; // unique, tied to the intro; <= 40 chars (Razorpay reference_id limit)

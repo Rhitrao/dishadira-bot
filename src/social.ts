@@ -47,9 +47,9 @@ import type { Context } from "hono";
 import { html } from "hono/html";
 import { prices } from "./business";
 import { config } from "./config";
-import { copyFor, rupees, type Copy, type Lang } from "./copy";
+import { copyFor, karmicWords, rupees, type Copy, type Lang } from "./copy";
 import type { Env } from "./env";
-import { classifyWithoutAI, isAckWord, isJobText, isMenuWord, isOptOut, isThreat, LINK } from "./gate";
+import { classifyWithoutAI, isAckWord, isJobText, isMenuWord, isOptOut, isThreat, LINK, readingSafety } from "./gate";
 import { atNight, claimFollowUp, dueFollowUp, followUpsOn, namesIllness, pendingSql, settleFollowUp, windowBinds } from "./followup";
 import { matchTopic, topicText, type Topic as RouterTopic } from "./router";
 import { detectSafety, hasPhrase, normalize, type Safety } from "./safety";
@@ -84,8 +84,9 @@ const FROM_WHATSAPP = (Object.keys(config.router.topics) as RouterTopic[]).filte
 const FIRST = ["sexual_health", "medical", "black_magic", "payment_issue", "my_booking"] as const satisfies readonly FromWhatsApp[]; // ticket 41: a sexual-function concern first
 // Answered with [Message on WhatsApp] and the WhatsApp text "Hi" instead of the booking button: no booking push after an illness is named
 // (docs/KNOWLEDGE.md §5, 59-62), and a booking or payment is looked at on WhatsApp.
-const NO_BOOK = ["sexual_health", "medical", "my_booking", "payment_issue"] as const satisfies readonly FromWhatsApp[];
-export type Topic = Own | FromWhatsApp;
+const NO_BOOK = ["sexual_health", "medical", "my_booking", "payment_issue", "predict"] as const satisfies readonly Topic[];
+// Ticket 52: "predict" is the reading-safety reply to a prediction request (src/gate.ts readingSafety); "black_magic" now gets the other one.
+export type Topic = Own | FromWhatsApp | "predict";
 // The questions offered as quick replies after the follow (Instagram: at most 13, titles up to 20 characters; Messenger the same).
 export const QUESTIONS = ["book", "price", "what", "how"] as const satisfies readonly Topic[];
 const QR = (t: Topic) => `SOCIAL_Q_${t.toUpperCase()}`;
@@ -123,6 +124,55 @@ type Words = {
 };
 
 export function socialWords(lang: Lang): Words {
+  const w = baseWords(lang);
+  return karmicWords() ? { ...w, ...karmicSocial(lang), lines: { ...w.lines, ...karmicSocialLines(lang) }, qrTitles: { ...w.qrTitles, book: lang === "hi" ? "कॉल बुक करें" : "Book Clarity Call" } } : w;
+}
+
+// Ticket 52 (CONTRACT v20): while KARMIC_FRONT_DOOR is "true", the replies that name the ₹99 call call it the Karmic Clarity Call (₹99, 15 min).
+function clarityName(lang: Lang): string {
+  const intro = rupees(prices().intro);
+  return lang === "hi" ? `कार्मिक क्लैरिटी कॉल (${intro}, ${config.slots.callMinutes} मिनट)` : `Karmic Clarity Call (${intro}, ${config.slots.callMinutes} min)`;
+}
+function karmicSocial(lang: Lang): Partial<Words> {
+  const c = clarityName(lang);
+  if (lang === "hi") {
+    const bookingHi = `यह दिशा दिरा का ऑटोमैटिक बुकिंग असिस्टेंट है। नीचे टैप करके WhatsApp पर शांता राव जी के साथ ${c} बुक करें। समय आप चुनते हैं, और वे आपको फ़ोन पर वॉइस कॉल करती हैं (सिर्फ़ आवाज़, वीडियो नहीं)।`;
+    return {
+      askAgain: `हम हर हफ़्ते प्राणिक हीलिंग का एक छोटा टिप शेयर करते हैं, इसलिए कृपया हमें फ़ॉलो करें और नीचे टैप करें। आप चाहें तो अभी सीधे WhatsApp पर शांता राव जी के साथ ${c} भी बुक कर सकते हैं।`,
+      guide: `फ़ॉलो करने के लिए धन्यवाद! ${bookingHi}`,
+      guideMember: `हमारे समुदाय का हिस्सा होने के लिए धन्यवाद! ${bookingHi}`,
+      welcomeBack: `फिर से स्वागत है! शांता राव जी के साथ अपनी ${c} यहाँ बुक करें:`,
+      commentBook: `कमेंट के लिए धन्यवाद! शांता राव जी के साथ ${c} बुक करने के लिए नीचे टैप करके हमें WhatsApp पर मैसेज करें।`,
+      prefill: "नमस्ते, मुझे कार्मिक क्लैरिटी कॉल बुक करनी है",
+    };
+  }
+  const booking = `This is Disha Dira's automated booking assistant. Tap below to book the ${c} with Shantha Rao on WhatsApp. You choose the time, and she calls you: a voice call by phone (audio only, no video).`;
+  return {
+    askAgain: `We share a short Pranic Healing tip every week, so please follow us and tap below. You can also book the ${c} with Shantha Rao on WhatsApp straight away.`,
+    guide: `Thank you for following! ${booking}`,
+    guideMember: `Thanks for being part of our community! ${booking}`,
+    welcomeBack: `Welcome back! You can book your ${c} with Shantha Rao here:`,
+    commentBook: `Thank you for your comment! To book the ${c} with Shantha Rao, tap below and message us on WhatsApp.`,
+    prefill: "Hi, I'd like to book a Karmic Clarity Call",
+  };
+}
+function karmicSocialLines(lang: Lang): Partial<Record<Topic, string>> {
+  const p = prices();
+  const c = clarityName(lang);
+  return lang === "hi"
+    ? {
+        price: `पहला कदम शांता राव जी के साथ ${c} है। एक सेशन ${rupees(p.single)} का है, या ${p.pack10.sessions} सेशन ${rupees(p.pack10.paise)} में और ${p.pack20.sessions} सेशन ${rupees(p.pack20.paise)} में।`,
+        book: `आप WhatsApp पर शांता राव जी के साथ ${c} बुक कर सकते हैं। समय आप चुनते हैं।`,
+        call: `हम यहाँ कॉल नहीं लेते और नंबर नहीं देते। शांता राव जी से बात करने का सबसे आसान तरीका ${c} है: आप WhatsApp पर समय चुनें, और वे आपको कॉल करेंगी।`,
+      }
+    : {
+        price: `The ${c} with Shantha Rao is the first step. A session is ${rupees(p.single)}, or ${p.pack10.sessions} sessions for ${rupees(p.pack10.paise)} and ${p.pack20.sessions} for ${rupees(p.pack20.paise)}.`,
+        book: `You can book the ${c} with Shantha Rao on WhatsApp. You pick the time.`,
+        call: `We don't take calls here or share a number. The quickest way to talk to Shantha Rao is the ${c}: you choose a time on WhatsApp, and she calls you.`,
+      };
+}
+
+function baseWords(lang: Lang): Words {
   const p = prices();
   const intro = rupees(p.intro);
   const mins = config.slots.callMinutes;
@@ -154,6 +204,7 @@ export function socialWords(lang: Lang): Words {
         what: "प्राणिक हीलिंग बिना छुए की जाने वाली एक सौम्य एनर्जी हीलिंग पद्धति है। यह डॉक्टर के इलाज के साथ चलती है, उसकी जगह नहीं लेती।",
         call: `हम यहाँ कॉल नहीं लेते और नंबर नहीं देते। शांता राव जी से बात करने का सबसे आसान तरीका ${intro} की ${mins} मिनट की कॉल है: आप WhatsApp पर समय चुनें, और वे आपको कॉल करेंगी।`,
         ...whatsAppLines("hi"),
+        ...readingLines("hi"),
       },
       qrTitles: { book: `${intro} कॉल बुक करें`, price: "फ़ीस", what: "प्राणिक हीलिंग", how: "कॉल कैसे होती है" },
       btnVisit: "प्रोफ़ाइल देखें",
@@ -193,6 +244,7 @@ export function socialWords(lang: Lang): Words {
       what: "Pranic Healing is a gentle, no-touch energy healing practice. It complements medical care and is not a substitute for it.",
       call: `We don't take calls here or share a number. The quickest way to talk to Shantha Rao is the ${intro} ${mins}-minute call: you choose a time on WhatsApp, and she calls you.`,
       ...whatsAppLines("en"),
+      ...readingLines("en"),
     },
     qrTitles: { book: `Book a ${intro} call`, price: "Prices", what: "About Pranic Healing", how: "How the call works" },
     btnVisit: "Visit profile",
@@ -226,6 +278,14 @@ function whatsAppLines(lang: Lang): Record<FromWhatsApp, string> {
   return Object.fromEntries(FROM_WHATSAPP.map((t) => [t, onWhatsApp(text(t))])) as Record<FromWhatsApp, string>;
 }
 
+// Ticket 52 (CONTRACT v20): the WhatsApp bot's two reading-safety replies (ticket 49), on every channel whatever the flags: "someone did something
+// to me" (black magic, nazar …, replacing the old black-magic answer) with [Book on WhatsApp], and a prediction request with [Message on
+// WhatsApp] only. The same words as WhatsApp's (src/copy.ts), without *bold*.
+function readingLines(lang: Lang): Pick<Record<Topic, string>, "black_magic" | "predict"> {
+  const cp = copyFor(lang);
+  return { black_magic: cp.readingSpell.replaceAll("*", ""), predict: cp.readingPredict.replaceAll("*", "") };
+}
+
 const waDigits = () => config.businessNumber.replace(/\D/g, "");
 // The WhatsApp link, with our prefilled text and their reference code ("(ref: IGK7Q2M)"): the WhatsApp bot takes the code out and links
 // the two chats, so a booking that started here can be counted (REF_PATTERN, src/whatsapp.ts). No name or text goes with it.
@@ -249,6 +309,9 @@ export function detectLang(text: string, current: Lang): Lang {
 // router's ("is this real?", timings, in person, "why should I do pranic healing?"...). A greeting or "ok" alone has none, as on WhatsApp.
 export function topicOf(text: string): Topic | null {
   if (isMenuWord(text) || isAckWord(text)) return null;
+  // Ticket 52: the two reading-safety replies come first, as in the WhatsApp gatekeeper (step 11c, before any answer).
+  const reading = readingSafety(text);
+  if (reading) return reading === "READING_SPELL" ? "black_magic" : "predict";
   for (const t of FIRST) if (hasPhrase(text, config.router.topics[t])) return t;
   for (const k of OWN) if (hasPhrase(text, config.social.keywords[k])) return k;
   const t = matchTopic(text);

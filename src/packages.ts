@@ -23,7 +23,8 @@ import { requestRefund } from "./pay/refund";
 import { startSession } from "./session";
 import { raiseAttention, sendMessage, sendOrTemplate, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
-import { pausedOut } from "./menu";
+import { callButton, pausedOut } from "./menu";
+import { frontDoorOn, pickedTopic } from "./frontdoor";
 import { bind, capSql, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
 import { defaultService, SESSION_KEY } from "./catalogue";
 
@@ -134,10 +135,11 @@ export async function packChoice(env: Env, choice: string | null, convId: number
     return true;
   }
   if (tag === "pk") {
-    if (a === "intro") return bookingChoice(env, "menu_book", convId, msgId, provider);
+    // Ticket 52: with the front door on, "Book" asks for a topic first; the call's own row and button go straight to the call (book_call).
+    if (a === "intro") return bookingChoice(env, frontDoorOn(env) ? "book_call" : "menu_book", convId, msgId, provider);
     if (!(await hadFirstCall(env.DB, conv.id))) {
       // The soft gate: most people start with the 99 call. Continue is always allowed.
-      await sendAs("gate", { type: "buttons", body: cp.softGate, buttons: [{ id: "menu_book", title: cp.btnBook }, { id: `gate_${a === "single" ? "s" : a}`, title: cp.btnContinue }] }, "gate");
+      await sendAs("gate", { type: "buttons", body: cp.softGate, buttons: [callButton(env, cp), { id: `gate_${a === "single" ? "s" : a}`, title: cp.btnContinue }] }, "gate");
       return true;
     }
     return enter(a === "single" ? "s" : (a as Flow));
@@ -201,12 +203,13 @@ export async function packChoice(env: Env, choice: string | null, convId: number
       .bind(conv.id)
       .first<{ id: number }>();
     let sid = existing?.id ?? 0;
+    const topic = await pickedTopic(env.DB, conv.id); // ticket 52: the topic tapped at the front door, if any
     if (sid) {
-      await env.DB.prepare("UPDATE sessions SET service = ?2, for_whom = ?3, call_lang = ?4, state = 'OFFERED', updated_at = ?5 WHERE id = ?1").bind(sid, a, b, lang, nowIso()).run();
+      await env.DB.prepare("UPDATE sessions SET service = ?2, for_whom = ?3, call_lang = ?4, state = 'OFFERED', updated_at = ?5, topic = ?6 WHERE id = ?1").bind(sid, a, b, lang, nowIso(), topic).run();
     } else {
       const ins = await env.DB
-        .prepare(`INSERT INTO sessions (conversation_id, service, for_whom, call_lang, origin, practitioner_id, service_key) VALUES (?1, ?2, ?3, ?4, 'SELF', ${PRACTITIONER_SQL}, '${SESSION_KEY}')`)
-        .bind(conv.id, a, b, lang)
+        .prepare(`INSERT INTO sessions (conversation_id, service, for_whom, call_lang, origin, practitioner_id, service_key, topic) VALUES (?1, ?2, ?3, ?4, 'SELF', ${PRACTITIONER_SQL}, '${SESSION_KEY}', ?5)`)
+        .bind(conv.id, a, b, lang, topic)
         .run();
       sid = ins.meta.last_row_id;
     }

@@ -900,7 +900,7 @@ describe("ticket 33: WhatsApp's FAQ answers on Instagram and Messenger", () => {
     ["What are your timings?", "timings", allCopy.en.faqAnswers.timings],
     ["Can I come to your clinic?", "in_person", allCopy.en.answerInPerson],
     ["Do you accept paypal?", "abroad", allCopy.en.answerAbroad.replace('tap "Talk to a person"', 'message us on WhatsApp and tap "Talk to a person" there')],
-    ["I think someone put buri nazar on my family", "black_magic", allCopy.en.answerConcern],
+    ["I think someone put buri nazar on my family", "black_magic", allCopy.en.readingSpell], // ticket 52: the reading-safety reply replaced the old answer
     ["What is the process?", "how_it_works", allCopy.en.faqAnswers.how_it_works],
     ["Why should I do pranic healing?", "what", socialWords("en").lines.what],
     ["When is my call?", "my_booking", 'To see your booking, message us on WhatsApp and tap "Help", then "My bookings" there.'],
