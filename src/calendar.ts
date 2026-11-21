@@ -11,6 +11,8 @@ import { html, raw } from "hono/html";
 import { can, canAny, memberCsrf, seesNumber, type Member } from "./auth";
 import { config } from "./config";
 import { minutesFor, otherServiceLabel, otherServiceName } from "./catalogue";
+import { maySeeNotes } from "./notes";
+import { INTAKE_LINE } from "./offer";
 import { appPage, auditStmt, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { addHoliday, anyDate, bookingsOn, holidayBounds, holidayDate, holidaysBetween, removeHoliday, upcomingHolidays } from "./holidays";
 import { consoleCopy, consoleLang, type ConsoleCopy } from "./console-copy";
@@ -40,6 +42,7 @@ export type Entry = {
   kind: "CALL" | "SESSION"; id: number; startUtc: string; endUtc: string; state: string; holdUntil: string | null;
   convId: number; name: string | null; waId: string; service: string; forWhom: ForWhom | null; practitionerId: number | null;
   packSize: number | null; packNo: number | null; serviceKey: string | null; // ticket 48: the catalogue row (NULL before 0021)
+  intake: string | null; // ticket 49: their answer to the service's question after payment (owner and practitioner only)
 };
 // A booking that still holds its time (or held it: done, missed), and a hold that hasn't lapsed. Cancelled and expired ones free the time.
 const CALL_STATES = "('PAID','RESCHEDULED','CALLED_SESSION','CALLED_NOT_FIT','MISSED','RUDE')";
@@ -53,14 +56,15 @@ export async function entriesBetween(env: Env, fromUtc: string, toUtc: string, p
   const scope = "(?3 IS NULL OR COALESCE(x.practitioner_id, s.practitioner_id) = ?3) AND s.start_utc >= ?1 AND s.start_utc < ?2";
   const [calls, sessions] = await env.DB.batch([
     env.DB.prepare(
-      `SELECT 'CALL' AS kind, x.id, ${common}, NULL AS packSize, NULL AS packNo
+      `SELECT 'CALL' AS kind, x.id, ${common}, NULL AS packSize, NULL AS packNo, NULL AS intake
        FROM intros x JOIN slots s ON s.id = x.slot_id JOIN conversations c ON c.id = x.conversation_id
        WHERE s.kind = 'CALL' AND ${scope} AND (x.state IN ${CALL_STATES} OR ${LIVE_HOLD})`,
     ).bind(fromUtc, toUtc, practitionerId, iso(nowMs)),
     env.DB.prepare(
       `SELECT 'SESSION' AS kind, x.id, ${common},
          (SELECT k.size FROM packages k WHERE k.id = x.package_id) AS packSize,
-         (SELECT COUNT(*) FROM credits cr WHERE cr.package_id = x.package_id AND cr.reason = 'BOOK' AND cr.session_id <= x.id) AS packNo
+         (SELECT COUNT(*) FROM credits cr WHERE cr.package_id = x.package_id AND cr.reason = 'BOOK' AND cr.session_id <= x.id) AS packNo,
+         x.intake_answer AS intake
        FROM sessions x JOIN slots s ON s.id = x.slot_id JOIN conversations c ON c.id = x.conversation_id
        WHERE s.kind = 'SESSION' AND ${scope} AND (x.state IN ${SESSION_STATES} OR ${LIVE_HOLD})`,
     ).bind(fromUtc, toUtc, practitionerId, iso(nowMs)),
@@ -369,6 +373,8 @@ function entryDetails(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, st
 }
 // Ticket 47: a booking opens the person page with that booking chosen for a note.
 const personHref = (e: Entry) => `/app/people/${e.convId}?b=${e.kind}-${e.id}#notes`;
+// Healing / Energy cleansing belong to the pranic-healing call and session; a newer service shows only its own name (ticket 49).
+const pranic = (e: Entry, lang: "en" | "hi") => (otherServiceName(e.serviceKey, lang) ? "" : serviceName(e.service, lang));
 // The kind in a block or chip: "Call" / "Session", or a newer service's own name (ticket 48).
 const shortKind = (e: Entry, cc: ConsoleCopy, lang: "en" | "hi") => otherServiceName(e.serviceKey, lang) ?? (e.kind === "CALL" ? cc.calShortCall : cc.calShortSession);
 const evClass = (e: Entry) => `${e.kind === "CALL" ? "call" : "session"}${e.state === "HELD" ? " held" : ""}`;
@@ -381,11 +387,12 @@ function entryRow(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, string
     time: clock(e.startUtc, lang),
     name: firstName(e.name, noName(m)),
     phone: phoneHtml(e.waId, full),
-    service: serviceName(e.service, lang),
+    service: pranic(e, lang),
     details: entryDetails(e, m, cc, many),
     status: bookingChip(e.state, m.locale),
     call: full ? callButton(e.waId, cc.call) : "",
     action: { label: cc.open, href: personHref(e), kind: "secondary" }, // ticket 47: the booking chosen for a note
+    extra: e.intake && maySeeNotes(m, e.practitionerId) ? html`<p class="muted about">${INTAKE_LINE[lang](e.intake)}</p>` : "", // ticket 49
   });
 }
 
@@ -397,7 +404,7 @@ function agendaRow(e: Entry, o: DayArgs) {
   const lang = consoleLang(m.locale);
   const full = seesNumber(m, e.practitionerId);
   const st = bookingStatus(e.state, m.locale);
-  const meta = [serviceName(e.service, lang), ...entryDetails(e, m, cc, o.many)].join(" · ");
+  const meta = [pranic(e, lang), ...entryDetails(e, m, cc, o.many)].filter(Boolean).join(" · ");
   const past = Date.parse(e.endUtc) <= o.nowMs;
   // The row opens the person; the number is text in it (a link can't hold another), with a one-tap Call beside it.
   return html`<div class="ag ${evClass(e)}${past ? " past" : ""}"><a class="ag-a" href="${personHref(e)}"><span class="ag-t">${clock(e.startUtc, lang)}</span><span class="ag-b"><span class="ag-n">${firstName(e.name, noName(m))} <span class="d">${full ? formatNumber(e.waId) : last4(e.waId)}</span></span><span class="ag-m">${meta}</span></span>${
@@ -469,7 +476,7 @@ function gridBlock(e: Entry, o: DayArgs & { open: number; px: number; lane: { la
   const status = st && !st.confirmed ? st : null;
   const name = firstName(e.name, noName(m));
   const kind = shortKind(e, cc, lang);
-  const details = [serviceName(e.service, lang), ...entryDetails(e, m, cc, o.many)].join(" · ");
+  const details = [pranic(e, lang), ...entryDetails(e, m, cc, o.many)].filter(Boolean).join(" · ");
   const title = [`${clock(e.startUtc, lang)} – ${clock(e.endUtc, lang)}`, `${name} ${last4(e.waId)}`, details, status?.word ?? ""].filter(Boolean).join(" · ");
   // Overlapping bookings (rare: one calendar) are drawn as Google Calendar does: the first full width, each later one indented and on top,
   // so every block keeps enough width for its time and name (the tooltip has the rest).
@@ -480,7 +487,7 @@ function gridBlock(e: Entry, o: DayArgs & { open: number; px: number; lane: { la
   const body =
     height < 40
       ? html`<span class="l1"><b>${shortClock(e.startUtc, lang)}</b><span class="n">${name}</span><span class="p">${last4(e.waId)}</span>${st1}</span>`
-      : html`<span class="l1"><b>${clock(e.startUtc, lang)} – ${clock(e.endUtc, lang)}</b></span><span class="l1"><span class="n">${name}</span><span class="p">${last4(e.waId)}</span>${st1}</span><span class="k">${kind} · ${serviceName(e.service, lang)}</span>`;
+      : html`<span class="l1"><b>${clock(e.startUtc, lang)} – ${clock(e.endUtc, lang)}</b></span><span class="l1"><span class="n">${name}</span><span class="p">${last4(e.waId)}</span>${st1}</span><span class="k">${[kind, pranic(e, lang)].filter(Boolean).join(" · ")}</span>`;
   return html`<a class="ev2 ${evClass(e)}${past ? " past" : ""}" href="${personHref(e)}" style="${style}" title="${title}" aria-label="${title}">${body}</a>`;
 }
 

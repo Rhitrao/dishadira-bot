@@ -8,7 +8,8 @@ import type { Env } from "./env";
 import { bookingChoice } from "./booking";
 import { bookingsChoice } from "./mybookings";
 import { creditBalance, packChoice, sessionOfferOut } from "./packages";
-import { classifyWithoutAI, gate, isCallRequest, isJobText, isMenuWord, isThreat, plainWord } from "./gate";
+import { classifyWithoutAI, gate, isCallRequest, isJobText, isMenuWord, isThreat, plainWord, readingSafety } from "./gate";
+import { intakeText, offerChoice } from "./offer";
 import { noteWhatsAppMessage, realWhatsAppMessage } from "./followup";
 import { requestHuman } from "./handoff";
 import { mediaOf } from "./media";
@@ -273,7 +274,9 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
   }
   // A tap is stored as the label of the button or list row (our own words), so the console can say "Tapped: …"; the chat wipe removes it
   // like any text, and the assistant never reads it (src/ai.ts leaves taps out).
-  const tapLabel = (m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? m.button?.text)?.slice(0, 100) || null;
+  // Ticket 49: the answer to a health question before a booking (src/offer.ts) is never kept, not even as the button's word.
+  const screenAnswer = /^scr_/.test(m.interactive?.button_reply?.id ?? "");
+  const tapLabel = screenAnswer ? null : (m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? m.button?.text)?.slice(0, 100) || null;
   // A photo or file: only Meta's media id and its type (ticket 38), never the file; the chat wipe removes them with the text.
   const media = mediaOf(m);
   await db
@@ -419,6 +422,11 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       await reply(menuOut(cp, false, cp.callRequest), "callreq");
       return;
 
+    case "READING_SPELL":
+    case "READING_PREDICT":
+      await readingReply(decision);
+      return;
+
     case "BUDGET_FALLBACK":
     case "TO_CLASSIFIER":
       await classified(decision);
@@ -438,6 +446,19 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     const res = await sendStep(env, conv!.id, "language", { type: "buttons", body: cp.greeting, buttons }, `greet:${conv!.id}`, { resend: { type: "buttons", body: cp.chooseLanguage, buttons } });
     // Only a greeting that really went out counts: a SKIPPED one (SENDS was off) or a FAILED one is not a greeting.
     if (wentOut(res)) await db.prepare("UPDATE conversations SET greeted_at = COALESCE(greeted_at, ?2) WHERE id = ?1").bind(conv!.id, nowIso()).run();
+  }
+
+  // Ticket 49 (CONTRACT v19): the two reading-safety replies, fixed and calm, never the AI, never a strike or a block; once per
+  // config.router.answerEveryMinutes (a loop gets silence). "Someone did something to me": nothing is confirmed or removed, the ₹99 call
+  // (Help and Talk to a person instead while nothing may be sold). A prediction: not predicted, a doctor for health; no booking push.
+  async function readingReply(kind: "READING_SPELL" | "READING_PREDICT", c2: Copy = cp, send: (out: Out, step: string) => Promise<unknown> = reply): Promise<void> {
+    const step = kind === "READING_SPELL" ? "reading-spell" : "reading-predict";
+    if (await sentRecently(db, conv!.id, step, config.router.answerEveryMinutes)) return;
+    const noSell = await noSellActive(db, conv!.id);
+    const out: Out =
+      kind === "READING_PREDICT" || noSell ? menuOut(c2, true, kind === "READING_SPELL" ? c2.readingSpell : c2.readingPredict)
+      : { type: "buttons", body: c2.readingSpell, buttons: [{ id: "book_call", title: c2.btnBook }, { id: "menu_how", title: c2.btnHelp }] };
+    await send(out, step);
   }
 
   // A handoff that went back to the bot unanswered (src/watch.ts): the first message after it gets the honest line and the menu, once.
@@ -506,6 +527,12 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     }
     // Ticket 41: one of the questions after a paid ₹99 call (src/intent.ts). A name, their work, or "Something else" in their own words is the
     // answer; anything else (a question, a long message, noise) ends the questions and goes the usual way below.
+    // Ticket 49: the catalogue service's one question after payment (src/offer.ts): their words are the answer (safety and the reading-safety
+    // replies have already run in the gatekeeper); noise, a link or abuse goes the usual way below.
+    if (step?.step === "intake") {
+      if (classifyWithoutAI(said) === "TO_CLASSIFIER" && (await intakeText(env, conv!.id, step, said)) === "done") return;
+      await clearStep(db, conv!.id);
+    }
     if (step && isIntentStep(step.step)) {
       if ((classifyWithoutAI(said) === "TO_CLASSIFIER" || isOutOfScope(said)) && (await intentText(env, conv!.id, step, said, (out, s) => reply(out, s))) === "done") return;
       await clearStep(db, conv!.id);
@@ -620,6 +647,8 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
 
   // ---- a button or list tap, or a template quick reply ----
   async function tapped(choice: string | null): Promise<void> {
+    // Ticket 49: "no", "haan", "ok" typed as the answer to a health question before a booking: its words are not kept either.
+    if (/^scr_/.test(choice ?? "") && typed && mine) await db.prepare("UPDATE messages SET body = NULL WHERE id = ?1").bind(mine.id).run();
     await clearStep(db, conv!.id); // a tap moves on; the step sent next (if any) becomes the open one
     // Ticket 49 (the CARD test): a theme button under "Pick today's theme".
     if (isCardChoice(choice)) {
@@ -636,6 +665,12 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
         // Without the assistant: the fixed-answer router (ticket 31), or the call-request line (ticket 30).
         const asked = await firstQuestion(db, conv!.firstQuestion);
         const key = conv!.firstQuestion;
+        // Ticket 49: a reading-safety worry as the first message: the fixed reply, never the assistant (see gate()).
+        const reading = asked ? readingSafety(asked.text) : null;
+        if (reading) {
+          await readingReply(reading, cp2, (out, step) => sendMessage(env, conv!.id, out, `${key}:${step}`));
+          return;
+        }
         // Ticket 41: a sexual-function concern as the first message: the fixed answer, never the assistant (see classified()).
         if (asked && isSexualHealth(asked.text) && classifyWithoutAI(asked.text) !== "abuse") {
           await routeTopic("sexual_health", cp2, (out, step) => sendMessage(env, conv!.id, out, `${key}:${step}`));
@@ -674,8 +709,9 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       await menu(cp2, "menu");
       return;
     }
-    if (choice === "menu_book" || /^(pk|go|gate)_/.test(choice ?? "")) await db.prepare("UPDATE person_state SET book_tap_at = ?2 WHERE conversation_id = ?1").bind(conv!.id, nowIso()).run(); // a buying tap (warm leads in the digest)
+    if (choice === "menu_book" || choice === "book_call" || /^(pk|go|gate|cat)_/.test(choice ?? "")) await db.prepare("UPDATE person_state SET book_tap_at = ?2 WHERE conversation_id = ?1").bind(conv!.id, nowIso()).run(); // a buying tap (warm leads in the digest)
     if (await intentChoice(env, choice, conv!.id)) return; // ticket 41: the questions after a paid ₹99 call
+    if (await offerChoice(env, choice, conv!.id, m.id)) return; // ticket 49: a catalogue service (src/offer.ts), before the call's age ids
     if (await bookingChoice(env, choice, conv!.id, m.id)) return;
     if (await sessionChoice(env, choice, conv!.id, m.id)) return;
     if (await packChoice(env, choice, conv!.id, m.id)) return;

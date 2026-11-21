@@ -19,6 +19,8 @@ export type Gate =
   | "MENU" // "hi", "menu"
   | "BOOKING_WORD" // "book"
   | "CALL_REQUEST" // "call me", "number please": we don't take calls on this number; the ₹99 call, where she calls you, and the menu
+  | "READING_SPELL" // ticket 49: "someone did something to me" (black magic, nazar, jadoo …): one fixed calm reply, no strike, no AI
+  | "READING_PREDICT" // ticket 49: asks to predict death, illness, pregnancy, exam or court results, exact dates: one fixed reply, no AI
   | "BUDGET_FALLBACK" // the day's AI budget is used up
   | "TO_CLASSIFIER" // a real question or remark: the classifier (the AI from ticket 14) decides
   | "TAP"; // a button or list tap (or a template quick reply): the booking, FAQ and menu handlers take it
@@ -114,6 +116,9 @@ export async function gate(env: Env, conv: GateConv, message: GateMessage, nowMs
     isCallRequest(text) && !noSellActiveFor(await personState(env.DB, conv.id), nowMs) &&
     !(await hasUpcomingBooking(env, conv.id, nowMs)) && !(await isPayingCustomer(env.DB, conv.id, nowMs))
   ) return "CALL_REQUEST";
+  // 11c. Reading safety (ticket 49, CONTRACT v19; on every Worker, whatever NEW_SERVICES says): a fixed calm reply, never the AI, never a strike.
+  const reading = readingSafety(text);
+  if (reading) return reading;
   // 12. The day's AI budget.
   if (await budgetUsedUp(env.DB, conv.id, await isPayingCustomer(env.DB, conv.id, nowMs), nowMs)) return "BUDGET_FALLBACK";
   // 13. The classifier.
@@ -132,4 +137,16 @@ export function classifyWithoutAI(text: string): Extract<Label, "spam_or_promo" 
   if ((LINK.test(text) && hasPhrase(text, config.noise.spamWords)) || hasPhrase(text, config.noise.promoWords)) return "spam_or_promo";
   if (hasPhrase(text, config.noise.prohibitedWords)) return "prohibited_request";
   return "TO_CLASSIFIER";
+}
+
+// Ticket 49 (CONTRACT v19, docs/AGENT.md §3.2 step 11c): a worry that "someone did something to me" (black magic, evil eye, jadoo, tona, nazar,
+// bhoot-pret …), or a request to predict death, illness, pregnancy, exam or court results or an exact date. Word lists: config.readingSafety
+// (a prediction needs an asking word and a subject together, or one of the whole phrases). Abuse keeps its own rule (a strike), and crisis and
+// emergency come before this in gate(). "I feel stuck" and "energy cleansing" are none of these.
+export function readingSafety(text: string): "READING_SPELL" | "READING_PREDICT" | null {
+  const rs = config.readingSafety;
+  if (classifyWithoutAI(text) === "abuse") return null;
+  if (hasPhrase(text, rs.spell)) return "READING_SPELL";
+  if (hasPhrase(text, rs.predictPhrases) || (hasPhrase(text, rs.predictAsk) && hasPhrase(text, rs.predictSubject))) return "READING_PREDICT";
+  return null;
 }

@@ -99,6 +99,21 @@ export async function priceAt(db: D1Database, name: PriceName, atIso: string): P
   return Number.isInteger(from) && from > 0 ? from : pricePaise(await readPrices(db), name);
 }
 
+// Ticket 49: the same for a catalogue service other than the call and the session: the "from" side of the first price change in its
+// SERVICE_UPDATE audit rows ("price 120000 -> 150000") after the link was made, or its price now.
+export async function servicePriceAt(db: D1Database, key: string, atIso: string): Promise<number | null> {
+  const { results } = await db
+    .prepare("SELECT detail FROM audit_log WHERE action = 'SERVICE_UPDATE' AND target = ?1 AND at >= ?2 ORDER BY id")
+    .bind(`service:${key}`, atIso)
+    .all<{ detail: string }>();
+  for (const r of results) {
+    const from = Number(/(?:^|; )price (\d+) -> \d+/.exec(r.detail ?? "")?.[1]);
+    if (Number.isInteger(from) && from > 0) return from;
+  }
+  const row = await db.prepare("SELECT price_paise AS p FROM services WHERE key = ?1").bind(key).first<{ p: number }>();
+  return row?.p ?? null;
+}
+
 // ---- who gets the emails ----
 type MemberMail = { id: number; email: string; role: string };
 const activeMembers = async (db: D1Database) =>

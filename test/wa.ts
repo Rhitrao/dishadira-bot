@@ -27,6 +27,7 @@ export class Wa {
   emails: Email[] = [];
   sends = "true";
   aiFlag = "true";
+  newServices = "false"; // ticket 49: the NEW_SERVICES env flag
   key = "sk-ant-test-key";
   // What the fake Anthropic API answers; set per test.
   ai: AiReply = {};
@@ -35,7 +36,7 @@ export class Wa {
 
   env = () =>
     ({
-      DB: this.db, SENDS: this.sends, AI_REPLIES: this.aiFlag, ANTHROPIC_API_KEY: this.key, NEW_BOOKINGS: "true", WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "v", WA_TOKEN: "tok",
+      DB: this.db, SENDS: this.sends, AI_REPLIES: this.aiFlag, ANTHROPIC_API_KEY: this.key, NEW_BOOKINGS: "true", NEW_SERVICES: this.newServices, WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "v", WA_TOKEN: "tok",
       WA_PHONE_ID: "1000", CHAT_RETENTION_MINUTES: "10", DIGEST_TO: "ops@example.invalid", PUBLIC_URL: "https://bot.example.test",
       EMAIL: { send: async (m: Email) => void this.emails.push(m) }, ...rzpEnv(),
     }) as never;
@@ -81,6 +82,7 @@ export class Wa {
     ({ db: this.db, close: this.close } = await newDb());
     this.sends = "true";
     this.aiFlag = "true";
+    this.newServices = "false";
     this.key = "sk-ant-test-key";
     this.emails = [];
     this.fake = new FakeRazorpay();

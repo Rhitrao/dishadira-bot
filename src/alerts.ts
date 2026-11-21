@@ -15,6 +15,7 @@ import { consoleCopy, consoleLang } from "./console-copy";
 import type { Env } from "./env";
 import { allowedEndpoint, pushOn, sendPush, validKeys, vapidKeys, type VapidKeys } from "./push";
 import { iso, istDay } from "./slots";
+import { otherServiceName } from "./catalogue";
 import { CONSOLE_CSP, clock, dayName, rows } from "./ui";
 
 const MIN = 60_000;
@@ -30,6 +31,7 @@ const en = {
   titleMany: "New bookings",
   call: (amount: string, when: string) => `${amount} call · ${when}`,
   session: (amount: string, when: string) => `${amount} session · ${when}`,
+  service: (name: string, amount: string, when: string) => `${name} · ${amount} · ${when}`, // ticket 49: a catalogue service by its name
   pack: (n: number) => `Package of ${n} paid`,
   credit: (when: string) => `Session from package · ${when}`,
   overnight: (n: number) => `${n} new bookings overnight`,
@@ -83,6 +85,7 @@ const hi: Words = {
   titleMany: "नई बुकिंग",
   call: (amount, when) => `${amount} कॉल · ${when}`,
   session: (amount, when) => `${amount} सेशन · ${when}`,
+  service: (name, amount, when) => `${name} · ${amount} · ${when}`,
   pack: (n) => `${n} सेशन का पैकेज: पेमेंट हो गया`,
   credit: (when) => `पैकेज से सेशन · ${when}`,
   overnight: (n) => `रात में ${n} नई बुकिंग`,
@@ -216,7 +219,7 @@ export function pushSoon(c: Context<{ Bindings: Env }>): void {
 
 // ---------- what an alert says ----------
 export type Payload = { title: string; body: string; url: string; tag: string };
-type Facts = { kind: AlertKind; amount?: number; bookingId?: number; startUtc?: string | null; size?: number; conv?: number };
+type Facts = { kind: AlertKind; amount?: number; bookingId?: number; startUtc?: string | null; size?: number; conv?: number; serviceKey?: string | null };
 
 // The booking as it stands now, or null when it no longer does (refunded since, cancelled, gone).
 async function factsOf(db: Env["DB"], kind: AlertKind, target: string): Promise<Facts | null> {
@@ -238,11 +241,11 @@ async function factsOf(db: Env["DB"], kind: AlertKind, target: string): Promise<
   const table = kind === "CALL" ? "intros" : "sessions";
   const r = await db
     .prepare(
-      `SELECT p.amount_paise AS amount, b.id AS bookingId, s.start_utc AS startUtc FROM payments p JOIN ${table} b ON b.id = p.target_id LEFT JOIN slots s ON s.id = b.slot_id
-       WHERE p.id = ?1 AND p.purpose = ?2 AND p.state = 'PAID'`,
+      `SELECT p.amount_paise AS amount, b.id AS bookingId, s.start_utc AS startUtc, b.service_key AS serviceKey FROM payments p JOIN ${table} b ON b.id = p.target_id
+       LEFT JOIN slots s ON s.id = b.slot_id WHERE p.id = ?1 AND p.purpose = ?2 AND p.state = 'PAID'`,
     )
     .bind(id, PURPOSE[kind])
-    .first<{ amount: number; bookingId: number; startUtc: string | null }>();
+    .first<{ amount: number; bookingId: number; startUtc: string | null; serviceKey: string | null }>();
   return r ? { kind, ...r } : null;
 }
 
@@ -269,6 +272,7 @@ export function alertPayload(f: Facts, locale: string, rowId: number, nowMs = Da
   const when = f.startUtc ? whenText(f.startUtc, locale, nowMs) : "";
   const body =
     f.kind === "CALL" ? w.call(rupees(f.amount ?? 0), when)
+    : f.kind === "SESSION" && otherServiceName(f.serviceKey, consoleLang(locale)) ? w.service(otherServiceName(f.serviceKey, consoleLang(locale))!, rupees(f.amount ?? 0), when)
     : f.kind === "SESSION" ? w.session(rupees(f.amount ?? 0), when)
     : f.kind === "PACKAGE" ? w.pack(f.size ?? 0)
     : w.credit(when);

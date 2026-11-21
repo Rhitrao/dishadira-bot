@@ -15,7 +15,7 @@ import { can, canAny, memberCsrf, seesNumber, WORKSPACE_ID, type Member, type Ta
 import { config } from "./config";
 import { chatTextHidden, prices } from "./business";
 import { auditStmt, badgesOf, languageCsrf, type ConsoleCtx, type ConsoleVars } from "./console";
-import { consoleCopy } from "./console-copy";
+import { consoleCopy, consoleLang } from "./console-copy";
 import { rupees, serviceName } from "./copy";
 import type { Env } from "./env";
 import { collapseWiped, describe, earlierLink, isWiped, keptFor, SHOWN_SQL, THREAD_ALL, THREAD_LATEST, wipedLine } from "./chat";
@@ -25,7 +25,9 @@ import { applyMoneyReceived } from "./requests";
 import { takeOverStmt } from "./handoff";
 import { buildExport, EXPORT_LIMITS, exportDays, exportFileName } from "./export";
 import { sessionLinkButton } from "./sessionlink";
-import { notesCard } from "./notes";
+import { maySeeNotes, notesCard } from "./notes";
+import { otherServiceLabel } from "./catalogue";
+import { INTAKE_LINE } from "./offer";
 import { gistCard } from "./gist";
 import { aboutHtml, aboutPerson, seesAbout } from "./intent";
 import { maySeeMedia, viewButton, viewMedia } from "./media";
@@ -272,12 +274,16 @@ const reasonField = (p: PeopleCopy, id: string, value = "") =>
 const post = (label: string, action: string, csrf: string, kind = "secondary") =>
   html`<form method="post" action="${action}"><input type="hidden" name="csrf" value="${csrf}"><button class="btn ${kind}" type="submit">${label}</button></form>`;
 
-type Booking = { kind: "CALL" | "SESSION"; startUtc: string; state: string; service: string; forWhom: "SELF" | "FAMILY" | "PET" | null; callLang: string | null };
+type Booking = {
+  kind: "CALL" | "SESSION"; startUtc: string; state: string; service: string; forWhom: "SELF" | "FAMILY" | "PET" | null; callLang: string | null;
+  serviceKey: string | null; intake: string | null; // ticket 49: a catalogue service by name, and the answer to its question after payment
+};
 async function nextBooking(env: Env, convId: number, m: Member, nowMs: number): Promise<Booking | null> {
   return env.DB.prepare(
-    `SELECT 'CALL' AS kind, s.start_utc AS startUtc, i.state, i.service, i.for_whom AS forWhom, i.call_lang AS callLang FROM intros i JOIN slots s ON s.id = i.slot_id
+    `SELECT 'CALL' AS kind, s.start_utc AS startUtc, i.state, i.service, i.for_whom AS forWhom, i.call_lang AS callLang, NULL AS serviceKey, NULL AS intake
+       FROM intros i JOIN slots s ON s.id = i.slot_id
        WHERE i.conversation_id = ?1 AND i.state IN ('PAID','RESCHEDULED') AND s.end_utc > ?2 AND (?3 < 0 OR i.practitioner_id = ?3)
-     UNION ALL SELECT 'SESSION', s.start_utc, se.state, se.service, se.for_whom, se.call_lang FROM sessions se JOIN slots s ON s.id = se.slot_id
+     UNION ALL SELECT 'SESSION', s.start_utc, se.state, se.service, se.for_whom, se.call_lang, se.service_key, se.intake_answer FROM sessions se JOIN slots s ON s.id = se.slot_id
        WHERE se.conversation_id = ?1 AND se.state IN ('CONFIRMED','CREDIT_BOOKED') AND s.end_utc > ?2 AND (?3 < 0 OR se.practitioner_id = ?3)
      ORDER BY 2 LIMIT 1`,
   )
@@ -399,8 +405,10 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
     ? ledger(
         appointmentRow({
           time: clock(nb.startUtc, loc), name: dayName(nb.startUtc, loc),
-          service: `${nb.kind === "CALL" ? p.callKind(rupees(prices().intro)) : p.sessionKind} · ${service(nb.service, loc)}`,
+          service: otherServiceLabel(nb.serviceKey, consoleLang(loc)) ?? `${nb.kind === "CALL" ? p.callKind(rupees(prices().intro)) : p.sessionKind} · ${service(nb.service, loc)}`,
           details: [forWhomText(nb.forWhom, loc), callLangText(nb.callLang, loc)], status: bookingChip(nb.state, loc),
+          // Ticket 49: their answer to the service's question after payment, for the owner and the practitioner only (as notes).
+          extra: nb.intake && maySeeNotes(m, target.practitionerId ?? null) ? html`<p class="muted about">${INTAKE_LINE[consoleLang(loc)](nb.intake)}</p>` : "",
         }),
       )
     : emptyState(p.noNextBooking, { label: p.openCalendar, href: "/app/calendar" });

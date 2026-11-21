@@ -421,6 +421,47 @@ export const config = {
     workMaxWords: 8,
     otherMaxChars: 300,
   },
+  // Ticket 49 (CONTRACT v19): the catalogue services the bot may offer (src/offer.ts), behind the NEW_SERVICES env flag.
+  offer: {
+    listMax: 10, // WhatsApp's list limit: the ₹99 call, the single session, then at most 8 offered services (the owner's order)
+    intakeQuestionMax: 300, // the owner's question after payment, per language (Settings → Services)
+    intakeMaxChars: 300, // the customer's typed answer is kept up to this many characters
+  },
+  // Ticket 49 (CONTRACT v19): reading-safety replies, decided by code before any AI (src/gate.ts), on every Worker whatever NEW_SERVICES says.
+  // Fixed calm replies, never a strike or a block; crisis and emergency always come first. Whole words or phrases after normalising.
+  readingSafety: {
+    // (a) "Someone did something to me": never confirmed, no remedy or ritual; Shantha Rao doesn't remove anything; the ₹99 call.
+    spell: [
+      "black magic", "blackmagic", "kala jadu", "kaala jadu", "kala jaadu", "kaala jaadu", "kala jadoo", "kaala jadoo", "jadu tona", "jaadu tona", "jadoo tona",
+      "jadu", "jaadu", "jadoo", "jaadoo", "tona", "totka", "tona totka", "totke", "nazar", "nazar lagi", "nazar lag gayi", "buri nazar", "evil eye", "curse", "cursed",
+      "cursing", "hex", "spell on me", "cast a spell", "possessed", "bhoot pret", "bhoot ka saya", "bhoot pret ka saya", "bhut pret", "pret", "upari chakkar", "upri chakkar", "uppari chakkar",
+      "kiya karaya", "kiya kraya", "someone did something to me", "someone has done something to me", "someone did something to my family",
+      "someone has done something to my family", "somebody did something to me", "kisi ne kuch kar diya", "kisi ne kuch kiya", "kisi ne kuch karwaya",
+      "kisi ne kuch kara diya", "kisine kuch kar diya",
+      "काला जादू", "जादू", "जादू टोना", "टोना", "टोटका", "नज़र", "बुरी नज़र", "नज़र लगी", "भूत", "भूत प्रेत", "प्रेत", "ऊपरी चक्कर", "किया कराया",
+      "किसी ने कुछ कर दिया", "किसी ने कुछ किया",
+    ],
+    // (b) Predictions: an asking word together with a subject (death, illness, pregnancy, exams, court), or one of the whole phrases.
+    predictAsk: [
+      "predict", "prediction", "predictions", "foretell", "will i", "will my", "will he", "will she", "will we", "will they", "when will", "how long will",
+      "tell me when", "can you tell me if", "kab", "kya main", "kya mai", "kya meri", "kya mera", "kya mere", "hoga ya nahi", "hogi ya nahi", "honge ya nahi",
+      "bhavishya", "bhavishyavani", "कब", "क्या मैं", "क्या मेरी", "क्या मेरा", "क्या मेरे", "होगा या नहीं", "होगी या नहीं", "भविष्य", "भविष्यवाणी",
+    ],
+    predictSubject: [
+      "die", "maut", "mrityu", "marunga", "marungi", "marenge", "मौत", "मृत्यु", "मरूंगा", "मरूंगी",
+      "illness", "disease", "cancer", "bimari", "bimaari", "beemari", "बीमारी",
+      "pregnant", "pregnancy", "conceive", "baby", "bachcha", "baccha", "santan", "गर्भ", "गर्भवती", "बच्चा", "संतान", "प्रेग्नेंट",
+      "exam result", "exam results", "result", "results", "pass", "रिजल्ट", "परिणाम",
+      "court", "court case", "verdict", "judgement", "judgment", "mukadma", "mukadama", "कोर्ट", "मुकदमा", "फैसला",
+    ],
+    predictPhrases: [
+      "predict death", "predict my death", "death prediction", "date of death", "death date", "when is my death", "how long will i live", "how long will he live",
+      "how long will she live", "how many years will i live", "exact date", "exact day", "which date will", "on which date will", "kis din hoga", "kis din hogi",
+      "kaun si tareekh", "kaunsi tarikh", "kitne din jiyunga", "kitne saal jiyunga", "kab marunga", "kab marungi", "pass hoga", "pass ho jaunga",
+      "pass ho jaungi", "case jeetunga", "case jeetungi", "case jeet jaunga", "case ka result", "case ka faisla",
+      "किस दिन होगा", "कौन सी तारीख", "कब मरूंगा", "कब मरूंगी", "पास होगा", "पास हो जाऊंगा", "पास हो जाऊंगी", "केस जीतूंगा", "केस का फैसला",
+    ],
+  },
   // Automatic replies to Instagram DMs and Facebook Messenger (ticket 32, src/social.ts), behind SOCIAL_REPLIES. Public addresses only.
   // Automatic follow-ups (ticket 35, src/followup.ts): on the channel they wrote on, to someone who sent a real message and hasn't booked.
   // Free text inside Meta's 24-hour window only, never a template. Times count from their last real message; a new one starts again.

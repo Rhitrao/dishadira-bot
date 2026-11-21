@@ -335,6 +335,28 @@ export type Copy = {
   pageOpeningTitle: string; // ... the short page before Razorpay's
   pageOpeningBody: string;
   pageBtnContinue: string;
+  // Ticket 49 (CONTRACT v19): the catalogue services the bot offers behind NEW_SERVICES (src/offer.ts), and the two reading-safety replies.
+  offerBody: string; // the Book list, when at least one more service is offered
+  offerButton: string; // max 20 chars
+  offerSectionStart: string; // max 24 chars: the ₹99 call and the single session
+  offerPathway: { RELEASE: string; UNDERSTAND: string; REWIRE: string }; // max 24 chars each (section titles)
+  offerRowDesc: (minutes: number, price: string, callFirst: boolean) => string; // max 72 chars
+  offerNotAvailable: string;
+  offerCallFirst: (name: string) => string;
+  screenQ1: string;
+  screenQ2: string;
+  screenToCall: (name: string) => string;
+  serviceTimesFor: (name: string, minutes: number, day: string) => string;
+  rowService: (minutes: number) => string; // max 72 chars
+  noServiceSlots: string;
+  servicePayLabel: (price: string) => string; // max 20 chars
+  servicePayBody: (name: string, label: string, day: string, time: string, until: string, link: string) => string;
+  serviceConfirmed: (name: string, day: string, time: string, remind?: boolean) => string;
+  reminderService: (name: string, day: string, time: string) => string;
+  intakeAsk: (question: string) => string;
+  intakeThanks: string;
+  readingSpell: string; // (a) "someone did something to me": never confirmed, nothing removed, the ₹99 call
+  readingPredict: string; // (b) death, illness, pregnancy, exam or court results, exact dates: not predicted; a doctor for health
   amma: AmmaCopy;
 };
 
@@ -361,6 +383,7 @@ const packPrice = (n: number) => rupees(n === p10.sessions ? p10.paise : p20.pai
 // Ticket 41: how every call and session is described: a voice call by phone, never video.
 const VOICE = "a voice call by phone (audio only, no video)";
 const VOICE_HI = "फ़ोन पर वॉइस कॉल (सिर्फ़ आवाज़, वीडियो नहीं)";
+const P_CALL_MIN = config.slots.callMinutes; // ticket 49: the first call's length, as the other call lines say it
 // "Use Priya" / "यही नाम: Priya": the WhatsApp name, shortened so the button stays within WhatsApp's 20 characters.
 const fitName = (prefix: string, name: string) => {
   const room = 20 - [...prefix].length;
@@ -667,6 +690,42 @@ const en: Copy = {
   pageOpeningTitle: "Opening Razorpay's secure payment page…",
   pageOpeningBody: "If it doesn't open in a moment, tap Continue.",
   pageBtnContinue: "Continue",
+  offerBody: `What would you like to book? Every call and session is ${VOICE}. Most people start with the ${intro} call, so Shantha Rao can suggest what suits them.`,
+  offerButton: "See options",
+  offerSectionStart: "Start here",
+  offerPathway: { RELEASE: "Release", UNDERSTAND: "Understand", REWIRE: "Rewire" },
+  offerRowDesc: (minutes, price, callFirst) => `${minutes} min · ${price} · voice call${callFirst ? ` · after the ${intro} call` : ""}`,
+  offerNotAvailable: "Sorry, this isn't open for booking right now. Here is what you can do.",
+  offerCallFirst: (name) =>
+    `Thank you for your interest. ${name} is offered after a first call with Shantha Rao, so she can understand what you're looking for and suggest what suits you. ` +
+    `The first call is ${intro} for ${P_CALL_MIN} minutes, ${VOICE}.`,
+  screenQ1: "Before we choose a time, two quick questions. Please just tap Yes or No; we don't keep your answers.\n\nAre you under treatment for a mental-health condition right now?",
+  screenQ2: "Have you ever had seizures or epilepsy?",
+  screenToCall: (name) =>
+    `Thank you for telling us. For your wellbeing, Shantha Rao would like to speak with you first on the ${intro} call, before a ${name}. ` +
+    "She will listen and suggest what suits you. Please keep following your doctor's advice.",
+  serviceTimesFor: (name, minutes, day) => `Free times on ${day} (India time) for your ${name}. It is ${minutes} minutes, ${VOICE}.`,
+  rowService: (minutes) => `${minutes}-min voice call`,
+  noServiceSlots: "There are no free times for this in the next few days. Tap \"Talk to a person\", or check back tomorrow.",
+  servicePayLabel: (price) => `Pay ${price}`,
+  servicePayBody: (name, label, day, time, until, link) =>
+    `${day} at ${time} is held for your ${name} until ${until} (India time).\n\n` +
+    `Tap "${label}" below to open Razorpay's secure payment page. Pay by any UPI app, card or net banking. Please don't pay twice.\n\n` +
+    `If the button does not open, use this link: ${link}`,
+  serviceConfirmed: (name, day, time, remind = true) =>
+    `Your ${name} with Shantha Rao is confirmed for ${day} at ${time} (India time). It is ${VOICE}: she calls you at the booked time on the number you are messaging from. ` +
+    `Please keep your phone with you in a quiet place. ${remind ? "We will remind you the day before." : "Please note the time; we'll message you here if anything changes."}`,
+  reminderService: (name, day, time) =>
+    `Reminder: your ${name} with Shantha Rao is tomorrow, ${day} at ${time} (India time). It is ${VOICE}. Please keep your phone with you.`,
+  intakeAsk: (question) => `${question}\n\nPlease type it here in a few words, or tap Skip. Shantha Rao will read it before your booking.`,
+  intakeThanks: "Thank you. Shantha Rao will see this before your booking.",
+  readingSpell:
+    "Thank you for telling us. We don't look into or confirm anything like that, and Shantha Rao doesn't remove anything or do any ritual for it. " +
+    `Her sessions work on how you feel and how you respond to what's happening around you. If you'd like to talk it over, the ${intro} call is a gentle first step. ` +
+    "If you ever feel unsafe, please call 112.",
+  readingPredict:
+    "Readings and sessions don't predict things like death, illness, pregnancy, exam or court results, or exact dates, so we can't answer that. " +
+    "For anything about your health, please always see a doctor.",
   amma: ammaEn,
 };
 
@@ -933,6 +992,42 @@ const hi: Copy = {
   pageOpeningTitle: "Razorpay का सुरक्षित भुगतान पेज खुल रहा है…",
   pageOpeningBody: "अगर यह थोड़ी देर में न खुले, तो \"आगे बढ़ें\" दबाएँ।",
   pageBtnContinue: "आगे बढ़ें",
+  offerBody: `आप क्या बुक करना चाहेंगे? हर कॉल और सेशन ${VOICE_HI} होता है। ज़्यादातर लोग ${intro} की कॉल से शुरू करते हैं, ताकि शांता राव जी बता सकें कि उनके लिए क्या ठीक रहेगा।`,
+  offerButton: "विकल्प देखें",
+  offerSectionStart: "यहाँ से शुरू करें",
+  offerPathway: { RELEASE: "रिलीज़", UNDERSTAND: "समझ", REWIRE: "रीवायर" },
+  offerRowDesc: (minutes, price, callFirst) => `${minutes} मिनट · ${price} · वॉइस कॉल${callFirst ? ` · ${intro} की कॉल के बाद` : ""}`,
+  offerNotAvailable: "माफ़ कीजिए, अभी इसकी बुकिंग नहीं हो रही है। आप ये कर सकते हैं।",
+  offerCallFirst: (name) =>
+    `आपकी रुचि के लिए धन्यवाद। ${name} शांता राव जी के साथ पहली कॉल के बाद ही होती है, ताकि वे समझ सकें कि आप क्या चाहते हैं और बता सकें कि आपके लिए क्या ठीक रहेगा। ` +
+    `पहली कॉल ${intro} की है, ${P_CALL_MIN} मिनट की, ${VOICE_HI}।`,
+  screenQ1: "समय चुनने से पहले दो छोटे सवाल। बस \"हाँ\" या \"नहीं\" दबाएँ; हम आपके जवाब नहीं रखते।\n\nक्या अभी आपका किसी मानसिक स्वास्थ्य की समस्या का इलाज चल रहा है?",
+  screenQ2: "क्या आपको कभी दौरे (सीज़र) या मिर्गी हुई है?",
+  screenToCall: (name) =>
+    `बताने के लिए धन्यवाद। आपकी भलाई के लिए, ${name} से पहले शांता राव जी आपसे ${intro} की कॉल पर बात करना चाहेंगी। ` +
+    "वे आपकी बात सुनेंगी और बताएँगी कि आपके लिए क्या ठीक रहेगा। कृपया अपने डॉक्टर की सलाह मानते रहें।",
+  serviceTimesFor: (name, minutes, day) => `${day} के लिए खाली समय (भारतीय समय), आपकी ${name} के लिए। यह ${minutes} मिनट की ${VOICE_HI} है।`,
+  rowService: (minutes) => `${minutes} मिनट की वॉइस कॉल`,
+  noServiceSlots: "अगले कुछ दिनों में इसका कोई खाली समय नहीं है। \"किसी से बात करें\" दबाएँ, या कल फिर देखें।",
+  servicePayLabel: (price) => (`${price} भुगतान करें`.length <= 20 ? `${price} भुगतान करें` : `भुगतान: ${price}`),
+  servicePayBody: (name, label, day, time, until, link) =>
+    `${day}, ${time} का समय आपकी ${name} के लिए ${until} बजे तक (भारतीय समय) रोका गया है।\n\n` +
+    `नीचे "${label}" बटन दबाएँ, Razorpay का सुरक्षित भुगतान पेज खुलेगा। किसी भी UPI ऐप, कार्ड या नेट बैंकिंग से भुगतान करें। कृपया दो बार भुगतान न करें।\n\n` +
+    `अगर बटन न खुले, तो यह लिंक खोलें: ${link}`,
+  serviceConfirmed: (name, day, time, remind = true) =>
+    `शांता राव जी के साथ आपकी ${name} ${day} को ${time} बजे (भारतीय समय) तय हो गई है। यह ${VOICE_HI} है: वे तय समय पर आपको उसी नंबर पर कॉल करेंगी जिससे आप मैसेज कर रहे हैं। ` +
+    `कृपया किसी शांत जगह पर फ़ोन साथ रखें। ${remind ? "एक दिन पहले हम आपको याद दिलाएँगे।" : "कृपया समय नोट कर लें; अगर कुछ बदलता है तो हम यहीं मैसेज करेंगे।"}`,
+  reminderService: (name, day, time) =>
+    `याद दिला दें: शांता राव जी के साथ आपकी बुकिंग (${name}) कल, ${day} को ${time} बजे (भारतीय समय) है। यह ${VOICE_HI} है। कृपया फ़ोन अपने पास रखें।`,
+  intakeAsk: (question) => `${question}\n\nकृपया इसे यहाँ कुछ शब्दों में लिखें, या "छोड़ें" दबाएँ। शांता राव जी आपकी बुकिंग से पहले इसे पढ़ लेंगी।`,
+  intakeThanks: "धन्यवाद। शांता राव जी आपकी बुकिंग से पहले इसे देख लेंगी।",
+  readingSpell:
+    "बताने के लिए धन्यवाद। हम ऐसी किसी बात की जाँच या पुष्टि नहीं करते, और शांता राव जी इसके लिए कुछ हटाने या कोई विधि करने का काम नहीं करतीं। " +
+    `उनके सेशन इस पर काम करते हैं कि आप कैसा महसूस करते हैं और आसपास जो हो रहा है उस पर कैसे प्रतिक्रिया देते हैं। अगर आप इस बारे में बात करना चाहें, तो ${intro} की कॉल एक आसान पहला कदम है। ` +
+    "अगर आप कभी असुरक्षित महसूस करें, तो 112 पर कॉल करें।",
+  readingPredict:
+    "रीडिंग और सेशन मौत, बीमारी, गर्भ, परीक्षा या कोर्ट के नतीजे, या कोई सटीक तारीख जैसी बातें नहीं बताते, इसलिए हम इसका जवाब नहीं दे सकते। " +
+    "सेहत से जुड़ी किसी भी बात के लिए कृपया हमेशा डॉक्टर से मिलें।",
   amma: ammaEn, // Amma's page copy stays English
 };
 

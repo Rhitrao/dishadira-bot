@@ -10,7 +10,8 @@ import { sendMessage, type Out, type SendResult } from "./send";
 import { availableSlots, iso, istDay, istMinutes } from "./slots";
 
 export type StepName = "language" | "age" | "service" | "who" | "day" | "time" | "pay" | "gate" | "bookings" | "packages"
-  | "intent_name" | "intent_work" | "intent_area" | "intent_other"; // ticket 41, src/intent.ts
+  | "intent_name" | "intent_work" | "intent_area" | "intent_other" // ticket 41, src/intent.ts
+  | "screen" | "intake"; // ticket 49, src/offer.ts
 
 // Sends a step message and, if it went out, makes it the open step. `resend` is what to send again if it differs from the message itself
 // (the language step resends the short language question, not the whole greeting). `until` is when the step stops being open (a payment step: the hold).
@@ -70,6 +71,7 @@ const IST_MS = 330 * 60_000;
 const ID_GROUPS: [RegExp, readonly string[]][] = [
   [/^age_yes/, W.yes], [/^age_no/, W.no], [/^lang_en$/, W.en], [/^lang_hi$/, W.hi],
   [/_SELF$/, W.self], [/_FAMILY$/, W.family], [/_PET$/, W.pet], [/_HEALING$/, W.healing], [/_PROTECTION$/, W.cleansing],
+  [/^scr_.+_yes$/, W.yes], [/^scr_.+_no$/, W.no], // ticket 49: the two yes/no questions before a catalogue service's hold
 ];
 
 function dayWords(ymd: string, nowMs: number): string[] {
@@ -245,9 +247,12 @@ export async function typedTime(db: D1Database, open: OpenStep, text: string, no
   const from = Math.max(said.from, OPEN());
   const to = Math.min(said.to, CLOSE());
   if (from >= to) return { kind: "outside" };
-  // Only the ₹99 call's time list has time_ ids (src/booking.ts); every other time list is for sessions.
+  // Only the ₹99 call's time list has time_ ids (src/booking.ts); every other time list is for sessions. A session's own list (sess_<id>_,
+  // mtm_<id>_) may be a catalogue service of another length (ticket 49): its times are that service's.
   const kind = prefix.startsWith("time_") ? "CALL" : "SESSION";
-  const free = await availableSlots(db, kind, ymd, nowMs + config.booking.leadMinutes * 60_000, nowMs);
+  const sid = /^(?:sess|mtm)_(\d+)_$/.exec(prefix)?.[1];
+  const service = sid ? (await db.prepare("SELECT service_key AS k FROM sessions WHERE id = ?1").bind(Number(sid)).first<{ k: string | null }>())?.k ?? undefined : undefined;
+  const free = await availableSlots(db, kind, ymd, nowMs + config.booking.leadMinutes * 60_000, nowMs, service);
   const hit = free.find((s) => istMinutes(s.startUtc) >= from && istMinutes(s.startUtc) < to);
   return hit ? { kind: "pick", id: prefix + hit.startUtc } : { kind: "none", startUtc: first };
 }

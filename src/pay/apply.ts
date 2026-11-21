@@ -1,6 +1,8 @@
 // Applies a payment fact (verified webhook or provider status read) to our rows.
 // Every step is idempotent, so a replay, or a webhook racing the cron, can never double-book, double-refund or double-send.
-import { DEFAULT_PRICES, priceAt } from "../business";
+import { DEFAULT_PRICES, priceAt, servicePriceAt } from "../business";
+import { isSeeded, serviceOf } from "../catalogue";
+import { startIntake } from "../offer";
 import { config } from "../config";
 import { copyFor, langOf, rupees } from "../copy";
 import type { Env } from "../env";
@@ -98,8 +100,12 @@ async function tellReleased(env: Env, pay: Payment, table: "intros" | "sessions"
     .first();
   if (busy) return;
   const cp = copyFor(c.locale);
+  // Ticket 49: a catalogue service's own row (cat_<key>) asks its questions again before a new time is held.
+  const key = table === "sessions" ? (await db.prepare("SELECT service_key AS k FROM sessions WHERE id = ?1").bind(pay.target_id).first<{ k: string | null }>())?.k : null;
   const button =
-    table === "intros" ? { id: "menu_book", title: cp.btnBook } : { id: t.introId !== null ? `sess_offer_${pay.target_id}` : "go_s", title: cp.btnChooseTime };
+    table === "intros" ? { id: "menu_book", title: cp.btnBook }
+    : key && !isSeeded(key) ? { id: `cat_${key}`, title: cp.btnChooseTime }
+    : { id: t.introId !== null ? `sess_offer_${pay.target_id}` : "go_s", title: cp.btnChooseTime };
   await sendMessage(env, c.id, { type: "buttons", body: cp.holdReleased, buttons: [button] }, `released:${pay.id}`);
 }
 
@@ -132,7 +138,11 @@ async function mismatch(env: Env, pay: Payment, kind: string, paidPaise?: number
 // so a link sent just before the owner changed a price is still the right amount. A package must be one of the two sizes we sell.
 async function priceFor(db: Env["DB"], pay: Payment): Promise<number | null> {
   if (pay.purpose === "INTRO") return priceAt(db, "intro", pay.created_at);
-  if (pay.purpose === "SESSION") return priceAt(db, "single", pay.created_at);
+  if (pay.purpose === "SESSION") {
+    // Ticket 49: a catalogue service other than the single session is checked against its own price when the link was made.
+    const key = (await db.prepare("SELECT service_key AS k FROM sessions WHERE id = ?1").bind(pay.target_id).first<{ k: string | null }>())?.k;
+    return key && !isSeeded(key) ? servicePriceAt(db, key, pay.created_at) : priceAt(db, "single", pay.created_at);
+  }
   if (pay.purpose === "PACKAGE") {
     const pk = await db.prepare("SELECT size, price_paise AS price, created_at AS at FROM packages WHERE id = ?1").bind(pay.target_id).first<{ size: number; price: number; at: string }>();
     const name = (["pack10", "pack20"] as const).find((n) => DEFAULT_PRICES[n].sessions === pk?.size);
@@ -322,6 +332,20 @@ async function confirmSession(env: Env, convId: number, paymentId: number, start
   const en = formatIstLang(startUtc, "en");
   const hi = formatIstLang(startUtc, "hi");
   const p = lang === "hi" ? hi : en;
+  // Ticket 49: a catalogue service's confirmation names it, as free text inside the 24-hour window only: the approved session_confirmed
+  // template says "session" and "distance session", so outside the window nothing is sent and the team gets the usual OUTSIDE_WINDOW item.
+  // Then its one question (intake), if it has one.
+  const ses = await env.DB
+    .prepare("SELECT se.id, se.service_key AS k FROM payments p JOIN sessions se ON se.id = p.target_id WHERE p.id = ?1 AND p.purpose = 'SESSION'")
+    .bind(paymentId)
+    .first<{ id: number; k: string | null }>();
+  const svc = ses?.k && !isSeeded(ses.k) ? serviceOf(ses.k) : undefined;
+  if (ses && svc) {
+    const name = lang === "hi" ? svc.nameHi : svc.nameEn;
+    const res = await sendMessage(env, convId, { type: "text", text: copyFor(lang).serviceConfirmed(name, p.day, p.time, reminderReaches(startUtc)) }, `paid:${paymentId}`);
+    if (res === "SENT" || res === "UNKNOWN") await startIntake(env, convId, ses.id);
+    return;
+  }
   await sendOrTemplate(
     env,
     convId,

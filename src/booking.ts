@@ -5,9 +5,9 @@
 // The old list rows slot_<SERVICE>_<startUtc> (before who-for and day steps existed) are still understood; see below.
 import type { D1Database } from "@cloudflare/workers-types";
 import { prices } from "./business";
-import { CALL_KEY } from "./catalogue";
+import { CALL_KEY, isSeeded, newServicesOn, offeredServices, serviceOf } from "./catalogue";
 import { config } from "./config";
-import { copyFor, langOf, type Copy, type ForWhom, type Lang } from "./copy";
+import { copyFor, langOf, rupees, type Copy, type ForWhom, type Lang } from "./copy";
 import type { Env } from "./env";
 import { bookingsOpen } from "./switches";
 import { contactFor, razorpay } from "./pay/razorpay";
@@ -30,11 +30,12 @@ export const loadConv = (db: D1Database, id: number) =>
 
 // Free slots a customer could hold right now, per IST day: the first `window` working days that still have a free time.
 // A full day (or today, late in the evening) is skipped and the next working day is looked at instead, up to config.booking.lookaheadDays.
-async function freeByDay(db: D1Database, kind: SlotKind, window: number, nowMs: number): Promise<Map<string, Slot[]>> {
+// `service`: a catalogue key (ticket 49; default the first call or the single session), whose length and day caps the free times follow.
+async function freeByDay(db: D1Database, kind: SlotKind, window: number, nowMs: number, service?: string): Promise<Map<string, Slot[]>> {
   const out = new Map<string, Slot[]>();
   for (const ymd of nextWorkingDays(nowMs, config.booking.lookaheadDays)) {
     if (out.size >= window) break;
-    const free = await availableSlots(db, kind, ymd, nowMs + config.booking.leadMinutes * 60_000, nowMs);
+    const free = await availableSlots(db, kind, ymd, nowMs + config.booking.leadMinutes * 60_000, nowMs, service);
     if (free.length) out.set(ymd, free);
   }
   return out;
@@ -43,13 +44,15 @@ async function freeByDay(db: D1Database, kind: SlotKind, window: number, nowMs: 
 // Day step: one list message with a row for each of the first config.booking.workingDays (6) days that still have a free time
 // (full days and holidays are skipped). `idFor` makes each row's id; the ids are the same as the old day buttons', so a day button
 // still sitting in an older chat keeps working. With no free day it sends the "no times" message (with Talk to a person and Help, ticket 31 I10) and an item instead, and returns false.
-export async function sendDays(env: Env, conv: Conv, kind: SlotKind, idFor: (ymd: string) => string, key: string): Promise<boolean> {
+// `service` (ticket 49): a catalogue service other than the seeded two; its own length and caps, and its own "no times" words.
+export async function sendDays(env: Env, conv: Conv, kind: SlotKind, idFor: (ymd: string) => string, key: string, service?: string): Promise<boolean> {
   const cp = copyFor(conv.locale);
   const lang = langOf(conv.locale);
-  const days = [...(await freeByDay(env.DB, kind, config.booking.workingDays, Date.now())).entries()];
+  const other = otherService(service);
+  const days = [...(await freeByDay(env.DB, kind, config.booking.workingDays, Date.now(), other?.key)).entries()];
   if (!days.length) {
     await clearStep(env.DB, conv.id);
-    await sendMessage(env, conv.id, pausedOut(cp, kind === "CALL" ? cp.noSlots : cp.noSessionSlots), `${key}:noslots`);
+    await sendMessage(env, conv.id, pausedOut(cp, other ? cp.noServiceSlots : kind === "CALL" ? cp.noSlots : cp.noSessionSlots), `${key}:noslots`);
     await raiseAttention(env.DB, "NO_FREE_TIMES", `conv:${conv.id}`);
     return false;
   }
@@ -66,22 +69,52 @@ const eveningMinutes = () => Number(config.booking.eveningFrom.slice(0, 2)) * 60
 
 // Time step for one day: at most 9 times (the spread rule), then "Another day". Two sections, Afternoon and Evening, never an empty one.
 // Returns false when the day has no free slot any more (the caller then sends the day step instead).
-export async function sendTimes(env: Env, conv: Conv, kind: SlotKind, ymd: string, idFor: (startUtc: string) => string, moreId: string, key: string): Promise<boolean> {
+export async function sendTimes(env: Env, conv: Conv, kind: SlotKind, ymd: string, idFor: (startUtc: string) => string, moreId: string, key: string, service?: string): Promise<boolean> {
   const cp = copyFor(conv.locale);
   const lang = langOf(conv.locale);
-  const free = await availableSlots(env.DB, kind, ymd, Date.now() + config.booking.leadMinutes * 60_000, Date.now());
+  const other = otherService(service);
+  const free = await availableSlots(env.DB, kind, ymd, Date.now() + config.booking.leadMinutes * 60_000, Date.now(), other?.key);
   if (!free.length) return false;
   const picked = spreadTimes(free, config.booking.timeRows);
   const split = eveningMinutes();
-  const row = (s: Slot) => ({ id: idFor(s.startUtc), title: formatIstLang(s.startUtc, lang).time, description: kind === "CALL" ? cp.rowCall : cp.rowSession });
+  const rowText = other ? cp.rowService(other.minutes) : kind === "CALL" ? cp.rowCall : cp.rowSession;
+  const row = (s: Slot) => ({ id: idFor(s.startUtc), title: formatIstLang(s.startUtc, lang).time, description: rowText });
   const sections: ListSection[] = [
     { title: cp.sectionAfternoon, rows: picked.filter((s) => istMinutes(s.startUtc) < split).map(row) },
     { title: cp.sectionEvening, rows: picked.filter((s) => istMinutes(s.startUtc) >= split).map(row) },
   ].filter((x) => x.rows.length > 0);
   sections[sections.length - 1].rows.push({ id: moreId, title: cp.anotherDay });
   const day = formatIstLang(picked[0].startUtc, lang).day;
-  await sendStep(env, conv.id, "time", { type: "list", body: kind === "CALL" ? cp.timesFor(day) : cp.sessionTimesFor(day), button: cp.listButtonTimes, sections }, `${key}:times`);
+  const body = other ? cp.serviceTimesFor(lang === "hi" ? other.nameHi : other.nameEn, other.minutes, day) : kind === "CALL" ? cp.timesFor(day) : cp.sessionTimesFor(day);
+  await sendStep(env, conv.id, "time", { type: "list", body, button: cp.listButtonTimes, sections }, `${key}:times`);
   return true;
+}
+
+// A catalogue service other than the seeded two (ticket 49), or undefined: the seeded two keep every word and length they had.
+const otherService = (key: string | null | undefined) => {
+  const s = serviceOf(key);
+  return s && !isSeeded(s.key) ? s : undefined;
+};
+
+// ---- the Book list (ticket 49, CONTRACT v19) ----
+// With NEW_SERVICES "true" and at least one more service offered (active and public), "Book" shows one list: the ₹99 call and the single
+// session first, then the offered services grouped by pathway (the owner's order), at most config.offer.listMax rows. Row ids: book_call (the
+// call's own steps, as "Book" was before), pk_single (the single session, with its soft nudge), cat_<key> (src/offer.ts). Otherwise null.
+export function bookListOut(env: Env, cp: Copy, lang: Lang): Out | null {
+  if (!newServicesOn(env)) return null;
+  const extra = offeredServices(env).slice(0, config.offer.listMax - 2);
+  if (!extra.length) return null;
+  const fit = (t: string) => ([...t].length <= 24 ? t : [...t].slice(0, 23).join("").trimEnd() + "…");
+  const sections: ListSection[] = [
+    { title: cp.offerSectionStart, rows: [{ id: "book_call", title: cp.rowIntroTitle, description: cp.rowIntroDesc }, { id: "pk_single", title: cp.rowSingleTitle, description: cp.rowSingleDesc }] },
+  ];
+  for (const p of ["RELEASE", "UNDERSTAND", "REWIRE"] as const) {
+    const rows = extra
+      .filter((s) => s.pathway === p)
+      .map((s) => ({ id: `cat_${s.key}`, title: fit(lang === "hi" ? s.nameHi : s.nameEn), description: cp.offerRowDesc(s.minutes, rupees(s.pricePaise), s.needsCallFirst) }));
+    if (rows.length) sections.push({ title: cp.offerPathway[p], rows });
+  }
+  return { type: "list", body: cp.offerBody, button: cp.offerButton, sections };
 }
 
 // The same three steps serve the ₹99 call (ids age_yes, svc_, who_) and the session flows in src/packages.ts, which pass their own id prefix.
@@ -115,6 +148,18 @@ export const whoButtons = (cp: Copy, service: string, prefix = "who"): Out => ({
 // Handles every booking id above, plus the legacy slot_<SERVICE>_<startUtc>. Returns false for any other choice.
 export async function bookingChoice(env: Env, choice: string | null, convId: number, msgId: string, provider: PaymentProvider = razorpay(env)): Promise<boolean> {
   if (!choice) return false;
+  // Ticket 49: "Book" shows the list of what can be booked when more services are offered; its call row (book_call) is the old "Book".
+  if (choice === "menu_book") {
+    const conv = await loadConv(env.DB, convId);
+    const list = conv ? bookListOut(env, copyFor(conv.locale), langOf(conv.locale)) : null;
+    if (conv && list) {
+      await clearStep(env.DB, conv.id);
+      if (!(await bookingsOpen(env))) await sendMessage(env, conv.id, pausedOut(copyFor(conv.locale)), `${msgId}:book`);
+      else await sendStep(env, conv.id, "packages", list, `${msgId}:booklist`);
+      return true;
+    }
+  }
+  if (choice === "book_call") choice = "menu_book";
   const svc = /^svc_([A-Z]+)$/.exec(choice);
   const who = new RegExp(`^who_([A-Z]+)_([A-Z]+)$`).exec(choice);
   const day = new RegExp(`^day_([A-Z]+)_([A-Z]+)_(${YMD})$`).exec(choice);
