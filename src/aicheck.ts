@@ -50,7 +50,7 @@ export function allowedNumbers(factNumbers: readonly number[] = []): Set<number>
   ]);
 }
 
-// `karmic` (ticket 53): while KARMIC_FRONT_DOOR is "true", config.ai.karmicBannedWords are banned too (therapy, predict …).
+// `karmic` (ticket 56): while KARMIC_FRONT_DOOR is "true", config.ai.karmicBannedWords are banned too (therapy, predict …).
 export function checkReply(reply: string, factNumbers: readonly number[] = [], karmic = false): Checked {
   const fail = (reason: RejectReason): Checked => ({ ok: false, reason });
   if (reply.length > config.ai.maxReplyChars) return fail("TOO_LONG");

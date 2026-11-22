@@ -1032,7 +1032,7 @@ Each example shows the customer's message, the trusted facts that matter, and a 
 - `handoff`: a person from the team must act (payment trouble, refunds, complaints, safety, anything you can't answer).
 - `none`: nothing more is needed, a booking step is open, or they said not now.
 
-<!-- Ticket 53 (CONTRACT v21): everything below this line goes to the assistant ONLY while the KARMIC_FRONT_DOOR env flag is "true" (src/ai.ts). Everything above goes always, unchanged. -->
+<!-- Ticket 56 (CONTRACT v24): everything below this line goes to the assistant ONLY while the KARMIC_FRONT_DOOR env flag is "true" (src/ai.ts). Everything above goes always, unchanged. -->
 
 ## §18 Karmic Coaching with Shantha Rao (only while the front door is on)
 

@@ -372,7 +372,7 @@ export type Copy = {
   clarityPitch: string; // what the Karmic Clarity Call is (buttons: Book ₹99 call, Help)
   directBody: string; // "Or book directly" (a list of the topic's services), only with NEW_SERVICES on too
   directButton: string; // max 20 chars
-  // Ticket 53: Help's "Who is it for?", a row shown only while KARMIC_FRONT_DOOR is "true" (src/whatsapp.ts), after "How it works".
+  // Ticket 56: Help's "Who is it for?", a row shown only while KARMIC_FRONT_DOOR is "true" (src/whatsapp.ts), after "How it works".
   faqWhoTitle: string; // max 24 chars
   faqWhoAnswer: string;
   amma: AmmaCopy;
@@ -1148,7 +1148,7 @@ const karmicEn: Partial<Copy> = {
     "and suggests a pathway that may suit you. The call is in the language you chat in, English or Hindi.",
   faqAnswers: {
     ...en.faqAnswers,
-    // Ticket 53: what it is and how it works describe Karmic Coaching and its three pathways (with the flag "false", the pranic answers above).
+    // Ticket 56: what it is and how it works describe Karmic Coaching and its three pathways (with the flag "false", the pranic answers above).
     what_is_this:
       "Disha Dira offers Karmic Coaching with Shantha Rao, by phone. She listens, helps you see the patterns in your relationships, family, work and self-worth, " +
       "and suggests a pathway: Release (healing), Understand (readings) or Rewire (mind work). " +

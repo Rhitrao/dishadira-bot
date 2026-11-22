@@ -248,7 +248,7 @@ export async function packChoice(env: Env, choice: string | null, convId: number
       await sendAs("age", ageButtons(cp, `_${f}`), "age");
       return true;
     }
-    // Ticket 53: with KARMIC_FRONT_DOOR "true", the single session reached from the topic menu (a topic tapped within topicHours, so it
+    // Ticket 56: with KARMIC_FRONT_DOOR "true", the single session reached from the topic menu (a topic tapped within topicHours, so it
     // carries "Came for") doesn't ask "Healing or Energy cleansing?": straight to who it is for, HEALING kept as the filler.
     if (f === "s" && frontDoorOn(env) && (await pickedTopic(env.DB, conv!.id))) await sendAs("who", whoButtons(cp, "HEALING", "swh"), "who");
     else if (f === "s") await sendAs("service", serviceButtons(cp, "ssv"), "service");

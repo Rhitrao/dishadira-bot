@@ -219,7 +219,7 @@ export async function bookingChoice(env: Env, choice: string | null, convId: num
     await send({ type: "text", text: cp.ageNo }, "ageno");
     return true;
   }
-  // Ticket 53: with KARMIC_FRONT_DOOR "true" the Karmic Clarity Call doesn't ask "Healing or Energy cleansing?": straight to who it is
+  // Ticket 56: with KARMIC_FRONT_DOOR "true" the Karmic Clarity Call doesn't ask "Healing or Energy cleansing?": straight to who it is
   // for, with HEALING kept as the filler so every report and screen that reads intros.service works as before.
   const firstStep = () => (frontDoorOn(env) ? sendAs("who", whoButtons(cp, "HEALING"), "who") : sendAs("service", serviceButtons(cp), "service"));
   if (choice === "age_yes") {

@@ -21,15 +21,15 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-// Ticket 53: docs/KNOWLEDGE.md in two parts at the Karmic marker line: everything before it (KNOWLEDGE, always sent) and §18 after it
+// Ticket 56: docs/KNOWLEDGE.md in two parts at the Karmic marker line: everything before it (KNOWLEDGE, always sent) and §18 after it
 // (KNOWLEDGE_KARMIC, sent only while KARMIC_FRONT_DOOR is "true").
-const KARMIC_MARK = /\n<!-- Ticket 53 [^\n]*-->\n\n/;
+const KARMIC_MARK = /\n<!-- Ticket 56 [^\n]*-->\n\n/;
 const splitKnowledge = (md: string) => {
   const m = KARMIC_MARK.exec(md);
-  if (!m) throw new Error("docs/KNOWLEDGE.md has no Ticket 53 marker line");
+  if (!m) throw new Error("docs/KNOWLEDGE.md has no Ticket 56 marker line");
   return { base: md.slice(0, m.index), karmic: md.slice(m.index + m[0].length) };
 };
-// The SHA-256 of the cached prompt (the rules and the knowledge bank) with the front door off, on main at 8ad6975 before Ticket 53. If §1–§17
+// The SHA-256 of the cached prompt (the rules and the knowledge bank) with the front door off, on main at 8ad6975 before Ticket 56. If §1–§17
 // or the rules are changed on purpose, put the new hash here in the same PR.
 const FLAG_OFF_PROMPT_SHA256 = "ec1c049c16141a5039050f2a54e19301a1569fba796459bf627fdca1a432c778";
 const sha256 = async (t: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -44,7 +44,7 @@ describe("the knowledge bank", () => {
       fs.writeFileSync(
         "src/knowledge.ts",
         `${head}\nexport const KNOWLEDGE = ${JSON.stringify(base)};\n` +
-          `// Ticket 53: §18, Karmic Coaching: added to the prompt only while KARMIC_FRONT_DOOR is "true".\nexport const KNOWLEDGE_KARMIC = ${JSON.stringify(karmic)};\n`,
+          `// Ticket 56: §18, Karmic Coaching: added to the prompt only while KARMIC_FRONT_DOOR is "true".\nexport const KNOWLEDGE_KARMIC = ${JSON.stringify(karmic)};\n`,
       );
       return;
     }
@@ -53,7 +53,7 @@ describe("the knowledge bank", () => {
     expect(KNOWLEDGE_KARMIC.startsWith("## §18 Karmic Coaching with Shantha Rao")).toBe(true);
     for (const w of ["Karmic", "Release (", "Akashic", "Moksha Patam"]) expect(KNOWLEDGE, w).not.toContain(w);
   });
-  it("with the front door off the cached prompt is byte for byte main's before Ticket 53", async () => {
+  it("with the front door off the cached prompt is byte for byte main's before Ticket 56", async () => {
     expect(await sha256(`${RULES_HEADER}\n\n${KNOWLEDGE}`)).toBe(FLAG_OFF_PROMPT_SHA256);
   });
 });
@@ -86,7 +86,7 @@ describe("the request", () => {
     expect(body.max_tokens).toBe(800);
     expect(body.system).toHaveLength(2);
     expect(body.system[0].cache_control).toEqual({ type: "ephemeral" });
-    expect(body.system[0].text).toBe(`${RULES_HEADER}\n\n${KNOWLEDGE}`); // ticket 53: §18 only while the front door is on (below)
+    expect(body.system[0].text).toBe(`${RULES_HEADER}\n\n${KNOWLEDGE}`); // ticket 56: §18 only while the front door is on (below)
     expect(body.system[1].cache_control).toBeUndefined();
     expect(body.system[1].text).toBe(factsText(FACTS));
     expect(body.tools).toEqual([AI_TOOL]);
@@ -219,7 +219,7 @@ describe("what goes into the assistant's context", () => {
   });
 });
 
-describe("ticket 53: Karmic Coaching in the assistant's knowledge, only while KARMIC_FRONT_DOOR is 'true'", () => {
+describe("ticket 56: Karmic Coaching in the assistant's knowledge, only while KARMIC_FRONT_DOOR is 'true'", () => {
   const TAROT = { nameEn: "Tarot reading", nameHi: "टैरो रीडिंग", pathway: "UNDERSTAND", minutes: 30, pricePaise: 49900 };
   const systemOf = async (facts: Facts) => {
     fetchMock.mockClear();

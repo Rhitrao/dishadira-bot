@@ -1475,7 +1475,7 @@ describe("ticket 52: the reading-safety replies on Instagram and Messenger, and 
     expect(decodeURIComponent(buttonsOf(m)[0].url)).toContain("Hi, I'd like to book a Karmic Clarity Call (ref: IG");
   });
 
-  it("ticket 53: with KARMIC_FRONT_DOOR 'true', 'What is this?' and 'How the call works' describe Karmic Coaching and end with the Clarity Call; 'false': the pranic answers", async () => {
+  it("ticket 56: with KARMIC_FRONT_DOOR 'true', 'What is this?' and 'How the call works' describe Karmic Coaching and end with the Clarity Call; 'false': the pranic answers", async () => {
     const off = socialWords("en");
     expect(off.lines.what).toBe("Pranic Healing is a gentle, no-touch energy healing practice. It complements medical care and is not a substitute for it.");
     expect(off.qrTitles.what).toBe("About Pranic Healing");

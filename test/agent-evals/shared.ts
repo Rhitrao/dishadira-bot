@@ -24,7 +24,7 @@ export type EvalCase = {
   history?: { role: "user" | "assistant"; content: string }[]; // earlier turns, oldest first
   step?: string; // a booking step that is open when the message arrives
   fake?: FakeOutput; // what the fake assistant answers in CI
-  // Ticket 53: a case asked with KARMIC_FRONT_DOOR "true" (docs/KNOWLEDGE.md §18 in the prompt), and the catalogue services that are bookable
+  // Ticket 56: a case asked with KARMIC_FRONT_DOOR "true" (docs/KNOWLEDGE.md §18 in the prompt), and the catalogue services that are bookable
   // then (none given: none; given: NEW_SERVICES on with these active and public).
   karmic?: boolean;
   bookable?: NonNullable<Facts["karmic"]>["services"];

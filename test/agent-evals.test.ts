@@ -12,7 +12,7 @@ import { NOW, Wa } from "./wa";
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
-// The 145 scenarios of docs/KNOWLEDGE.md section 7 (and, ticket 53, the 13 of §18 with KARMIC_FRONT_DOOR "true"), run through the real handler with a FAKE assistant that returns the canned answer in each case.
+// The 145 scenarios of docs/KNOWLEDGE.md section 7 (and, ticket 56, the 13 of §18 with KARMIC_FRONT_DOOR "true"), run through the real handler with a FAKE assistant that returns the canned answer in each case.
 // This proves the wiring (gate, strikes, blocks, buttons, fallbacks, the output check, the fake-facts case), not the model: the model is judged by
 // the manual workflow .github/workflows/eval.yml, which runs test/agent-evals/live.eval.ts against the real API.
 const w = new Wa();
@@ -21,12 +21,12 @@ beforeAll(() => w.start());
 afterAll(() => w.stop());
 
 describe("the case file", () => {
-  it("has the 158 scenarios in order (§7's 145, then ticket 53's 13 for §18), each either decided by the assistant or by code", () => {
+  it("has the 158 scenarios in order (§7's 145, then ticket 56's 13 for §18), each either decided by the assistant or by code", () => {
     expect(ALL_CASES.map((c) => c.id)).toEqual(Array.from({ length: 158 }, (_, i) => i + 1));
     expect(AI_CASES.length + CODE_CASES.length).toBe(158);
     expect(CODE_CASES.map((c) => c.id)).toEqual([14, 32, 42, 43, 44, 45, 57, 63, 64, 153]);
     expect(AI_CASES.some((c) => c.safety)).toBe(true);
-    // Ticket 53: the Karmic cases, the "Do you do tarot?" pair (offered and not), and three in Hindi or Roman Hinglish.
+    // Ticket 56: the Karmic cases, the "Do you do tarot?" pair (offered and not), and three in Hindi or Roman Hinglish.
     expect(ALL_CASES.filter((c) => c.karmic).map((c) => c.id)).toEqual([146, 147, 148, 149, 150, 151, 152, 154, 155, 156, 157, 158]);
     expect(ALL_CASES.filter((c) => c.id < 146).some((c) => c.karmic)).toBe(false);
     expect(ALL_CASES.filter((c) => c.input === "Do you do tarot?").map((c) => c.bookable?.length)).toEqual([1, 0]);
@@ -103,7 +103,7 @@ async function giveFacts(from: string, c: EvalCase) {
 describe("cases decided by the assistant: the canned answer goes through the handler", () => {
   it.each(AI_CASES.map((c) => [c.id, c.name, c] as const))("case %i (%s)", async (_id, _name, c) => {
     const f = c.fake!;
-    // Ticket 53: a Karmic case runs with the front door on and exactly its bookable services in the catalogue; every other case with it off.
+    // Ticket 56: a Karmic case runs with the front door on and exactly its bookable services in the catalogue; every other case with it off.
     w.frontDoor = c.karmic ? "true" : undefined;
     w.newServices = c.bookable?.length ? "true" : "false";
     await w.db.prepare("DELETE FROM services WHERE key NOT IN ('first_call', 'single_session')").run();
@@ -147,7 +147,7 @@ describe("cases decided by the assistant: the canned answer goes through the han
     }
     if (c.facts?.next) expect(req.system[1].text).toContain("Next booking: call on Wed, 21 Oct at 2:30 pm (India time)");
     if (c.facts?.creditsLeft) expect(req.system[1].text).toContain(`Package sessions left: ${c.facts.creditsLeft}`);
-    // Ticket 53: §18 and the bookable services only with the front door on; otherwise the prompt is exactly as before.
+    // Ticket 56: §18 and the bookable services only with the front door on; otherwise the prompt is exactly as before.
     expect(req.system[0].text.includes(KNOWLEDGE_KARMIC)).toBe(!!c.karmic);
     expect(req.system[1].text.includes("Bookable services")).toBe(!!c.karmic);
     if (c.karmic) expect(req.system[1].text).toContain(bookableLine({ services: c.bookable ?? [] }));

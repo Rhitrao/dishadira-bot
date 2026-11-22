@@ -59,7 +59,7 @@ export async function answerWithAI(ctx: AnswerCtx): Promise<Answered> {
   const open = await openStep(db, conv.id);
 
   const facts: Facts = await gatherFacts(db, conv.id, conv.locale, Date.now(), open?.step ?? null);
-  const karmic = karmicFacts(env); // ticket 53: §18 and the bookable services, only while the front door is on
+  const karmic = karmicFacts(env); // ticket 56: §18 and the bookable services, only while the front door is on
   if (karmic) facts.karmic = karmic;
   await recordAiReply(db, conv.id); // every call counts against the budgets, whatever comes back
   let result: Awaited<ReturnType<typeof callAI>>;

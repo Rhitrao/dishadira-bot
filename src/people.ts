@@ -408,7 +408,7 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
         appointmentRow({
           time: clock(nb.startUtc, loc), name: dayName(nb.startUtc, loc),
           service:
-            clarityLabel(nb.kind, nb.topic, consoleLang(loc)) ?? // ticket 53: a call from the front door
+            clarityLabel(nb.kind, nb.topic, consoleLang(loc)) ?? // ticket 56: a call from the front door
             otherServiceLabel(nb.serviceKey, consoleLang(loc)) ??
             `${nb.kind === "CALL" ? p.callKind(rupees(prices().intro)) : p.sessionKind} · ${service(nb.service, loc)}`,
           details: [forWhomText(nb.forWhom, loc), callLangText(nb.callLang, loc)], status: bookingChip(nb.state, loc),

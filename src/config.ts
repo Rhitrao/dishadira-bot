@@ -123,7 +123,7 @@ export const config = {
       "cancer", "tumour", "tumor", "diabetes", "thyroid", "depression", "pcod", "pcos", "infertility", "kidney", "heart disease", "asthma", "arthritis", "paralysis", "epilepsy", "seizure", "seizures", "hiv", "migraine", "bp", "blood pressure",
       "कैंसर", "डायबिटीज़", "शुगर की बीमारी", "थायराइड", "डिप्रेशन", "बांझपन", "लकवा", "मिर्गी",
     ],
-    // Ticket 53 (docs/KNOWLEDGE.md §18): banned too while KARMIC_FRONT_DOOR is "true" (with it "false" the check is exactly as before).
+    // Ticket 56 (docs/KNOWLEDGE.md §18): banned too while KARMIC_FRONT_DOOR is "true" (with it "false" the check is exactly as before).
     karmicBannedWords: [
       "therapy", "therapies", "therapist", "therapists", "therapeutic", "angel therapy", "silva", "silva method",
       "predict", "predicts", "predicted", "predicting", "prediction", "predictions", "heal your illness", "heals your illness", "heal your disease",

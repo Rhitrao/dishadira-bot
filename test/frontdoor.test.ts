@@ -81,7 +81,7 @@ describe("KARMIC_FRONT_DOOR 'false' (live): every message is exactly as before",
     await w.tapRow(from, "pk_single");
     await w.tap(from, "tp_DECISION");
     await w.typed(from, "someone did black magic on me");
-    // Ticket 53: the session's "Healing or Energy cleansing?" step, Help and its answers, and an old "Who is it for?" row (nothing).
+    // Ticket 56: the session's "Healing or Energy cleansing?" step, Help and its answers, and an old "Who is it for?" row (nothing).
     await w.tap(from, "gate_s");
     await w.tap(from, "menu_how");
     await w.tapRow(from, "faq_what_is_this");
@@ -105,7 +105,7 @@ describe("KARMIC_FRONT_DOOR 'false' (live): every message is exactly as before",
     expect(bodyOf(off[2])).toBe(allCopy.en.ageCheck); // "book" goes straight to the call's steps
     expect(off.map(bodyOf)).toContain(allCopy.en.confirmed("Tue, 6 Oct", "2:00 pm", "en"));
     expect(off.map(bodyOf)).toContain(allCopy.en.readingSpell);
-    // Ticket 53: the call and the session still ask "Which would you like?" [Healing] [Energy cleansing]; Help and its answers are the pranic ones.
+    // Ticket 56: the call and the session still ask "Which would you like?" [Healing] [Energy cleansing]; Help and its answers are the pranic ones.
     expect(off.filter((p) => bodyOf(p) === allCopy.en.chooseService).map(buttonsOf)).toEqual([["svc_HEALING", "svc_PROTECTION"], ["ssv_HEALING", "ssv_PROTECTION"], ["ssv_HEALING", "ssv_PROTECTION"]]);
     const help = off.find((p) => bodyOf(p) === allCopy.en.helpListBody)!;
     expect(rowsOf(help).map((r) => r.id)).toEqual(["faq_what_is_this", "faq_how_it_works", "faq_price", "faq_timings", "faq_refund", "faq_privacy", "menu_bookings", "menu_person", "menu_lang"]);
@@ -282,7 +282,7 @@ describe("KARMIC_FRONT_DOOR 'true' (test): the outcome-first menu", () => {
     await w.tap(from, "book_call");
     expect(bodyOf(w.last())).toBe(karmicCopy.en.ageCheck);
     await w.tap(from, "age_yes");
-    // Ticket 53: no "Which would you like? [Healing] [Energy cleansing]": straight to who it is for (unchanged), HEALING kept as the filler.
+    // Ticket 56: no "Which would you like? [Healing] [Energy cleansing]": straight to who it is for (unchanged), HEALING kept as the filler.
     expect(bodyOf(w.last())).toBe(karmicCopy.en.whoFor);
     expect(buttonsOf(w.last())).toEqual(["who_HEALING_SELF", "who_HEALING_FAMILY", "who_HEALING_PET"]);
     await w.tap(from, "who_HEALING_SELF");
@@ -340,7 +340,7 @@ describe("KARMIC_FRONT_DOOR 'true' (test): the outcome-first menu", () => {
     expect(await w.db.prepare("SELECT service_key, topic FROM sessions").first()).toEqual({ service_key: "tarot_reading", topic: "DECISION" });
   });
 
-  it("ticket 53: the ₹799 session reached from the topic menu skips 'Healing or Energy cleansing?'; from Sessions & packages without a topic it still asks", async () => {
+  it("ticket 56: the ₹799 session reached from the topic menu skips 'Healing or Energy cleansing?'; from Sessions & packages without a topic it still asks", async () => {
     w.newServices = "true";
     const from = await w.greeted("en");
     await w.ageOk(from);
@@ -364,7 +364,7 @@ describe("KARMIC_FRONT_DOOR 'true' (test): the outcome-first menu", () => {
     expect(buttonsOf(w.last())).toEqual(["ssv_HEALING", "ssv_PROTECTION"]);
   });
 
-  it("ticket 53: Help adds 'Who is it for?'; What is this, How it works and Who is it for describe Karmic Coaching and end with the Clarity Call (EN, HI)", async () => {
+  it("ticket 56: Help adds 'Who is it for?'; What is this, How it works and Who is it for describe Karmic Coaching and end with the Clarity Call (EN, HI)", async () => {
     for (const lang of ["en", "hi"] as Lang[]) {
       const c = karmicCopy[lang];
       const from = await w.greeted(lang);
@@ -490,7 +490,7 @@ describe("the console: 'Came for: …' on Today, the calendar's day view and the
       for (const path of ["/app", "/app/calendar?view=day&d=2026-10-27", `/app/people/${conv}`]) {
         const html = decode(await (await h.get(path, as)).text());
         expect(html.includes("Came for: Relationships &amp; family") || html.includes("Came for: Relationships & family"), `${as} ${path}`).toBe(sees);
-        // Ticket 53: the call is named the Karmic Clarity Call there, not "Healing" (the filler stored since it no longer asks).
+        // Ticket 56: the call is named the Karmic Clarity Call there, not "Healing" (the filler stored since it no longer asks).
         expect(html, `${as} ${path}`).toContain("Karmic Clarity Call");
         expect(html, `${as} ${path}`).not.toContain(">Healing<");
       }
@@ -551,7 +551,7 @@ describe("the words", () => {
       for (const [k, t] of [...strings(c, topicKeys), ...strings(c, changed), ...strings(c, ["faqWhoTitle", "faqWhoAnswer"])]) {
         expect(t, `${lang} ${k}`).not.toMatch(/\d+\s*\+?\s*years|certif|\bcures?\b|\bcured\b|diagnos|predict|guarantee|miracle|प्रमाणित|सर्टिफ|गारंटी|चमत्कार|साल का अनुभव/i);
         expect(hasPhrase(t, config.ai.bannedWords), `${lang} ${k}`).toBe(false);
-        expect(hasPhrase(t, config.ai.karmicBannedWords), `${lang} ${k}`).toBe(false); // ticket 53: therapy, predict … (§18)
+        expect(hasPhrase(t, config.ai.karmicBannedWords), `${lang} ${k}`).toBe(false); // ticket 56: therapy, predict … (§18)
         expect(len(t)).toBeLessThanOrEqual(1024);
       }
     }

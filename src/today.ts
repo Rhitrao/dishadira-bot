@@ -287,7 +287,7 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number, hero = false) 
     time: clock(b.startUtc, lang),
     name: firstName(b.name, t.noName),
     phone: phoneHtml(b.waId, full),
-    // ticket 49: a newer service by its own name only; ticket 53: a call from the front door is the Karmic Clarity Call
+    // ticket 49: a newer service by its own name only; ticket 56: a call from the front door is the Karmic Clarity Call
     service: clarityLabel(b.kind, b.topic, lang) ?? (otherServiceLabel(b.serviceKey, lang) ? "" : serviceName(b.service, lang)),
     details,
     status: b.oid === null ? bookingChip(b.state, m.locale) : "",
