@@ -28,7 +28,7 @@ import { moveCall } from "./outcomes";
 import { noSellActiveFor, personState } from "./noise";
 import { razorpay } from "./pay/razorpay";
 import { sendMessage, sendOrTemplate, templateVariant, type Out } from "./send";
-import { availableSlots, formatIstLang, generateSlots, holdSlot, isHoliday, iso, istDay, istMinutes, nextWorkingDays, PRACTITIONER_SQL, spreadTimes, type Slot, type SlotKind } from "./slots";
+import { availableSlots, formatIstLang, generateSlots, holdSlot, isHoliday, isTimeOff, iso, istDay, istMinutes, nextWorkingDays, PRACTITIONER_SQL, spreadTimes, type Slot, type SlotKind } from "./slots";
 import { bookingsOpen } from "./switches";
 import { collapseWiped, describe, earlierLink, keptFor, SHOWN_SQL, THREAD_ALL, THREAD_LATEST, wipedLine } from "./chat";
 import { avatar, bubble, clock, consoleFrame, dayName, firstName, formatNumber, forWhomText, last4, listDetail, listRow, personName, phoneHtml, rows, screenHead, section, statusChip, emptyState, thread, type From } from "./ui";
@@ -644,7 +644,7 @@ inbox.post("/:id{[0-9]+}/book", async (c) => {
   // A time someone else holds is refused here, so the customer never gets the bot's "that time was just taken" for the team's pick.
   const slot = generateSlots(istDay(Date.parse(startUtc)), "CALL").find((x) => x.startUtc === startUtc);
   if (!slot) return answer(ic.pickAll, 400);
-  if (await isHoliday(c.env.DB, istDay(Date.parse(startUtc)))) return answer(ic.taken, 409); // a day off (ticket 30): nothing reaches the customer
+  if ((await isHoliday(c.env.DB, istDay(Date.parse(startUtc)))) || (await isTimeOff(c.env.DB, slot.startUtc, slot.endUtc))) return answer(ic.taken, 409); // a day off (ticket 30) or time off (ticket 55): nothing reaches the customer
   const busy = await c.env.DB
     .prepare("SELECT 1 FROM slots WHERE (state = 'BOOKED' OR hold_until > ?3) AND start_utc < ?2 AND end_utc > ?1 AND NOT (owner_id = ?4 AND kind = 'CALL' AND start_utc = ?1)")
     .bind(slot.startUtc, slot.endUtc, iso(now), ch.id)

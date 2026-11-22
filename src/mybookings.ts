@@ -16,7 +16,7 @@ import { requestRefund } from "./pay/refund";
 import { creditBalance, hasPackage } from "./packages";
 import { raiseAttention, sendMessage, type Out } from "./send";
 import { clearStep, sendStep } from "./steps";
-import { bind, capSql, formatIstLang, generateSlots, isHoliday, iso, istDay, PRACTITIONER_SQL } from "./slots";
+import { bind, capSql, formatIstLang, generateSlots, isHoliday, isTimeOff, iso, istDay, PRACTITIONER_SQL } from "./slots";
 import { defaultService, isSeeded, serviceOf, type Service } from "./catalogue";
 
 const HOUR = 3_600_000;
@@ -253,7 +253,7 @@ export async function moveSession(db: D1Database, convId: number, ses: SessionRo
   const svc = otherOf(ses.serviceKey) ?? defaultService("SESSION"); // ticket 49: its own length and caps
   const slot = generateSlots(istDay(Date.parse(startUtc)), "SESSION", svc.key).find((s) => s.startUtc === startUtc);
   if (!slot || startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000) || slot.startUtc === ses.startUtc) return false;
-  if (await isHoliday(db, istDay(Date.parse(startUtc)))) return false; // a day off takes no new booking
+  if ((await isHoliday(db, istDay(Date.parse(startUtc)))) || (await isTimeOff(db, slot.startUtc, slot.endUtc))) return false; // a day off, or time off (ticket 55), takes no new booking
   const cap = capSql(svc, slot.startUtc); // the day caps, as holdSlot (ticket 48)
   const p = {
     sid: ses.id, conv: convId, now: iso(nowMs), start: slot.startUtc, end: slot.endUtc, old: ses.slotId, svc: svc.key,

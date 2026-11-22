@@ -15,6 +15,7 @@ import { maySeeNotes } from "./notes";
 import { INTAKE_LINE } from "./offer";
 import { cameFor } from "./frontdoor";
 import { appPage, auditStmt, refused, type ConsoleCtx, type ConsoleVars } from "./console";
+import { addTimeOff, bookingsInBlock, clockText, parseBlock, removeTimeOff, TIMEOFF_COPY, upcomingTimeOff } from "./timeoff";
 import { addHoliday, anyDate, bookingsOn, holidayBounds, holidayDate, holidaysBetween, removeHoliday, upcomingHolidays } from "./holidays";
 import { consoleCopy, consoleLang, type ConsoleCopy } from "./console-copy";
 import { hoursText, serviceName, type ForWhom } from "./copy";
@@ -769,6 +770,11 @@ function flashFor(c: ConsoleCtx, cc: ConsoleCopy): string | null {
   if (code === "holiday" && day) return cc.holAdded(dayLabelFor(day, lang));
   if (code === "holidayoff" && day) return cc.holRemoved(dayLabelFor(day, lang));
   if (code === "holidaybad") return cc.holBadDate(config.holidays.maxDaysAhead);
+  const to = TIMEOFF_COPY[lang];
+  if (code === "timeoff") return to.added;
+  if (code === "timeoffoff") return to.removed;
+  if (code === "timeoffbad") return to.bad;
+  if (code === "timeofffull") return to.full;
   return null;
 }
 
@@ -779,7 +785,8 @@ async function daysOff(c: ConsoleCtx) {
   const jwt = c.get("jwt");
   const may = maySetDaysOff(m);
   const list = await upcomingHolidays(c.env.DB);
-  if (!may && !list.length) return "";
+  const offList = await upcomingTimeOff(c.env.DB);
+  if (!may && !list.length && !offList.length) return "";
   const cards = await Promise.all(
     list.map(async (h) => {
       const label = dayLabelFor(h.ymd, lang);
@@ -799,7 +806,27 @@ ${seesNote(m) && h.note ? html`<p class="why">${h.note}</p>` : ""}${booked.lengt
 ${seesNote(m) ? html`<label for="hol-note">${cc.holReason}</label><input id="hol-note" type="text" name="note" maxlength="200" autocomplete="off">` : ""}
 <button class="btn primary" type="submit">${cc.holMark}</button></form>`
     : "";
-  return html`<div id="days-off">${section(cc.holTitle, html`<div class="hols">${form}<div>${list.length ? html`<h3 class="sub">${cc.holUpcoming}</h3>${cards}` : may ? html`<p class="calnote">${cc.holNone}</p>` : ""}</div></div>`)}</div>`;
+  // Ticket 55: time off for part of a day (src/timeoff.ts), under the whole days off.
+  const to = TIMEOFF_COPY[lang];
+  const offCards = await Promise.all(
+    offList.map(async (b) => {
+      const booked = (await bookingsInBlock(c.env.DB, b)).filter((x) => can(m, "view_people", { practitionerId: x.practitionerId }) === "yes");
+      const remove = may ? button({ label: to.remove, post: { action: "/app/calendar/timeoff/remove", csrf: await memberCsrf(jwt, m, `timeoff:remove:${b.key}`), fields: { key: b.key } } }) : "";
+      return html`<article class="card${booked.length ? " attention" : ""}"><div class="hol"><h3>${dayLabelFor(b.ymd, lang)}, ${to.range(clockText(b.startMin), clockText(b.endMin))}</h3>${remove}</div>
+${seesNote(m) && b.note ? html`<p class="why">${b.note}</p>` : ""}${booked.length ? html`<p class="why">${to.warn(booked.length)}</p>` : ""}</article>`;
+    }),
+  );
+  const offForm = may
+    ? html`<form class="card holform" method="post" action="/app/calendar/timeoff"><h3>${to.title}</h3><p class="why">${to.intro}</p>
+<input type="hidden" name="csrf" value="${await memberCsrf(jwt, m, "timeoff:add")}">
+<label for="to-day">${to.date}</label><input id="to-day" type="date" name="day" min="${b.min}" max="${b.max}" required>
+<label for="to-from">${to.from}</label><input id="to-from" type="time" name="from" step="300" min="${config.hours.start}" max="${config.hours.end}" required>
+<label for="to-to">${to.to}</label><input id="to-to" type="time" name="to" step="300" min="${config.hours.start}" max="${config.hours.end}" required>
+${seesNote(m) ? html`<label for="to-note">${to.note}</label><input id="to-note" type="text" name="note" maxlength="200" autocomplete="off">` : ""}
+<button class="btn primary" type="submit">${to.mark}</button></form>`
+    : "";
+  const off = may || offList.length ? html`<div class="hols">${offForm}<div>${offList.length ? html`<h3 class="sub">${to.upcoming}</h3>${offCards}` : may ? html`<p class="calnote">${to.none}</p>` : ""}</div></div>` : "";
+  return html`<div id="days-off">${section(cc.holTitle, html`<div class="hols">${form}<div>${list.length ? html`<h3 class="sub">${cc.holUpcoming}</h3>${cards}` : may ? html`<p class="calnote">${cc.holNone}</p>` : ""}</div></div>${off}`)}</div>`;
 }
 
 // Back to the week of the day, with the flash.
@@ -828,7 +855,31 @@ async function removeDayOff(c: ConsoleCtx) {
   return c.redirect(backTo(day, "holidayoff"), 303);
 }
 
+async function addTimeOffRoute(c: ConsoleCtx) {
+  const m = c.get("member");
+  if (!maySetDaysOff(m)) return refused(c);
+  const f = (await c.req.parseBody()) as Record<string, string | undefined>;
+  if (f.csrf !== (await memberCsrf(c.get("jwt"), m, "timeoff:add"))) return c.text("Forbidden", 403);
+  const b = parseBlock(f.day, f.from, f.to);
+  if (!b) return c.redirect(backTo(null, "timeoffbad"), 303);
+  const note = seesNote(m) ? (f.note ?? "").trim().slice(0, 200) : "";
+  const r = await addTimeOff(c.env, b, note, auditStmt(c, "TIMEOFF_ADDED", `timeoff:${b.ymd}`, `${clockText(b.startMin)}-${clockText(b.endMin)}`, note || null));
+  return c.redirect(backTo(b.ymd, r === "FULL" ? "timeofffull" : "timeoff"), 303);
+}
+
+async function removeTimeOffRoute(c: ConsoleCtx) {
+  const m = c.get("member");
+  if (!maySetDaysOff(m)) return refused(c);
+  const f = (await c.req.parseBody()) as Record<string, string | undefined>;
+  const key = f.key ?? "";
+  if (!key || f.csrf !== (await memberCsrf(c.get("jwt"), m, `timeoff:remove:${key}`))) return c.text("Forbidden", 403);
+  if (!(await removeTimeOff(c.env, key, auditStmt(c, "TIMEOFF_REMOVED", key.slice(0, 40), "")))) return c.text("Bad request", 400);
+  return c.redirect(backTo(key.slice(8, 18), "timeoffoff"), 303);
+}
+
 export const calendar = new Hono<{ Bindings: Env; Variables: ConsoleVars }>();
 calendar.get("/", calendarPage);
 calendar.post("/holiday", addDayOff);
 calendar.post("/holiday/remove", removeDayOff);
+calendar.post("/timeoff", addTimeOffRoute); // ticket 55: src/timeoff.ts
+calendar.post("/timeoff/remove", removeTimeOffRoute);
