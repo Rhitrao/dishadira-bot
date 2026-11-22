@@ -548,9 +548,10 @@ describe("the words", () => {
       for (const r of [c.topicSection, c.topicMoreSection, c.rowIntroTitle, ...Object.values(c.topicTitles)]) expect(len(r), r).toBeLessThanOrEqual(24);
       for (const d of [c.rowIntroDesc, c.offerRowDesc(90, "₹1,00,000", true), ...Object.values(c.topicDescs)]) expect(len(d), d).toBeLessThanOrEqual(72);
       const changed = karmicKeys().filter((k) => k !== "readingSpell"); // readingSpell says what isn't done (checked in offer.test.ts)
-      for (const [k, t] of [...strings(c, topicKeys), ...strings(c, changed)]) {
+      for (const [k, t] of [...strings(c, topicKeys), ...strings(c, changed), ...strings(c, ["faqWhoTitle", "faqWhoAnswer"])]) {
         expect(t, `${lang} ${k}`).not.toMatch(/\d+\s*\+?\s*years|certif|\bcures?\b|\bcured\b|diagnos|predict|guarantee|miracle|प्रमाणित|सर्टिफ|गारंटी|चमत्कार|साल का अनुभव/i);
         expect(hasPhrase(t, config.ai.bannedWords), `${lang} ${k}`).toBe(false);
+        expect(hasPhrase(t, config.ai.karmicBannedWords), `${lang} ${k}`).toBe(false); // ticket 53: therapy, predict … (§18)
         expect(len(t)).toBeLessThanOrEqual(1024);
       }
     }
