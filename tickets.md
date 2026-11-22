@@ -724,6 +724,15 @@ Rohit, 21 Nov 2026 (the "Ticket 43" of the future-work list, first part only): a
 - Not in this ticket (later, each its own ticket): a rebook nudge to customers (needs a Meta template and approval), a fixed weekly slot (touches the booking engine).
 - Rules: no merge or deploy; synthetic data only.
 - Tests: the columns on "Has a package"; the idle filter over six cases (idle, active, never booked, one ahead, new, none left); an empty result; practitioner scope; no package words on other filters.
+### Ticket 55: time off for part of a day (CONTRACT v23)
+Rohit, 21 Nov 2026 (the "Ticket 44" of the future-work list, part of it): he chose "time off for part of a day" over editing the stated hours, because those hours (2 to 7 pm, Monday to Saturday) are written into the approved WhatsApp templates, the assistant's knowledge and about twenty places in the code. No migration.
+1. Calendar → Days off: a form (day, from, to, optional note for the owner) and a list of blocked times with Remove. Who: the same as whole days off (owner; practitioner for her own calendar; staff no). Token + Origin; audited TIMEOFF_ADDED / TIMEOFF_REMOVED.
+2. A block is inside the working hours, from today to 60 days ahead, on a 5-minute step, at most 6 a day; a repeat changes nothing. Storage: settings row `timeoff:<YYYY-MM-DD>:<HHMM>-<HHMM>`.
+3. In a block nothing is offered, held or booked: availableSlots, holdSlot, moveSession, bookCredit, the team's session link and book-for-them. Other days and times are untouched.
+4. Bookings already in a block stay; its card warns "N bookings are in this time. Move them by hand." Nobody is messaged and no Needs-you item is raised.
+- Not in this ticket: the Calendar's week and day grids do not draw blocks or take them out of the "free" gaps (they are listed under Days off); changing the stated hours; a waitlist; Amma's phone calendar link.
+- Rules: no merge or deploy; synthetic data only.
+- Tests: the form's values; the list, holds and the other days; the console add, remove, audit and Days-off list; refusals (bad time, wrong token, staff); repeat and the daily limit.
 
 ### Ticket 56: Karmic Coaching in the bot's answers (behind KARMIC_FRONT_DOOR), and the Clarity Call without "Healing or Energy cleansing?" (CONTRACT v24)
 Rohit, 22 Nov 2026: the business is relaunched as "Disha Dira · Karmic Coaching with Shantha Rao". Ticket 52 added the topic menu and the Karmic Clarity Call name behind KARMIC_FRONT_DOOR (test "true", live "false"), but the FAQ, Instagram/Messenger's answers and the AI's knowledge still describe only Pranic Healing. The pathways: Release (Pranic Healing®, Reiki, chakra balancing, energy healing, EFT), Understand (Tarot, Akashic Records, Moksha Patam), Rewire (guided hypnosis, self-hypnosis, meditation-based mind training, goal-setting / manifestation coaching). By phone, audio only, adults 18+, Monday–Saturday 2–7 pm IST; wellness and personal guidance that complements, never replaces, medical or psychological care. No migration.

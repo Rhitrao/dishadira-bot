@@ -113,6 +113,33 @@ export async function isHoliday(db: D1Database, ymd: string): Promise<boolean> {
   return (await db.prepare("SELECT 1 AS x FROM settings WHERE key = ?1").bind(HOLIDAY_PREFIX + ymd).first()) !== null;
 }
 
+// Time off for part of a day (ticket 55): one settings row per block, `timeoff:<YYYY-MM-DD>:<HHMM>-<HHMM>` (IST), value = the team's note.
+// Marked and removed in src/timeoff.ts. A time that overlaps a block is never offered, held or booked; bookings already there stay.
+export const TIMEOFF_PREFIX = "timeoff:";
+export type TimeOffBlock = { key: string; ymd: string; startMin: number; endMin: number; note: string };
+export const parseTimeOffKey = (key: string): Omit<TimeOffBlock, "note" | "key"> | null => {
+  const m = /^timeoff:(\d{4}-\d{2}-\d{2}):(\d{2})(\d{2})-(\d{2})(\d{2})$/.exec(key);
+  return m ? { ymd: m[1], startMin: Number(m[2]) * 60 + Number(m[3]), endMin: Number(m[4]) * 60 + Number(m[5]) } : null;
+};
+export async function timeOffOnDay(db: D1Database, ymd: string): Promise<TimeOffBlock[]> {
+  const { results } = await db.prepare("SELECT key, value AS note FROM settings WHERE key >= ?1 AND key < ?2 ORDER BY key").bind(`${TIMEOFF_PREFIX}${ymd}:`, `${TIMEOFF_PREFIX}${ymd};`).all<{ key: string; note: string }>();
+  return results.flatMap((r) => {
+    const k = parseTimeOffKey(r.key);
+    return k ? [{ key: r.key, note: r.note, ...k }] : [];
+  });
+}
+// Whether the slot from startUtc to endUtc overlaps a block of time off on its day.
+export const overlapsTimeOff = (blocks: readonly TimeOffBlock[], ymd: string, startUtc: string, endUtc: string): boolean => {
+  const base = Date.parse(`${ymd}T00:00:00+05:30`);
+  const a = (Date.parse(startUtc) - base) / 60_000;
+  const b = (Date.parse(endUtc) - base) / 60_000;
+  return blocks.some((t) => a < t.endMin && b > t.startMin);
+};
+export async function isTimeOff(db: D1Database, startUtc: string, endUtc: string): Promise<boolean> {
+  const ymd = istDay(Date.parse(startUtc));
+  return overlapsTimeOff(await timeOffOnDay(db, ymd), ymd, startUtc, endUtc);
+}
+
 // A slot is active (blocks the calendar) when booked, or held and not yet expired.
 const ACTIVE = "(state = 'BOOKED' OR hold_until > :now)";
 
@@ -139,6 +166,7 @@ export async function holdSlot(
   // A time that has passed, or starts inside the booking lead (an old list row tapped later), is never held (ticket 31, B1).
   if (slot.startUtc <= iso(nowMs + config.booking.leadMinutes * 60_000)) return { ok: false, reason: "TOO_SOON" };
   if (await isHoliday(db, istDay(Date.parse(startUtc)))) return { ok: false, reason: "UNAVAILABLE" }; // a day off: nothing new is held
+  if (await isTimeOff(db, slot.startUtc, slot.endUtc)) return { ok: false, reason: "UNAVAILABLE" }; // time off (ticket 55): nothing new is held
 
   const now = iso(nowMs);
   const holdUntil = iso(nowMs + config.holdMinutes * 60_000);
@@ -171,9 +199,11 @@ export async function availableSlots(db: D1Database, kind: SlotKind, ymd: string
   const slots = generateSlots(ymd, kind, svc.key);
   const cap = capSql(svc, slots[0]?.startUtc ?? dayStartUtc(ymd));
   if (cap.sql && !(await first(db, `SELECT 1 AS x WHERE 1${cap.sql}`, { ...cap.params, now: busyAt }))) return [];
+  const off = await timeOffOnDay(db, ymd); // ticket 55
   const out: Slot[] = [];
   for (const s of slots) {
     if (s.startUtc <= now) continue;
+    if (overlapsTimeOff(off, ymd, s.startUtc, s.endUtc)) continue;
     const busy = await first(
       db,
       `SELECT 1 AS x FROM slots WHERE ${ACTIVE} AND start_utc < :end AND end_utc > :start`,
