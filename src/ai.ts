@@ -10,7 +10,9 @@ import { prices } from "./business";
 import { config } from "./config";
 import { nameWords } from "./export";
 import { langOf, rupees, type Lang } from "./copy";
-import { KNOWLEDGE } from "./knowledge";
+import { offeredServices } from "./catalogue";
+import { frontDoorOn } from "./frontdoor";
+import { KNOWLEDGE, KNOWLEDGE_KARMIC } from "./knowledge";
 import { LABELS, noSellActive } from "./noise";
 import { creditBalance, hadFirstCall } from "./packages";
 import { formatIstLang, iso } from "./slots";
@@ -63,7 +65,22 @@ export type Facts = {
   creditsLeft: number;
   next: { kind: "call" | "session"; day: string; time: string; status: string; callLanguage: "English" | "Hindi" } | null;
   openStep: string | null; // the booking step waiting for a tap (conversations.pending_step), if any
+  // Ticket 53: only while KARMIC_FRONT_DOOR is "true" (absent otherwise, so the prompt and the facts are exactly as before): the assistant also
+  // gets docs/KNOWLEDGE.md §18, and the catalogue services it may name as bookable (active, public and NEW_SERVICES on; src/catalogue.ts).
+  karmic?: { services: { nameEn: string; nameHi: string; pathway: string; minutes: number; pricePaise: number }[] };
 };
+
+// Ticket 53: the Karmic part of the facts for this request, or undefined while the front door is off.
+export const karmicFacts = (env: { KARMIC_FRONT_DOOR?: string; NEW_SERVICES?: string }): Facts["karmic"] =>
+  frontDoorOn(env)
+    ? { services: offeredServices(env).map((s) => ({ nameEn: s.nameEn, nameHi: s.nameHi, pathway: s.pathway, minutes: s.minutes, pricePaise: s.pricePaise })) }
+    : undefined;
+const PATHWAY_WORDS: Record<string, string> = { RELEASE: "Release", UNDERSTAND: "Understand", REWIRE: "Rewire" };
+export function bookableLine(k: NonNullable<Facts["karmic"]>): string {
+  if (!k.services.length) return "- Bookable services (Karmic Coaching, §18): none besides the Karmic Clarity Call, the single session and packages";
+  const one = (s: (typeof k.services)[number]) => `${s.nameEn} / ${s.nameHi} (${PATHWAY_WORDS[s.pathway] ?? s.pathway}, ${s.minutes} minutes, ${rupees(s.pricePaise)})`;
+  return `- Bookable services (Karmic Coaching, §18; the only ones you may name as bookable): ${k.services.map(one).join("; ")}`;
+}
 
 // How the open step reads in the facts (KNOWLEDGE.md §12, §17: while a step is open the assistant answers in one line and `next` is none).
 const STEP_WORDS: Record<string, string> = {
@@ -92,6 +109,7 @@ export function factsText(f: Facts): string {
     pricesLine(),
     n ? `- Next booking: ${n.kind} on ${n.day} at ${n.time} (India time), status ${n.status}, call in ${n.callLanguage}` : "- Next booking: none",
     f.openStep ? `- open_step: ${f.openStep} (${STEP_WORDS[f.openStep] ?? "a booking step"})` : "- open_step: none",
+    ...(f.karmic ? [bookableLine(f.karmic)] : []),
   ].join("\n");
 }
 
@@ -104,7 +122,11 @@ export function pricesLine(): string {
 }
 
 // The numbers a reply may repeat from the person's own facts.
-export const factNumbers = (f: Facts): number[] => [f.creditsLeft, ...(f.next ? [...`${f.next.day} ${f.next.time}`.matchAll(/\d+/g)].map((m) => Number(m[0])) : [])];
+export const factNumbers = (f: Facts): number[] => [
+  f.creditsLeft,
+  ...(f.next ? [...`${f.next.day} ${f.next.time}`.matchAll(/\d+/g)].map((m) => Number(m[0])) : []),
+  ...(f.karmic?.services ?? []).flatMap((s) => [s.minutes, s.pricePaise / 100]), // ticket 53: a bookable service's length and price
+];
 
 export async function gatherFacts(db: D1Database, convId: number, locale: string, nowMs = Date.now(), openStep: string | null = null): Promise<Facts> {
   const lang = langOf(locale);
@@ -232,7 +254,8 @@ export async function callAI(apiKey: string | undefined, messages: ChatMessage[]
   if (!messages.length) return { ok: false, code: "NO_MESSAGE" };
   const r = await postToModel(apiKey, {
     system: [
-      { type: "text", text: `${RULES_HEADER}\n\n${KNOWLEDGE}`, cache_control: { type: "ephemeral" } },
+      // Ticket 53: §18 (Karmic Coaching) only while the front door is on; with it off, exactly the prompt as before.
+      { type: "text", text: facts.karmic ? `${RULES_HEADER}\n\n${KNOWLEDGE}\n${KNOWLEDGE_KARMIC}` : `${RULES_HEADER}\n\n${KNOWLEDGE}`, cache_control: { type: "ephemeral" } },
       { type: "text", text: factsText(facts) },
     ],
     messages,

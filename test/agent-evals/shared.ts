@@ -24,6 +24,10 @@ export type EvalCase = {
   history?: { role: "user" | "assistant"; content: string }[]; // earlier turns, oldest first
   step?: string; // a booking step that is open when the message arrives
   fake?: FakeOutput; // what the fake assistant answers in CI
+  // Ticket 53: a case asked with KARMIC_FRONT_DOOR "true" (docs/KNOWLEDGE.md §18 in the prompt), and the catalogue services that are bookable
+  // then (none given: none; given: NEW_SERVICES on with these active and public).
+  karmic?: boolean;
+  bookable?: NonNullable<Facts["karmic"]>["services"];
   codeFirst?: string; // in a real chat the gate decides this first (a person; ticket 49: the reading-safety replies), so CI checks the gate instead; the live run still asks the model
   // code cases (decided by code, never by the assistant)
   gate?: string;
@@ -38,7 +42,9 @@ export const CODE_CASES = ALL_CASES.filter((c) => c.kind === "code");
 
 export function factsFor(c: EvalCase, now = Date.now()): Facts {
   const f = c.facts;
-  return { today: todayInIndia(now), language: c.lang, noSell: false, hadIntroCall: f?.hadIntroCall ?? false, creditsLeft: f?.creditsLeft ?? 0, next: f?.next ?? null, openStep: c.step ?? null };
+  const facts: Facts = { today: todayInIndia(now), language: c.lang, noSell: false, hadIntroCall: f?.hadIntroCall ?? false, creditsLeft: f?.creditsLeft ?? 0, next: f?.next ?? null, openStep: c.step ?? null };
+  if (c.karmic) facts.karmic = { services: c.bookable ?? [] };
+  return facts;
 }
 
 // Case-insensitive; the reply must not contain any of these, and (if given) must contain at least one of the others.

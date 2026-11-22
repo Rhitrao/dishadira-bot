@@ -2,9 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { D1Database } from "@cloudflare/workers-types";
 import knowledgeMd from "../docs/KNOWLEDGE.md?raw";
-import { AI_TOOL, AI_TOOL_NAME, callAI, factNumbers, factsText, gatherFacts, NEXT_ACTIONS, recentMessages, RULES_HEADER, usageUsd, type Facts } from "../src/ai";
+import { AI_TOOL, AI_TOOL_NAME, bookableLine, callAI, factNumbers, factsText, gatherFacts, karmicFacts, NEXT_ACTIONS, recentMessages, RULES_HEADER, usageUsd, type Facts } from "../src/ai";
+import { checkReply } from "../src/aicheck";
+import { loadCatalogue } from "../src/catalogue";
 import { config } from "../src/config";
-import { KNOWLEDGE } from "../src/knowledge";
+import { KNOWLEDGE, KNOWLEDGE_KARMIC } from "../src/knowledge";
 import { LABELS } from "../src/noise";
 import { slotAt, ymdOf } from "./slotat";
 import { aiResponse, NOW } from "./wa";
@@ -19,16 +21,40 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+// Ticket 53: docs/KNOWLEDGE.md in two parts at the Karmic marker line: everything before it (KNOWLEDGE, always sent) and §18 after it
+// (KNOWLEDGE_KARMIC, sent only while KARMIC_FRONT_DOOR is "true").
+const KARMIC_MARK = /\n<!-- Ticket 53 [^\n]*-->\n\n/;
+const splitKnowledge = (md: string) => {
+  const m = KARMIC_MARK.exec(md);
+  if (!m) throw new Error("docs/KNOWLEDGE.md has no Ticket 53 marker line");
+  return { base: md.slice(0, m.index), karmic: md.slice(m.index + m[0].length) };
+};
+// The SHA-256 of the cached prompt (the rules and the knowledge bank) with the front door off, on main at 8ad6975 before Ticket 53. If §1–§17
+// or the rules are changed on purpose, put the new hash here in the same PR.
+const FLAG_OFF_PROMPT_SHA256 = "ec1c049c16141a5039050f2a54e19301a1569fba796459bf627fdca1a432c778";
+const sha256 = async (t: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+
 describe("the knowledge bank", () => {
-  it("src/knowledge.ts is docs/KNOWLEDGE.md, word for word (regenerate: UPDATE_KNOWLEDGE=1 npx vitest run test/ai.test.ts)", async () => {
+  it("src/knowledge.ts is docs/KNOWLEDGE.md, word for word, in its two parts (regenerate: UPDATE_KNOWLEDGE=1 npx vitest run test/ai.test.ts)", async () => {
+    const { base, karmic } = splitKnowledge(knowledgeMd);
     if ((globalThis as { process?: { env?: Record<string, string> } }).process?.env?.UPDATE_KNOWLEDGE) {
       const mod = "node:fs";
       const fs = (await import(/* @vite-ignore */ mod)) as { readFileSync(p: string, e: string): string; writeFileSync(p: string, d: string): void };
       const head = fs.readFileSync("src/knowledge.ts", "utf8").split("\n").slice(0, 2).join("\n");
-      fs.writeFileSync("src/knowledge.ts", `${head}\nexport const KNOWLEDGE = ${JSON.stringify(knowledgeMd)};\n`);
+      fs.writeFileSync(
+        "src/knowledge.ts",
+        `${head}\nexport const KNOWLEDGE = ${JSON.stringify(base)};\n` +
+          `// Ticket 53: §18, Karmic Coaching: added to the prompt only while KARMIC_FRONT_DOOR is "true".\nexport const KNOWLEDGE_KARMIC = ${JSON.stringify(karmic)};\n`,
+      );
       return;
     }
-    expect(KNOWLEDGE, "src/knowledge.ts is out of date: run UPDATE_KNOWLEDGE=1 npx vitest run test/ai.test.ts").toBe(knowledgeMd);
+    expect(KNOWLEDGE, "src/knowledge.ts is out of date: run UPDATE_KNOWLEDGE=1 npx vitest run test/ai.test.ts").toBe(base);
+    expect(KNOWLEDGE_KARMIC, "src/knowledge.ts is out of date: run UPDATE_KNOWLEDGE=1 npx vitest run test/ai.test.ts").toBe(karmic);
+    expect(KNOWLEDGE_KARMIC.startsWith("## §18 Karmic Coaching with Shantha Rao")).toBe(true);
+    for (const w of ["Karmic", "Release (", "Akashic", "Moksha Patam"]) expect(KNOWLEDGE, w).not.toContain(w);
+  });
+  it("with the front door off the cached prompt is byte for byte main's before Ticket 53", async () => {
+    expect(await sha256(`${RULES_HEADER}\n\n${KNOWLEDGE}`)).toBe(FLAG_OFF_PROMPT_SHA256);
   });
 });
 
@@ -60,7 +86,7 @@ describe("the request", () => {
     expect(body.max_tokens).toBe(800);
     expect(body.system).toHaveLength(2);
     expect(body.system[0].cache_control).toEqual({ type: "ephemeral" });
-    expect(body.system[0].text).toBe(`${RULES_HEADER}\n\n${knowledgeMd}`);
+    expect(body.system[0].text).toBe(`${RULES_HEADER}\n\n${KNOWLEDGE}`); // ticket 53: §18 only while the front door is on (below)
     expect(body.system[1].cache_control).toBeUndefined();
     expect(body.system[1].text).toBe(factsText(FACTS));
     expect(body.tools).toEqual([AI_TOOL]);
@@ -190,5 +216,78 @@ describe("what goes into the assistant's context", () => {
     expect(f).toMatchObject({ language: "hi", noSell: true, hadIntroCall: true, creditsLeft: 9, next: { kind: "call", status: "confirmed and paid", callLanguage: "Hindi" } });
     expect(f.next!.day).toBe("Wed, 7 Oct");
     expect(f.next!.time).toBe("2:45 pm");
+  });
+});
+
+describe("ticket 53: Karmic Coaching in the assistant's knowledge, only while KARMIC_FRONT_DOOR is 'true'", () => {
+  const TAROT = { nameEn: "Tarot reading", nameHi: "टैरो रीडिंग", pathway: "UNDERSTAND", minutes: 30, pricePaise: 49900 };
+  const systemOf = async (facts: Facts) => {
+    fetchMock.mockClear();
+    await callAI("k", [{ role: "user", content: "What is karmic coaching?" }], facts);
+    return JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body).system as { text: string; cache_control?: unknown }[];
+  };
+
+  it("off: the prompt and the facts are exactly as before (no §18, no services line)", async () => {
+    const sys = await systemOf(FACTS);
+    expect(sys[0].text).toBe(`${RULES_HEADER}\n\n${KNOWLEDGE}`);
+    expect(sys[0].text).not.toContain("§18");
+    expect(sys[0].text).not.toContain("Karmic");
+    expect(sys[1].text).toBe(factsText(FACTS));
+    expect(sys[1].text).not.toContain("Bookable services");
+    expect(karmicFacts({})).toBeUndefined();
+    expect(karmicFacts({ KARMIC_FRONT_DOOR: "false", NEW_SERVICES: "true" })).toBeUndefined();
+  });
+
+  it("on: §18 after the knowledge bank in the cached part; the live list of bookable services in the facts", async () => {
+    const on: Facts = { ...FACTS, karmic: { services: [TAROT] } };
+    const sys = await systemOf(on);
+    expect(sys[0].text).toBe(`${RULES_HEADER}\n\n${KNOWLEDGE}\n${KNOWLEDGE_KARMIC}`);
+    expect(sys[0].cache_control).toEqual({ type: "ephemeral" });
+    expect(sys[1].text).toBe(`${factsText(FACTS)}\n- Bookable services (Karmic Coaching, §18; the only ones you may name as bookable): Tarot reading / टैरो रीडिंग (Understand, 30 minutes, ₹499)`);
+    expect(bookableLine({ services: [] })).toBe("- Bookable services (Karmic Coaching, §18): none besides the Karmic Clarity Call, the single session and packages");
+    // Its price and length may be repeated (the output check's numbers); without it in the facts they may not.
+    expect(factNumbers(on)).toEqual(expect.arrayContaining([30, 499]));
+    expect(checkReply("A Tarot reading is 30 minutes, ₹499.", factNumbers(on), true)).toEqual({ ok: true });
+    expect(checkReply("A Tarot reading is 30 minutes, ₹499.", factNumbers(FACTS), true)).toEqual({ ok: false, reason: "NUMBER" });
+  });
+
+  it("the bookable services: active, public and NEW_SERVICES on; never the seeded two, never a hidden or inactive one", async () => {
+    const { db, close } = await newDb();
+    try {
+      await db.batch([
+        db.prepare("INSERT INTO services (key, name_en, name_hi, pathway, minutes, price_paise, active, public, sort) VALUES ('tarot_reading', 'Tarot reading', 'टैरो रीडिंग', 'UNDERSTAND', 30, 49900, 1, 1, 30)"),
+        db.prepare("INSERT INTO services (key, name_en, name_hi, pathway, minutes, price_paise, active, public, sort) VALUES ('akashic', 'Akashic reading', 'आकाशिक रीडिंग', 'UNDERSTAND', 60, 99900, 1, 0, 40)"),
+        db.prepare("INSERT INTO services (key, name_en, name_hi, pathway, minutes, price_paise, active, public, sort) VALUES ('hypnosis', 'Guided hypnosis', 'गाइडेड हिप्नोसिस', 'REWIRE', 60, 150000, 0, 1, 50)"),
+      ]);
+      await loadCatalogue(db);
+      expect(karmicFacts({ KARMIC_FRONT_DOOR: "true", NEW_SERVICES: "false" })).toEqual({ services: [] });
+      expect(karmicFacts({ KARMIC_FRONT_DOOR: "true", NEW_SERVICES: "true" })).toEqual({ services: [TAROT] });
+      expect(karmicFacts({ KARMIC_FRONT_DOOR: "false", NEW_SERVICES: "true" })).toBeUndefined();
+    } finally {
+      const fresh = await newDb();
+      await loadCatalogue(fresh.db); // the seeded catalogue again for the other tests
+      await fresh.close();
+      await close();
+    }
+  }, 60_000);
+
+  it("the output check bans §18's words only while the front door is on", () => {
+    for (const t of ["It isn't therapy.", "Our therapist will call.", "Tarot doesn't predict anything.", "No predictions here.", "She has 15+ years of experience.", "यह थेरेपी नहीं है।", "कोई भविष्यवाणी नहीं।", "Like the Silva method.", "We can heal your illness."]) {
+      expect(checkReply(t, [], true), t).toEqual({ ok: false, reason: "BANNED_WORD" });
+      if (!/15/.test(t)) expect(checkReply(t, [], false), t).toEqual({ ok: true }); // off: exactly as before
+    }
+    for (const t of ["It's wellness and personal guidance, not a medical or psychological treatment.", "A reading is for reflection; it doesn't tell the future.", "That isn't something we offer."])
+      expect(checkReply(t, [], true), t).toEqual({ ok: true });
+  });
+
+  it("§18 keeps to the content rules: no new credential, year or claim; no word it bans is offered as something we do", () => {
+    const k = KNOWLEDGE_KARMIC;
+    expect(k).not.toMatch(/\d+\s*\+\s*years|certified|certificate in|trained in|Angel Therapy is|we offer remote viewing/i);
+    for (const tool of ["Pranic Healing", "Reiki", "chakra balancing", "energy healing", "EFT", "Tarot", "Akashic Records", "Moksha Patam", "guided hypnosis", "self-hypnosis", "meditation-based mind training", "manifestation coaching"])
+      expect(k, tool).toContain(tool);
+    expect(k).toContain("Karmic Clarity Call (₹99, 15 min)");
+    expect(k).toContain("That isn't something we offer.");
+    expect(k).toContain("Shantha Rao's credential stays exactly as §2 words it");
+    expect(KNOWLEDGE).toContain("Shantha Rao is a **certified Pranic Healer trained in the MCKS (Master Choa Kok Sui) system**."); // unchanged
   });
 });

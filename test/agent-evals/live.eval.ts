@@ -43,7 +43,7 @@ it("runs every non-code case against the real model and meets the pass bar", asy
     // For crisis and medical_emergency the Worker drops the assistant's words and sends the fixed safety message, so its text is not judged.
     const dropped = out.label === "crisis" || out.label === "medical_emergency";
     const said = dropped ? "" : out.reply;
-    const checked = said ? checkReply(said, factNumbers(factsFor(c))) : ({ ok: true } as const);
+    const checked = said ? checkReply(said, factNumbers(factsFor(c)), !!c.karmic) : ({ ok: true } as const);
     const problems: string[] = [];
     if (!labelOk) problems.push(`label ${out.label}`);
     if (!nextOk) problems.push(`next ${out.next}`);

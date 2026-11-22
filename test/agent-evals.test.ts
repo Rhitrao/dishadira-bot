@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { checkReply } from "../src/aicheck";
-import { factNumbers, NEXT_ACTIONS } from "../src/ai";
+import { bookableLine, factNumbers, NEXT_ACTIONS } from "../src/ai";
+import { KNOWLEDGE_KARMIC } from "../src/knowledge";
+import { clearStep } from "../src/steps";
 import { allCopy } from "../src/copy";
 import { gate } from "../src/gate";
 import { LABELS } from "../src/noise";
@@ -10,7 +12,7 @@ import { NOW, Wa } from "./wa";
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
-// The 145 scenarios of docs/KNOWLEDGE.md section 7, run through the real handler with a FAKE assistant that returns the canned answer in each case.
+// The 145 scenarios of docs/KNOWLEDGE.md section 7 (and, ticket 53, the 13 of §18 with KARMIC_FRONT_DOOR "true"), run through the real handler with a FAKE assistant that returns the canned answer in each case.
 // This proves the wiring (gate, strikes, blocks, buttons, fallbacks, the output check, the fake-facts case), not the model: the model is judged by
 // the manual workflow .github/workflows/eval.yml, which runs test/agent-evals/live.eval.ts against the real API.
 const w = new Wa();
@@ -19,11 +21,16 @@ beforeAll(() => w.start());
 afterAll(() => w.stop());
 
 describe("the case file", () => {
-  it("has the 145 scenarios in order, each either decided by the assistant or by code", () => {
-    expect(ALL_CASES.map((c) => c.id)).toEqual(Array.from({ length: 145 }, (_, i) => i + 1));
-    expect(AI_CASES.length + CODE_CASES.length).toBe(145);
-    expect(CODE_CASES.map((c) => c.id)).toEqual([14, 32, 42, 43, 44, 45, 57, 63, 64]);
+  it("has the 158 scenarios in order (§7's 145, then ticket 53's 13 for §18), each either decided by the assistant or by code", () => {
+    expect(ALL_CASES.map((c) => c.id)).toEqual(Array.from({ length: 158 }, (_, i) => i + 1));
+    expect(AI_CASES.length + CODE_CASES.length).toBe(158);
+    expect(CODE_CASES.map((c) => c.id)).toEqual([14, 32, 42, 43, 44, 45, 57, 63, 64, 153]);
     expect(AI_CASES.some((c) => c.safety)).toBe(true);
+    // Ticket 53: the Karmic cases, the "Do you do tarot?" pair (offered and not), and three in Hindi or Roman Hinglish.
+    expect(ALL_CASES.filter((c) => c.karmic).map((c) => c.id)).toEqual([146, 147, 148, 149, 150, 151, 152, 154, 155, 156, 157, 158]);
+    expect(ALL_CASES.filter((c) => c.id < 146).some((c) => c.karmic)).toBe(false);
+    expect(ALL_CASES.filter((c) => c.input === "Do you do tarot?").map((c) => c.bookable?.length)).toEqual([1, 0]);
+    expect(ALL_CASES.filter((c) => c.karmic && c.lang === "hi").length).toBe(3);
   });
   it.each(AI_CASES.map((c) => [c.id, c.name, c] as const))("case %i (%s): the fake answer is itself a good one", (_id, _name, c) => {
     expect(c.input, "input").toBeTruthy();
@@ -36,7 +43,7 @@ describe("the case file", () => {
     if (c.replyScript) expect(f.script).toBe(c.replyScript);
     expect(forbidden(c, f.reply), "mustNotContain").toEqual([]);
     expect(missingRequired(c, f.reply), "mustContainAny").toBe(false);
-    if (f.reply) expect(checkReply(f.reply, factNumbers(factsFor(c))), f.reply).toEqual({ ok: true });
+    if (f.reply) expect(checkReply(f.reply, factNumbers(factsFor(c)), !!c.karmic), f.reply).toEqual({ ok: true });
     else expect(["spam_or_promo", "abuse"]).toContain(f.label);
   });
 });
@@ -96,7 +103,15 @@ async function giveFacts(from: string, c: EvalCase) {
 describe("cases decided by the assistant: the canned answer goes through the handler", () => {
   it.each(AI_CASES.map((c) => [c.id, c.name, c] as const))("case %i (%s)", async (_id, _name, c) => {
     const f = c.fake!;
+    // Ticket 53: a Karmic case runs with the front door on and exactly its bookable services in the catalogue; every other case with it off.
+    w.frontDoor = c.karmic ? "true" : undefined;
+    w.newServices = c.bookable?.length ? "true" : "false";
+    await w.db.prepare("DELETE FROM services WHERE key NOT IN ('first_call', 'single_session')").run();
+    for (const [i, s] of (c.bookable ?? []).entries())
+      await w.db.prepare("INSERT INTO services (key, name_en, name_hi, pathway, minutes, price_paise, active, public, sort) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, 1, ?7)")
+        .bind(`svc_${i}`, s.nameEn, s.nameHi, s.pathway, s.minutes, s.pricePaise, 30 + i).run();
     const from = await w.greeted(c.lang);
+    if (c.karmic) await clearStep(w.db, (await w.conv(from)).id as number); // past the topic list the language tap opens
     if (c.codeFirst) {
       // In a real chat code decides first (the message has the word "person" in it), so the assistant is never asked.
       const conv = await w.conv(from);
@@ -132,6 +147,10 @@ describe("cases decided by the assistant: the canned answer goes through the han
     }
     if (c.facts?.next) expect(req.system[1].text).toContain("Next booking: call on Wed, 21 Oct at 2:30 pm (India time)");
     if (c.facts?.creditsLeft) expect(req.system[1].text).toContain(`Package sessions left: ${c.facts.creditsLeft}`);
+    // Ticket 53: §18 and the bookable services only with the front door on; otherwise the prompt is exactly as before.
+    expect(req.system[0].text.includes(KNOWLEDGE_KARMIC)).toBe(!!c.karmic);
+    expect(req.system[1].text.includes("Bookable services")).toBe(!!c.karmic);
+    if (c.karmic) expect(req.system[1].text).toContain(bookableLine({ services: c.bookable ?? [] }));
 
     const out = w.sent();
     const texts = w.texts().filter(Boolean).join("\n");

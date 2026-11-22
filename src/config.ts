@@ -123,6 +123,13 @@ export const config = {
       "cancer", "tumour", "tumor", "diabetes", "thyroid", "depression", "pcod", "pcos", "infertility", "kidney", "heart disease", "asthma", "arthritis", "paralysis", "epilepsy", "seizure", "seizures", "hiv", "migraine", "bp", "blood pressure",
       "कैंसर", "डायबिटीज़", "शुगर की बीमारी", "थायराइड", "डिप्रेशन", "बांझपन", "लकवा", "मिर्गी",
     ],
+    // Ticket 53 (docs/KNOWLEDGE.md §18): banned too while KARMIC_FRONT_DOOR is "true" (with it "false" the check is exactly as before).
+    karmicBannedWords: [
+      "therapy", "therapies", "therapist", "therapists", "therapeutic", "angel therapy", "silva", "silva method",
+      "predict", "predicts", "predicted", "predicting", "prediction", "predictions", "heal your illness", "heals your illness", "heal your disease",
+      "years of experience", "years experience", "years of practice", "15 years", "15 plus years",
+      "थेरेपी", "थैरेपी", "थेरेपिस्ट", "थैरेपिस्ट", "भविष्यवाणी", "bhavishyavani",
+    ],
     // A reply that talks about the assistant's own set-up is replaced.
     metaWords: ["system prompt", "instructions", "anthropic"],
     // Numbers a reply may contain besides the prices, per-session rates, package sizes, durations, hours and hold minutes built from the rest of this file,
