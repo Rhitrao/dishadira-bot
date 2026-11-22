@@ -43,6 +43,10 @@ export type Env = {
   // Ticket 49 (CONTRACT v19): "true" lets the bot offer catalogue services other than the ₹99 call and the ₹799 session (src/offer.ts), and
   // Settings → Services offer them; anything else: the bot's menus and replies are exactly as before. Top level and live "false", test "true".
   NEW_SERVICES?: string;
+  // Ticket 52 (CONTRACT v20): "true" opens the Karmic Coaching front door (src/frontdoor.ts): Book asks what the person would like help with and
+  // recommends the ₹99 Karmic Clarity Call, which the bot's own words then name so; anything else: every message exactly as before.
+  // Top level and live "false", test "true".
+  KARMIC_FRONT_DOOR?: string;
   // Minutes after a person's last message that their chat text is wiped: live "10080" (7 days), test "10".
   CHAT_RETENTION_MINUTES: string;
   // The Worker's public address, for links in emails to Rohit (https://bot.disha-dira.com); unset: a relative /admin link.

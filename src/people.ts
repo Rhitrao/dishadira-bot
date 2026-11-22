@@ -28,6 +28,7 @@ import { sessionLinkButton } from "./sessionlink";
 import { maySeeNotes, notesCard } from "./notes";
 import { otherServiceLabel } from "./catalogue";
 import { INTAKE_LINE } from "./offer";
+import { cameFor } from "./frontdoor";
 import { gistCard } from "./gist";
 import { aboutHtml, aboutPerson, seesAbout } from "./intent";
 import { maySeeMedia, viewButton, viewMedia } from "./media";
@@ -277,13 +278,14 @@ const post = (label: string, action: string, csrf: string, kind = "secondary") =
 type Booking = {
   kind: "CALL" | "SESSION"; startUtc: string; state: string; service: string; forWhom: "SELF" | "FAMILY" | "PET" | null; callLang: string | null;
   serviceKey: string | null; intake: string | null; // ticket 49: a catalogue service by name, and the answer to its question after payment
+  topic: string | null; // ticket 52: the topic tapped at the front door
 };
 async function nextBooking(env: Env, convId: number, m: Member, nowMs: number): Promise<Booking | null> {
   return env.DB.prepare(
-    `SELECT 'CALL' AS kind, s.start_utc AS startUtc, i.state, i.service, i.for_whom AS forWhom, i.call_lang AS callLang, NULL AS serviceKey, NULL AS intake
+    `SELECT 'CALL' AS kind, s.start_utc AS startUtc, i.state, i.service, i.for_whom AS forWhom, i.call_lang AS callLang, NULL AS serviceKey, NULL AS intake, i.topic
        FROM intros i JOIN slots s ON s.id = i.slot_id
        WHERE i.conversation_id = ?1 AND i.state IN ('PAID','RESCHEDULED') AND s.end_utc > ?2 AND (?3 < 0 OR i.practitioner_id = ?3)
-     UNION ALL SELECT 'SESSION', s.start_utc, se.state, se.service, se.for_whom, se.call_lang, se.service_key, se.intake_answer FROM sessions se JOIN slots s ON s.id = se.slot_id
+     UNION ALL SELECT 'SESSION', s.start_utc, se.state, se.service, se.for_whom, se.call_lang, se.service_key, se.intake_answer, se.topic FROM sessions se JOIN slots s ON s.id = se.slot_id
        WHERE se.conversation_id = ?1 AND se.state IN ('CONFIRMED','CREDIT_BOOKED') AND s.end_utc > ?2 AND (?3 < 0 OR se.practitioner_id = ?3)
      ORDER BY 2 LIMIT 1`,
   )
@@ -408,7 +410,10 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
           service: otherServiceLabel(nb.serviceKey, consoleLang(loc)) ?? `${nb.kind === "CALL" ? p.callKind(rupees(prices().intro)) : p.sessionKind} · ${service(nb.service, loc)}`,
           details: [forWhomText(nb.forWhom, loc), callLangText(nb.callLang, loc)], status: bookingChip(nb.state, loc),
           // Ticket 49: their answer to the service's question after payment, for the owner and the practitioner only (as notes).
-          extra: nb.intake && maySeeNotes(m, target.practitionerId ?? null) ? html`<p class="muted about">${INTAKE_LINE[consoleLang(loc)](nb.intake)}</p>` : "",
+          // Ticket 52: what they came for (the topic tapped at the front door), to the same people.
+          extra: maySeeNotes(m, target.practitionerId ?? null)
+            ? html`${cameFor(nb.topic, consoleLang(loc)) ? html`<p class="muted about">${cameFor(nb.topic, consoleLang(loc))}</p>` : ""}${nb.intake ? html`<p class="muted about">${INTAKE_LINE[consoleLang(loc)](nb.intake)}</p>` : ""}`
+            : "",
         }),
       )
     : emptyState(p.noNextBooking, { label: p.openCalendar, href: "/app/calendar" });

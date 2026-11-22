@@ -10,6 +10,8 @@ import { bookingsChoice } from "./mybookings";
 import { creditBalance, packChoice, sessionOfferOut } from "./packages";
 import { classifyWithoutAI, gate, isCallRequest, isJobText, isMenuWord, isThreat, plainWord, readingSafety } from "./gate";
 import { intakeText, offerChoice } from "./offer";
+import { frontDoorChoice, frontDoorOn, sendTopicList } from "./frontdoor";
+import { bookingsOpen } from "./switches";
 import { noteWhatsAppMessage, realWhatsAppMessage } from "./followup";
 import { requestHuman } from "./handoff";
 import { mediaOf } from "./media";
@@ -457,7 +459,7 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     const noSell = await noSellActive(db, conv!.id);
     const out: Out =
       kind === "READING_PREDICT" || noSell ? menuOut(c2, true, kind === "READING_SPELL" ? c2.readingSpell : c2.readingPredict)
-      : { type: "buttons", body: c2.readingSpell, buttons: [{ id: "book_call", title: c2.btnBook }, { id: "menu_how", title: c2.btnHelp }] };
+      : { type: "buttons", body: c2.readingSpell, buttons: [{ id: "book_call", title: c2.btnBookCall }, { id: "menu_how", title: c2.btnHelp }] };
     await send(out, step);
   }
 
@@ -706,11 +708,18 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
           }
         }
       }
+      // Ticket 52: with the front door on, "What would you like help with?" instead of the menu (it carries Sessions & packages and Help too).
+      // Not in the no-selling week after a crisis message, nor while bookings are paused: then the menu, as before.
+      if (frontDoorOn(env) && !(await noSellActive(db, conv!.id)) && (await bookingsOpen(env))) {
+        await sendTopicList(env, conv!.id, cp2, `${m.id}:topics`);
+        return;
+      }
       await menu(cp2, "menu");
       return;
     }
-    if (choice === "menu_book" || choice === "book_call" || /^(pk|go|gate|cat)_/.test(choice ?? "")) await db.prepare("UPDATE person_state SET book_tap_at = ?2 WHERE conversation_id = ?1").bind(conv!.id, nowIso()).run(); // a buying tap (warm leads in the digest)
+    if (choice === "menu_book" || choice === "book_call" || /^(pk|go|gate|cat|tp)_/.test(choice ?? "")) await db.prepare("UPDATE person_state SET book_tap_at = ?2 WHERE conversation_id = ?1").bind(conv!.id, nowIso()).run(); // a buying tap (warm leads in the digest)
     if (await intentChoice(env, choice, conv!.id)) return; // ticket 41: the questions after a paid ₹99 call
+    if (await frontDoorChoice(env, choice, conv!.id, m.id)) return; // ticket 52: a topic at the front door (src/frontdoor.ts)
     if (await offerChoice(env, choice, conv!.id, m.id)) return; // ticket 49: a catalogue service (src/offer.ts), before the call's age ids
     if (await bookingChoice(env, choice, conv!.id, m.id)) return;
     if (await sessionChoice(env, choice, conv!.id, m.id)) return;

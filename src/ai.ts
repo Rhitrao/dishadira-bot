@@ -70,6 +70,7 @@ const STEP_WORDS: Record<string, string> = {
   language: "choosing a language", age: "the age question", service: "choosing a service", who: "choosing who it is for", day: "choosing a day",
   time: "choosing a time", pay: "paying; a time is held for them until they pay", gate: "choosing between the first call and a session",
   bookings: "looking at My bookings", packages: "looking at Sessions & packages",
+  topic: "choosing what they would like help with", clarity: "deciding whether to book the first call", // ticket 52
 };
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];

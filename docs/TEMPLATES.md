@@ -1,6 +1,6 @@
 # WhatsApp templates to submit to Meta
 
-Eight message templates for bookings and payments (1 to 8), plus three from ticket 40 (9 to 11). Meta must approve them before the bot can message a customer more than 24 hours after their last message (day-before reminders, a booking confirmation after a late payment, and so on). Until a template is approved the bot does **not** send it; it raises an item in Rohit's queue instead.
+Eight message templates for bookings and payments (1 to 8), plus three from ticket 40 (9 to 11) and one drafted in ticket 52 (12, not submitted yet). Meta must approve them before the bot can message a customer more than 24 hours after their last message (day-before reminders, a booking confirmation after a late payment, and so on). Until a template is approved the bot does **not** send it; it raises an item in Rohit's queue instead.
 
 How to submit (WhatsApp Manager → Message templates → Create template), for every template below:
 
@@ -196,6 +196,28 @@ Shantha Rao has kept {{1}} at {{2}} (India time) for your full session, a voice 
 
 ---
 
+## 12. booking_confirmed (ticket 52: a draft, not submitted)
+
+The confirmation of a catalogue service (a Tarot reading, guided hypnosis …, the services the bot offers behind `NEW_SERVICES`) when it is paid after the customer's 24-hour window has closed: an owner-recorded payment, or a very late webhook. Inside the window the bot's own free-text confirmation goes instead (`serviceConfirmed`, docs/COPY.md 8e). The approved `session_confirmed` says "session" and "distance session", so it is not used for these. **Until this one is approved and its flag set, nothing is sent then and the team gets the usual "WhatsApp window closed" item (as in ticket 49).** No buttons.
+
+To turn it on, after Meta approves it: set `booking_confirmed.approved` (and, for the Hindi one, `hi.approved`) to `true` in `src/config.ts` (section `templates`) through a pull request, then Deploy. Nothing else changes.
+
+**Category: Utility.** It confirms a booking the customer has just paid for: what, when, and how it happens.
+
+**Body**
+
+```
+Your {{1}} with Shantha Rao is confirmed for {{2}} at {{3}} (India time). It is a voice call by phone (audio only): she calls you on this number. Reply here if you need to change it.
+```
+
+| Variable | Meaning | Sample value |
+|---|---|---|
+| {{1}} | The service's name, as in Settings → Services | Tarot reading |
+| {{2}} | Day (India time) | Wed, 7 Oct |
+| {{3}} | Time (India time) | 3:00 pm |
+
+---
+
 ## Ticket 41: new versions that say "voice call, no video" (for Rohit to submit)
 
 Owner's request, 4 Nov 2026: every description of the call must say it is a **voice call by phone (audio only, no video)**. The bot's own messages inside the 24-hour window already say so (`docs/COPY.md`). An approved template can't be changed in place, so these four approved ones need a **new version under a new name**; until each is approved, the current one keeps going out unchanged (its `approved` flag stays as it is). `session_link` (11) is not submitted yet, so its wording above already says it. `session_offer`, `payment_update`, `package_confirmed`, `follow_up`, `session_reminder` and `review_ask` don't describe the call and stay as they are.
@@ -354,3 +376,11 @@ Samples as the English one. Category Marketing.
 Samples: {{1}} बुध, 7 अक्टूबर · {{2}} दोपहर 3:00 · {{3}} दोपहर 2:20 · {{4}} https://bot.example.com/p/EXAMPLE. Category Utility.
 
 The Hindi of 9, 10 and 11 is a draft for a native speaker to read before it is submitted.
+
+### 12. booking_confirmed_hi (ticket 52: a draft, not submitted)
+
+```
+शांता राव जी के साथ आपकी बुकिंग ({{1}}) {{2}} को {{3}} बजे (भारतीय समय) के लिए कन्फ़र्म हो गई है। यह फ़ोन पर वॉइस कॉल है (सिर्फ़ आवाज़): वे आपको इसी नंबर पर कॉल करेंगी। अगर इसे बदलना हो, तो यहाँ जवाब दें।
+```
+
+Samples: {{1}} टैरो रीडिंग · {{2}} बुध, 7 अक्टूबर · {{3}} दोपहर 3:00. Category Utility. "आपकी बुकिंग ({{1}})", as the Hindi `reminder`, so the sentence fits every service's name. A draft for a native speaker to read before it is submitted.

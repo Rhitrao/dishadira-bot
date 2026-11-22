@@ -43,6 +43,10 @@ export async function removeOldNames(env: Env, nowMs = Date.now()): Promise<numb
       .bind(cutoff),
     // Ticket 49: their answer to a service's question after payment goes with the name too.
     env.DB.prepare(`UPDATE sessions SET intake_answer = NULL WHERE intake_answer IS NOT NULL AND conversation_id IN (SELECT id FROM conversations WHERE ${OLD})`).bind(cutoff),
+    // Ticket 52: the topic tapped at the front door, on the conversation and on the bookings it led to.
+    env.DB.prepare(`UPDATE conversations SET topic_pick = NULL, topic_pick_at = NULL WHERE topic_pick_at IS NOT NULL AND ${OLD}`).bind(cutoff),
+    env.DB.prepare(`UPDATE intros SET topic = NULL WHERE topic IS NOT NULL AND conversation_id IN (SELECT id FROM conversations WHERE ${OLD})`).bind(cutoff),
+    env.DB.prepare(`UPDATE sessions SET topic = NULL WHERE topic IS NOT NULL AND conversation_id IN (SELECT id FROM conversations WHERE ${OLD})`).bind(cutoff),
   ]);
   return res.meta.changes;
 }
@@ -56,6 +60,10 @@ export const wipePersonStmts = (db: Env["DB"], convId: number, nowIso: string) =
   db.prepare("UPDATE conversations SET display_name = NULL, name_given_at = NULL, first_question_msg = NULL WHERE id = ?1").bind(convId),
   db.prepare("UPDATE intros SET profession = NULL, help_area = NULL WHERE conversation_id = ?1 AND (profession IS NOT NULL OR help_area IS NOT NULL)").bind(convId),
   db.prepare("UPDATE sessions SET intake_answer = NULL WHERE conversation_id = ?1 AND intake_answer IS NOT NULL").bind(convId), // ticket 49
+  // Ticket 52: the topic tapped at the front door, and on their bookings.
+  db.prepare("UPDATE conversations SET topic_pick = NULL, topic_pick_at = NULL WHERE id = ?1 AND topic_pick_at IS NOT NULL").bind(convId),
+  db.prepare("UPDATE intros SET topic = NULL WHERE conversation_id = ?1 AND topic IS NOT NULL").bind(convId),
+  db.prepare("UPDATE sessions SET topic = NULL WHERE conversation_id = ?1 AND topic IS NOT NULL").bind(convId),
   db.prepare("DELETE FROM notes WHERE conversation_id = ?1").bind(convId),
   db.prepare("DELETE FROM gists WHERE conversation_id = ?1").bind(convId),
   db.prepare("DELETE FROM card_draws WHERE conversation_id = ?1").bind(convId), // ticket 49

@@ -3,6 +3,7 @@
 // for Sessions & packages, because a person is the one thing that always works (Talk to a person is also in the Help list).
 import type { Copy } from "./copy";
 import type { Out } from "./send";
+import { frontDoorOn } from "./frontdoor";
 
 export const menuOut = (cp: Copy, noSell: boolean, body = cp.menuBody, withPerson = false): Out => ({
   type: "buttons",
@@ -20,3 +21,8 @@ export const pausedOut = (cp: Copy, body = cp.bookSoon): Out => ({
   body,
   buttons: [{ id: "menu_person", title: cp.btnPerson }, { id: "menu_how", title: cp.btnHelp }],
 });
+
+// A button that books the ₹99 call. With KARMIC_FRONT_DOOR "true" the menu's Book asks for a topic first, so this one goes straight to the call
+// (book_call, "Book ₹99 call"); with it off it is the menu's Book button, exactly as before.
+export const callButton = (env: { KARMIC_FRONT_DOOR?: string }, cp: Copy) =>
+  frontDoorOn(env) ? { id: "book_call", title: cp.btnBookCall } : { id: "menu_book", title: cp.btnBook };

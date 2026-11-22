@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import type { Env } from "./env";
 import { admin } from "./admin";
 import { loadPrices } from "./business";
+import { setFrontDoorWords } from "./copy";
 import { amma } from "./amma";
 import { cleanAfterCall, reviewAsks, sessionReminders } from "./aftercall";
 import { pushSoon, sendPushAlerts, serveAlertsJs, serveSw } from "./alerts";
@@ -42,6 +43,7 @@ app.onError((_e, c) => {
 // Every request quotes the owner's prices from Settings (src/business.ts); /health, the font files, the payment link, /fb and /ig don't need
 // them (/b/ does: its WhatsApp text says the ₹99).
 app.use("*", async (c, next) => {
+  setFrontDoorWords(c.env); // ticket 52: the bot's words follow KARMIC_FRONT_DOOR (src/copy.ts)
   if (!["/health", "/fb", "/ig"].includes(c.req.path) && !c.req.path.startsWith("/app/fonts/") && !c.req.path.startsWith("/app/brand/") && !["/app/manifest.webmanifest", "/app/sw.js", "/app/alerts.js"].includes(c.req.path) && !c.req.path.startsWith("/p/")) await loadPrices(c.env);
   await next();
 });
@@ -116,6 +118,7 @@ export async function runDailyJobs(env: Env, nowMs: number): Promise<string[]> {
 // Cloudflare calls scheduled() every 2 minutes: the heartbeat, the jobs, then the daily reminders (6:30 pm IST) and digest (9 pm IST).
 const scheduled = async (event: { cron: string; scheduledTime?: number }, env: Env) => {
   if (event.cron !== RECONCILE_CRON) return;
+  setFrontDoorWords(env);
   await loadPrices(env);
   const provider = razorpay(env);
   await recordHeartbeat(env).catch(() => 0);

@@ -66,7 +66,7 @@ async function sendBookings(env: Env, convId: number, msgId: string): Promise<vo
   const hasPack = await hasPackage(db, convId);
   const when = (startUtc: string) => formatIstLang(startUtc, lang);
   const items = [
-    ...calls.results.map((r) => ({ at: r.startUtc, text: cp.bookingItem(cp.wordCall, when(r.startUtc).day, when(r.startUtc).time) })),
+    ...calls.results.map((r) => ({ at: r.startUtc, text: cp.bookingItem(cp.myCallWord, when(r.startUtc).day, when(r.startUtc).time) })),
     ...sessions.results.map((r) => {
       const other = otherOf(r.serviceKey);
       const word = other ? (lang === "hi" ? other.nameHi : other.nameEn) : cp.wordSession;
