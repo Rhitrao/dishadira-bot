@@ -716,3 +716,11 @@ Rohit, 20 Nov 2026: "do the next ticket"; the open question of Ticket 49 (show `
 3. The 9 pm summary: the same line before "Worth a follow-up", only while it is not null.
 - Rules: counts only, never a name or number; no merge or deploy; synthetic data only.
 - Tests: null before and after the window; the counts in English and Hindi; the summary with and without draws; Today for the owner and not for the practitioner; no digits run in the line.
+### Ticket 54: the package tracker (CONTRACT v22)
+Rohit, 21 Nov 2026 (the "Ticket 43" of the future-work list, first part only): a tracker for the owner and Amma; nothing is sent to customers. No migration.
+1. People → "Has a package": each row adds "N of M left", "last session <ago>" (or "no session booked yet"), from the credits ledger and the package sessions' slots.
+2. A new People filter "Package, not booked" (English and Hindi): a paid package with sessions left, no package session booked ahead, and no package session in the last 14 days (the purchase counts if there was none).
+3. Rights, scope and numbers are People's own (owner all; practitioner her own customers; staff the last 4).
+- Not in this ticket (later, each its own ticket): a rebook nudge to customers (needs a Meta template and approval), a fixed weekly slot (touches the booking engine).
+- Rules: no merge or deploy; synthetic data only.
+- Tests: the columns on "Has a package"; the idle filter over six cases (idle, active, never booked, one ahead, new, none left); an empty result; practitioner scope; no package words on other filters.
