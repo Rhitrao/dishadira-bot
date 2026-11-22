@@ -9,7 +9,7 @@ import { alertPayload } from "../src/alerts";
 import { loadPrices } from "../src/business";
 import { config } from "../src/config";
 import { allCopy, BRAND_LINE, karmicCopy, setFrontDoorWords, type Copy, type Lang } from "../src/copy";
-import { cameFor, TOPICS } from "../src/frontdoor";
+import { cameFor, clarityLabel, TOPICS } from "../src/frontdoor";
 import { sendReminders } from "../src/remind";
 import { hasPhrase } from "../src/safety";
 import { removeOldNames, wipePersonStmts } from "../src/wipe";
@@ -81,6 +81,12 @@ describe("KARMIC_FRONT_DOOR 'false' (live): every message is exactly as before",
     await w.tapRow(from, "pk_single");
     await w.tap(from, "tp_DECISION");
     await w.typed(from, "someone did black magic on me");
+    // Ticket 53: the session's "Healing or Energy cleansing?" step, Help and its answers, and an old "Who is it for?" row (nothing).
+    await w.tap(from, "gate_s");
+    await w.tap(from, "menu_how");
+    await w.tapRow(from, "faq_what_is_this");
+    await w.tapRow(from, "faq_how_it_works");
+    await w.tapRow(from, "faq_who_for");
     return w.sent().map((p: Json) => ({ ...p, to: "x" }));
   }
 
@@ -99,6 +105,15 @@ describe("KARMIC_FRONT_DOOR 'false' (live): every message is exactly as before",
     expect(bodyOf(off[2])).toBe(allCopy.en.ageCheck); // "book" goes straight to the call's steps
     expect(off.map(bodyOf)).toContain(allCopy.en.confirmed("Tue, 6 Oct", "2:00 pm", "en"));
     expect(off.map(bodyOf)).toContain(allCopy.en.readingSpell);
+    // Ticket 53: the call and the session still ask "Which would you like?" [Healing] [Energy cleansing]; Help and its answers are the pranic ones.
+    expect(off.filter((p) => bodyOf(p) === allCopy.en.chooseService).map(buttonsOf)).toEqual([["svc_HEALING", "svc_PROTECTION"], ["ssv_HEALING", "ssv_PROTECTION"], ["ssv_HEALING", "ssv_PROTECTION"]]);
+    const help = off.find((p) => bodyOf(p) === allCopy.en.helpListBody)!;
+    expect(rowsOf(help).map((r) => r.id)).toEqual(["faq_what_is_this", "faq_how_it_works", "faq_price", "faq_timings", "faq_refund", "faq_privacy", "menu_bookings", "menu_person", "menu_lang"]);
+    expect(off.map(bodyOf)).toContain(allCopy.en.faqAnswers.what_is_this);
+    expect(off.map(bodyOf)).toContain(allCopy.en.faqAnswers.how_it_works);
+    expect(allCopy.en.faqAnswers.what_is_this).toContain("no-touch pranic healing by phone with Shantha Rao, a certified Pranic Healer trained in the MCKS system");
+    expect(bodyOf(off.at(-1))).toBe(allCopy.en.faqAnswers.how_it_works); // "Who is it for?" does nothing with the flag off
+    for (const word of [allCopy.en.faqWhoAnswer, "Release", "pathway"]) expect(all).not.toContain(word);
     expect(await w.count("SELECT COUNT(*) AS n FROM intros WHERE topic IS NOT NULL")).toBe(0);
     expect(await w.count("SELECT COUNT(*) AS n FROM conversations WHERE topic_pick IS NOT NULL")).toBe(0);
   });
@@ -267,10 +282,14 @@ describe("KARMIC_FRONT_DOOR 'true' (test): the outcome-first menu", () => {
     await w.tap(from, "book_call");
     expect(bodyOf(w.last())).toBe(karmicCopy.en.ageCheck);
     await w.tap(from, "age_yes");
-    await w.tap(from, "svc_HEALING");
+    // Ticket 53: no "Which would you like? [Healing] [Energy cleansing]": straight to who it is for (unchanged), HEALING kept as the filler.
+    expect(bodyOf(w.last())).toBe(karmicCopy.en.whoFor);
+    expect(buttonsOf(w.last())).toEqual(["who_HEALING_SELF", "who_HEALING_FAMILY", "who_HEALING_PET"]);
     await w.tap(from, "who_HEALING_SELF");
     await w.tapRow(from, "day_HEALING_SELF_2026-10-06");
     await w.tapRow(from, "time_HEALING_SELF_2026-10-06T08:30:00Z");
+    expect(w.sent().map(bodyOf)).not.toContain(karmicCopy.en.chooseService);
+    expect(await w.db.prepare("SELECT service, for_whom FROM intros").first()).toEqual({ service: "HEALING", for_whom: "SELF" });
     const payMsg = w.last();
     expect(bodyOf(payMsg).startsWith("Your Karmic Clarity Call (₹99, 15 min): Tue, 6 Oct at 2:00 pm is held for you until")).toBe(true);
     expect(payMsg.interactive.action.parameters.display_text).toBe("Pay ₹99");
@@ -319,6 +338,60 @@ describe("KARMIC_FRONT_DOOR 'true' (test): the outcome-first menu", () => {
     await w.tapRow(from, "tp_DECISION");
     await w.tapRow(from, "cat_tarot_reading");
     expect(await w.db.prepare("SELECT service_key, topic FROM sessions").first()).toEqual({ service_key: "tarot_reading", topic: "DECISION" });
+  });
+
+  it("ticket 53: the ₹799 session reached from the topic menu skips 'Healing or Energy cleansing?'; from Sessions & packages without a topic it still asks", async () => {
+    w.newServices = "true";
+    const from = await w.greeted("en");
+    await w.ageOk(from);
+    await w.tapRow(from, "tp_HEAVY");
+    await w.tapRow(from, "pk_single");
+    expect(bodyOf(w.last())).toBe(karmicCopy.en.softGate);
+    await w.tap(from, "gate_s");
+    expect(bodyOf(w.last())).toBe(karmicCopy.en.whoFor);
+    expect(buttonsOf(w.last())).toEqual(["swh_HEALING_SELF", "swh_HEALING_FAMILY", "swh_HEALING_PET"]);
+    await w.tap(from, "swh_HEALING_SELF");
+    await w.tapRow(from, "sdy_HEALING_SELF_2026-10-06");
+    await w.tapRow(from, "stm_HEALING_SELF_2026-10-06T08:30:00Z");
+    expect(await w.db.prepare("SELECT service, for_whom, topic FROM sessions").first()).toEqual({ service: "HEALING", for_whom: "SELF", topic: "HEAVY" });
+    // No topic tapped (or one older than topicHours): the session's own step, as before.
+    const other = await w.greeted("en");
+    await w.ageOk(other);
+    await w.tap(other, "menu_pack");
+    await w.tapRow(other, "pk_single");
+    await w.tap(other, "gate_s");
+    expect(bodyOf(w.last())).toBe(karmicCopy.en.chooseService);
+    expect(buttonsOf(w.last())).toEqual(["ssv_HEALING", "ssv_PROTECTION"]);
+  });
+
+  it("ticket 53: Help adds 'Who is it for?'; What is this, How it works and Who is it for describe Karmic Coaching and end with the Clarity Call (EN, HI)", async () => {
+    for (const lang of ["en", "hi"] as Lang[]) {
+      const c = karmicCopy[lang];
+      const from = await w.greeted(lang);
+      await w.tap(from, "menu_how");
+      const help = w.last();
+      expect(rowsOf(help).map((r) => r.id)).toEqual(["faq_what_is_this", "faq_how_it_works", "faq_who_for", "faq_price", "faq_timings", "faq_refund", "faq_privacy", "menu_bookings", "menu_person", "menu_lang"]);
+      expect(rowsOf(help)[2].title).toBe(c.faqWhoTitle);
+      for (const r of rowsOf(help)) expect(len(r.title), r.title).toBeLessThanOrEqual(24);
+      for (const [row, text] of [["faq_what_is_this", c.faqAnswers.what_is_this], ["faq_how_it_works", c.faqAnswers.how_it_works], ["faq_who_for", c.faqWhoAnswer]] as const) {
+        await w.tapRow(from, row);
+        expect(bodyOf(w.last())).toBe(text);
+        expect(buttonsOf(w.last())).toEqual(["menu_book", "menu_pack", "menu_how"]); // one message, the menu under it
+        expect(text).toContain(lang === "hi" ? "कार्मिक क्लैरिटी कॉल (₹99, 15 मिनट)" : "Karmic Clarity Call (₹99, 15 min)");
+        expect(len(text)).toBeLessThanOrEqual(450); // short: three to five lines on a phone
+      }
+      expect(c.faqAnswers.what_is_this).toContain(lang === "hi" ? "रिलीज़ (हीलिंग), समझ (रीडिंग) या रीवायर" : "Release (healing), Understand (readings) or Rewire (mind work)");
+      expect(c.faqAnswers.what_is_this).toMatch(lang === "hi" ? /क्लैरिटी कॉल \(₹99, 15 मिनट\) है: .*।$/ : /Karmic Clarity Call \(₹99, 15 min\): .*\.$/);
+      expect(c.faqWhoAnswer.endsWith(lang === "hi" ? "कार्मिक क्लैरिटी कॉल (₹99, 15 मिनट) से शुरू करें।" : "Begin with the Karmic Clarity Call (₹99, 15 min).")).toBe(true);
+    }
+    // Typed, with the assistant off: the same answers (the fixed-answer router).
+    w.aiFlag = "false";
+    const from = await w.greeted("en");
+    await w.typed(from, "what is this?"); // the topic list is open: the answer goes on top of it
+    expect(bodyOf(w.last())).toBe(`${karmicCopy.en.faqAnswers.what_is_this}\n\n${karmicCopy.en.topicBody}`);
+    await w.typed(from, "how does it work");
+    expect(bodyOf(w.last()).startsWith(`${karmicCopy.en.faqAnswers.how_it_works}\n\n${karmicCopy.en.answerCall}`)).toBe(true);
+    expect(karmicCopy.en.answerCall).toContain("Karmic Clarity Call (₹99, 15 min)");
   });
 });
 
@@ -417,13 +490,24 @@ describe("the console: 'Came for: …' on Today, the calendar's day view and the
       for (const path of ["/app", "/app/calendar?view=day&d=2026-10-27", `/app/people/${conv}`]) {
         const html = decode(await (await h.get(path, as)).text());
         expect(html.includes("Came for: Relationships &amp; family") || html.includes("Came for: Relationships & family"), `${as} ${path}`).toBe(sees);
+        // Ticket 53: the call is named the Karmic Clarity Call there, not "Healing" (the filler stored since it no longer asks).
+        expect(html, `${as} ${path}`).toContain("Karmic Clarity Call");
+        expect(html, `${as} ${path}`).not.toContain(">Healing<");
       }
     }
     await h.db.prepare("UPDATE intros SET topic = NULL").run();
-    for (const path of ["/app", "/app/calendar?view=day&d=2026-10-27", `/app/people/${conv}`]) expect(decode(await (await h.get(path)).text())).not.toContain("Came for:");
+    for (const path of ["/app", "/app/calendar?view=day&d=2026-10-27", `/app/people/${conv}`]) {
+      const html = decode(await (await h.get(path)).text());
+      expect(html).not.toContain("Came for:");
+      expect(html).not.toContain("Karmic Clarity Call"); // no topic: as before
+      expect(html).toContain("Healing");
+    }
   });
 
   it("the words in English and Hindi", () => {
+    expect(clarityLabel("CALL", "HABIT", "hi")).toBe("कार्मिक क्लैरिटी कॉल");
+    expect(clarityLabel("SESSION", "HABIT", "en")).toBeNull();
+    expect(clarityLabel("CALL", null, "en")).toBeNull();
     expect(cameFor("HABIT", "en")).toBe("Came for: A habit or pattern to change");
     expect(cameFor("RELATIONSHIPS", "hi")).toBe("किसलिए आए: रिश्ते और परिवार");
     expect(cameFor("SOMETHING", "en")).toBeNull();

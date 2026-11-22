@@ -95,3 +95,8 @@ export const TOPIC_LABELS: Record<Lang, Record<TopicKey, string>> = {
 };
 export const cameFor = (topic: string | null | undefined, lang: Lang): string | null =>
   isTopic(topic) ? (lang === "hi" ? `किसलिए आए: ${TOPIC_LABELS.hi[topic]}` : `Came for: ${TOPIC_LABELS.en[topic]}`) : null;
+
+// Ticket 53: a call that came through the front door (it has a topic) is the Karmic Clarity Call to the team too: Today, the calendar and the
+// person page say so instead of "Healing" (the filler stored since the call no longer asks Healing or Energy cleansing). null otherwise.
+export const clarityLabel = (kind: string, topic: string | null | undefined, lang: Lang): string | null =>
+  kind === "CALL" && isTopic(topic) ? (lang === "hi" ? "कार्मिक क्लैरिटी कॉल" : "Karmic Clarity Call") : null;

@@ -125,7 +125,9 @@ type Words = {
 
 export function socialWords(lang: Lang): Words {
   const w = baseWords(lang);
-  return karmicWords() ? { ...w, ...karmicSocial(lang), lines: { ...w.lines, ...karmicSocialLines(lang) }, qrTitles: { ...w.qrTitles, book: lang === "hi" ? "कॉल बुक करें" : "Book Clarity Call" } } : w;
+  if (!karmicWords()) return w;
+  const qr = lang === "hi" ? { book: "कॉल बुक करें", what: "कार्मिक कोचिंग" } : { book: "Book Clarity Call", what: "Karmic Coaching" }; // ticket 53: "what"
+  return { ...w, ...karmicSocial(lang), lines: { ...w.lines, ...karmicSocialLines(lang) }, qrTitles: { ...w.qrTitles, ...qr } };
 }
 
 // Ticket 52 (CONTRACT v20): while KARMIC_FRONT_DOOR is "true", the replies that name the ₹99 call call it the Karmic Clarity Call (₹99, 15 min).
@@ -164,11 +166,17 @@ function karmicSocialLines(lang: Lang): Partial<Record<Topic, string>> {
         price: `पहला कदम शांता राव जी के साथ ${c} है। एक सेशन ${rupees(p.single)} का है, या ${p.pack10.sessions} सेशन ${rupees(p.pack10.paise)} में और ${p.pack20.sessions} सेशन ${rupees(p.pack20.paise)} में।`,
         book: `आप WhatsApp पर शांता राव जी के साथ ${c} बुक कर सकते हैं। समय आप चुनते हैं।`,
         call: `हम यहाँ कॉल नहीं लेते और नंबर नहीं देते। शांता राव जी से बात करने का सबसे आसान तरीका ${c} है: आप WhatsApp पर समय चुनें, और वे आपको कॉल करेंगी।`,
+        // Ticket 53: "What is this?" and "How the call works" describe Karmic Coaching (WhatsApp's own Help answers, src/copy.ts, say the same).
+        what: `शांता राव जी के साथ कार्मिक कोचिंग, फ़ोन पर: वे आपकी बात सुनती हैं, रिश्तों, परिवार, काम और आत्म-सम्मान के पैटर्न समझने में मदद करती हैं, और एक राह सुझाती हैं: रिलीज़ (हीलिंग), समझ (रीडिंग) या रीवायर (मन का अभ्यास)। पहला कदम WhatsApp पर ${c} है।`,
+        how: `${c} में शांता राव जी आपके चुने हुए समय पर उस नंबर पर वॉइस कॉल करती हैं (सिर्फ़ आवाज़, वीडियो नहीं) जिससे आप WhatsApp पर बुक करते हैं। आप अपनी बात बताते हैं, और वे बताती हैं कि कौन-सी राह आपके लिए ठीक रह सकती है।`,
       }
     : {
         price: `The ${c} with Shantha Rao is the first step. A session is ${rupees(p.single)}, or ${p.pack10.sessions} sessions for ${rupees(p.pack10.paise)} and ${p.pack20.sessions} for ${rupees(p.pack20.paise)}.`,
         book: `You can book the ${c} with Shantha Rao on WhatsApp. You pick the time.`,
         call: `We don't take calls here or share a number. The quickest way to talk to Shantha Rao is the ${c}: you choose a time on WhatsApp, and she calls you.`,
+        // Ticket 53: "What is this?" and "How the call works" describe Karmic Coaching (WhatsApp's own Help answers, src/copy.ts, say the same).
+        what: `Karmic Coaching with Shantha Rao, by phone: she listens, helps you see the patterns in your relationships, family, work and self-worth, and suggests a pathway: Release (healing), Understand (readings) or Rewire (mind work). The first step is the ${c} on WhatsApp.`,
+        how: `On the ${c}, Shantha Rao calls the number you book from on WhatsApp, at the time you pick: a voice call (audio only, no video). You share what is going on, and she suggests a pathway that may suit you.`,
       };
 }
 

@@ -727,14 +727,17 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
     if (await bookingsChoice(env, choice, conv!.id, m.id)) return;
     if (await rescheduleChoice(env, choice, conv!.id, m.id)) return;
     if (choice === "menu_how") {
-      // Help: the 6 answers, then My bookings, Talk to a person and Change language (9 rows).
+      // Help: the 6 answers, then My bookings, Talk to a person and Change language (9 rows). Ticket 53: with KARMIC_FRONT_DOOR "true",
+      // "Who is it for?" after "How it works" (10 rows, WhatsApp's most).
+      const faqRows = config.faqIds.map((id) => ({ id: `faq_${id}`, title: cp.faqTitles[id] }));
+      if (frontDoorOn(env)) faqRows.splice(config.faqIds.indexOf("how_it_works") + 1, 0, { id: "faq_who_for", title: cp.faqWhoTitle });
       await reply(
         {
           type: "list",
           body: cp.helpListBody,
           button: cp.faqButton,
           rows: [
-            ...config.faqIds.map((id) => ({ id: `faq_${id}`, title: cp.faqTitles[id] })),
+            ...faqRows,
             { id: "menu_bookings", title: cp.rowMyBookings },
             { id: "menu_person", title: cp.btnPerson },
             { id: "menu_lang", title: cp.changeLanguageRow },
@@ -764,9 +767,10 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       return;
     }
     const faq = config.faqIds.find((id) => `faq_${id}` === choice);
-    if (faq) {
+    const who = choice === "faq_who_for" && frontDoorOn(env); // ticket 53: only while the front door is on
+    if (faq || who) {
       // One message: the answer with the menu buttons under it. Only an answer too long for a button message's body goes as text, then the menu.
-      const answer = cp.faqAnswers[faq];
+      const answer = faq ? cp.faqAnswers[faq] : cp.faqWhoAnswer;
       if (answer.length <= config.whatsapp.buttonBodyMax) {
         await reply(menuOut(cp, await noSellActive(db, conv!.id), answer), "answer");
         return;

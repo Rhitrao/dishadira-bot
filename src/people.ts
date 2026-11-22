@@ -28,7 +28,7 @@ import { sessionLinkButton } from "./sessionlink";
 import { maySeeNotes, notesCard } from "./notes";
 import { otherServiceLabel } from "./catalogue";
 import { INTAKE_LINE } from "./offer";
-import { cameFor } from "./frontdoor";
+import { cameFor, clarityLabel } from "./frontdoor";
 import { gistCard } from "./gist";
 import { aboutHtml, aboutPerson, seesAbout } from "./intent";
 import { maySeeMedia, viewButton, viewMedia } from "./media";
@@ -407,7 +407,10 @@ ${person.mode === "HUMAN" ? statusChip(p.chipWaiting, "attention") : ""}${person
     ? ledger(
         appointmentRow({
           time: clock(nb.startUtc, loc), name: dayName(nb.startUtc, loc),
-          service: otherServiceLabel(nb.serviceKey, consoleLang(loc)) ?? `${nb.kind === "CALL" ? p.callKind(rupees(prices().intro)) : p.sessionKind} · ${service(nb.service, loc)}`,
+          service:
+            clarityLabel(nb.kind, nb.topic, consoleLang(loc)) ?? // ticket 53: a call from the front door
+            otherServiceLabel(nb.serviceKey, consoleLang(loc)) ??
+            `${nb.kind === "CALL" ? p.callKind(rupees(prices().intro)) : p.sessionKind} · ${service(nb.service, loc)}`,
           details: [forWhomText(nb.forWhom, loc), callLangText(nb.callLang, loc)], status: bookingChip(nb.state, loc),
           // Ticket 49: their answer to the service's question after payment, for the owner and the practitioner only (as notes).
           // Ticket 52: what they came for (the topic tapped at the front door), to the same people.
