@@ -709,6 +709,21 @@ Rohit, 21 Nov 2026: the business is being repositioned as "Disha Dira · Karmic 
 7. **Docs**: this ticket, CONTRACT v20, docs/AGENT.md, STATUS.md (every new Hindi string under "Needs a native Hindi read").
 - Rules: no merge or deploy; no Cloudflare, Meta or Razorpay changes; synthetic data only; screenshots and the chat sample never committed.
 - Tests: the flag off byte for byte; the list and its limits (EN/HI); each topic's recommendation; "Or book directly" per pathway with NEW_SERVICES; needs_call_first; the menu, Sessions & packages, Help, free text, crisis and reading safety first; a ₹99 call end to end with the topic; the console by role; the wipe; booking_confirmed approved or not; Instagram/Messenger replies; the words' limits and banned list.
+### Ticket 53: the CARD test's numbers on Today and in the 9 pm summary (CONTRACT v21)
+Rohit, 20 Nov 2026: "do the next ticket"; the open question of Ticket 49 (show `cardStats` on Today or in the digest): both. No migration.
+1. `cardTestLine(db, lang)`: "CARD test (last 14 days): N tried it, N on 3+ days, N paid ₹99 calls from them (all paid ₹99 calls: N). Pass bar: 5." in English and Hindi; null when nobody has tried CARD in the last 14 days, and on a database without the table.
+2. Today: one muted line under the stats strip, the owner only (a practitioner and staff see nothing). The strip itself is unchanged (its grid has no room for a sixth tile).
+3. The 9 pm summary: the same line before "Worth a follow-up", only while it is not null.
+- Rules: counts only, never a name or number; no merge or deploy; synthetic data only.
+- Tests: null before and after the window; the counts in English and Hindi; the summary with and without draws; Today for the owner and not for the practitioner; no digits run in the line.
+### Ticket 54: the package tracker (CONTRACT v22)
+Rohit, 21 Nov 2026 (the "Ticket 43" of the future-work list, first part only): a tracker for the owner and Amma; nothing is sent to customers. No migration.
+1. People → "Has a package": each row adds "N of M left", "last session <ago>" (or "no session booked yet"), from the credits ledger and the package sessions' slots.
+2. A new People filter "Package, not booked" (English and Hindi): a paid package with sessions left, no package session booked ahead, and no package session in the last 14 days (the purchase counts if there was none).
+3. Rights, scope and numbers are People's own (owner all; practitioner her own customers; staff the last 4).
+- Not in this ticket (later, each its own ticket): a rebook nudge to customers (needs a Meta template and approval), a fixed weekly slot (touches the booking engine).
+- Rules: no merge or deploy; synthetic data only.
+- Tests: the columns on "Has a package"; the idle filter over six cases (idle, active, never booked, one ahead, new, none left); an empty result; practitioner scope; no package words on other filters.
 
 ### Ticket 56: Karmic Coaching in the bot's answers (behind KARMIC_FRONT_DOOR), and the Clarity Call without "Healing or Energy cleansing?" (CONTRACT v24)
 Rohit, 22 Nov 2026: the business is relaunched as "Disha Dira · Karmic Coaching with Shantha Rao". Ticket 52 added the topic menu and the Karmic Clarity Call name behind KARMIC_FRONT_DOOR (test "true", live "false"), but the FAQ, Instagram/Messenger's answers and the AI's knowledge still describe only Pranic Healing. The pathways: Release (Pranic Healing®, Reiki, chakra balancing, energy healing, EFT), Understand (Tarot, Akashic Records, Moksha Patam), Rewire (guided hypnosis, self-hypnosis, meditation-based mind training, goal-setting / manifestation coaching). By phone, audio only, adults 18+, Monday–Saturday 2–7 pm IST; wellness and personal guidance that complements, never replaces, medical or psychological care. No migration.

@@ -18,6 +18,21 @@ Rohit, 22 Nov 2026: with the front door on, the FAQ, Instagram/Messenger's answe
 - Next: Rohit reads the PR, merges, runs **Actions → Deploy → test** (no migration), tries on the test number: Help → What is this / How it works / Who is it for, Book → a topic → Book ₹99 call (no Healing/Energy question), checks Today shows "Karmic Clarity Call" and "Came for"; with AI_REPLIES on, asks a few §18 questions; then **Deploy → live** (KARMIC_FRONT_DOOR stays "false": nothing changes there).
 
 
+## Ticket 54 (PR #72, branch package-tracker, no migration, CONTRACT v22; stacked on #70, so merge #70 first; first numbered Ticket 51)
+Rohit, 21 Nov 2026: the package tracker (first part of the old "Ticket 43"): for the owner and Amma, nothing sent to customers.
+- **src/people.ts**: People → "Has a package" rows add sessions left and the last package session; new filter "Package, not booked" (sessions left, none ahead, nothing for 14 days; `IDLE_DAYS`). **src/people-copy.ts**: the words, English and Hindi (Hindi to be read).
+- Checks: `npm run typecheck` clean; test/packagetracker.test.ts 5/5; people and copy test files rerun green. The whole suite was not rerun.
+- Not built: the rebook nudge (a Meta template and its approval first) and a fixed weekly slot (booking engine); say which next. The practitioner-scope test shows only that she does not see others' customers; a fuller one needs her own package sessions.
+- Merge order: this branch is stacked on #70 (Ticket 53); merge #70 first. #73 (Ticket 55) is stacked on this one.
+- Next: Rohit merges, runs Actions → Deploy → live, opens People → Package, not booked.
+
+## Ticket 53 (PR #70, branch card-numbers, no migration, CONTRACT v21; rebased onto main with #71 and #74; first numbered Ticket 50)
+Rohit, 20 Nov 2026: "do the next ticket" (he chose all three listed; this is the first, 43 and 44 follow as their own tickets). Answers Ticket 49's open question 1: the CARD numbers on Today and in the 9 pm summary.
+- **src/cardtest.ts** `cardTestLine`; **src/today.ts** one muted line under the strip for the owner only; **src/report.ts** the same line in the summary. Nothing shows until someone has tried CARD in the last 14 days, and it disappears again after the test.
+- Checks: `npm run typecheck` clean; test/cardnumbers.test.ts 4/4; today, admin, cardtest and health test files rerun green one at a time. The whole suite was not rerun.
+- Open questions for Rohit: (1) The line says "Pass bar: 5" (your choice of 20 Nov); change the number in src/cardtest.ts if you change the bar. (2) Today's line is English or Hindi by the member's language.
+- Next: Rohit merges, runs Actions → Deploy → live; the line appears after the first CARD draw.
+
 ## Ticket 52 (PR https://github.com/Rhitrao/dishadira-bot/pull/74, branch karmic-front-door, migration 0024_topic, CONTRACT v20; based on main 1e890ed)
 Rohit, 21 Nov 2026: "Disha Dira · Karmic Coaching with Shantha Rao". Customers choose by what they need help with; the ₹99 call becomes the Karmic Clarity Call. Behind a new flag; on live nothing changes except Instagram/Messenger's reading-safety replies.
 - **Numbering (needs sorting at merge)**: open PRs #70 ("Ticket 50"), #72 ("Ticket 51", CONTRACT v20) and #73 (**also "Ticket 52"**, time off for part of a day, CONTRACT v21, no migration) were open when this was built. This PR takes CONTRACT v20 (main is v19) and migration 0024. Whichever of #72 / #73 / this merges second renumbers its CONTRACT version (and #73 or this one its ticket number). #73 also touches src/mybookings.ts, src/packages.ts and src/calendar.ts: small conflicts likely.

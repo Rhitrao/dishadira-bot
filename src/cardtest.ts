@@ -171,3 +171,19 @@ export async function cardStats(db: D1Database, sinceIso: string): Promise<CardS
     paidCallsAll: await one(`SELECT COUNT(*) AS n FROM intros i WHERE i.${paid} AND i.created_at >= ?1`),
   };
 }
+
+const CARD_WINDOW_DAYS = 14;
+// The test's numbers for the owner (Today's line and the 9 pm summary) in one place: the last 14 days, and null when nobody has tried CARD
+// in them (before the test, and a while after it ends), so nothing shows. Counts only, never a name or number.
+export async function cardTestLine(db: D1Database, lang: Lang, nowMs = Date.now()): Promise<string | null> {
+  let st: CardStats;
+  try {
+    st = await cardStats(db, iso(nowMs - CARD_WINDOW_DAYS * 86_400_000));
+  } catch {
+    return null; // a copy of the database before migration 0022
+  }
+  if (st.people === 0) return null;
+  return lang === "hi"
+    ? `CARD टेस्ट (पिछले ${CARD_WINDOW_DAYS} दिन): ${st.people} लोगों ने आज़माया, ${st.repeat3} ने 3 या ज़्यादा दिन, उनमें से ₹99 की ${st.paidCalls} कॉल पेड (सभी पेड ₹99 कॉल: ${st.paidCallsAll}). लक्ष्य: 5.`
+    : `CARD test (last ${CARD_WINDOW_DAYS} days): ${st.people} tried it, ${st.repeat3} on 3+ days, ${st.paidCalls} paid ₹99 calls from them (all paid ₹99 calls: ${st.paidCallsAll}). Pass bar: 5.`;
+}
