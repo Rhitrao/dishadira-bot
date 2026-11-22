@@ -359,6 +359,8 @@ const sections: { title: string; intro?: string; entries: Entry[]; karmic?: bool
       ["directBody", "Only with NEW_SERVICES on: the topic's services, to book directly (a list; button below; rows as in 8e)"],
       ["directButton", "That list's button (max 20 letters)"],
       ["myCallWord", "My bookings: a booked ₹99 call (with the flag on, see 8g)"],
+      ["faqWhoTitle", "Ticket 56: Help's row \"Who is it for?\", after \"How it works\", only while the flag is on (max 24 letters)"],
+      ["faqWhoAnswer", "Ticket 56: its answer (with the menu buttons)"],
     ],
   },
   {
@@ -376,6 +378,9 @@ const sections: { title: string; intro?: string; entries: Entry[]; karmic?: bool
       ["myCallWord", "My bookings: a booked call"],
       ["callRequest", "\"Call me\", \"number please\""],
       ["fallbackQuestion", "The assistant's safe fallback for a question"],
+      ["faqAnswers.what_is_this", "Help → What is this? (ticket 56: Karmic Coaching and its three pathways)"],
+      ["faqAnswers.how_it_works", "Help → How it works (ticket 56)"],
+      ["answerCall", "Under \"How it works\" when it is typed (ticket 56)"],
       ["faqAnswers.price", "Help → Price"],
       ["packagesBody", "Sessions & packages (list)"],
       ["rowIntroTitle", "Its first row (max 24 letters)"],

@@ -118,6 +118,8 @@ With the env flag `KARMIC_FRONT_DOOR` "true" (the test bot; live "false"), the p
 4. **The topic** (a fixed key) is kept on the conversation (`topic_pick`) and copied onto a call or session started within 24 hours (`intros.topic`, `sessions.topic`). Today, the calendar's day view and the person page show "Came for: …" to the owner and the booking's practitioner (as the notes); never staff. Wiped with the name (90 days, Remove their data); the chat wipe leaves it on a kept booking.
 5. **The ₹99 call's name**: wherever the bot's own words name it (the pay message, the confirmation, My bookings, its own reminder text, Sessions & packages, the soft nudge, "call me", the reading-safety reply, the follow-ups, the phone alerts), "Karmic Clarity Call (₹99, 15 min)" / "कार्मिक क्लैरिटी कॉल (₹99, 15 मिनट)" (docs/COPY.md 8f, 8g). Approved templates, and which template is sent, never change. Sessions & packages' call row and the soft nudge's call button go straight to the call (`book_call`).
 6. Typed text works at every step (the re-prompt, the AI's one line); crisis, emergency and the reading-safety replies come first (§3.2).
+7. **Ticket 56: no "Healing or Energy cleansing?"**: with the flag on, the Karmic Clarity Call goes from the age check (or Book's call, when 18+ was already said) straight to "Who is this for?" (`who_HEALING_*`); the ₹799 single session does the same when a topic was tapped within 24 hours (`swh_HEALING_*`), otherwise it still asks. HEALING is stored as the filler; Today, the calendar and the person page call a call with a topic the "Karmic Clarity Call".
+8. **Ticket 56: Help** gets "Who is it for?" (`faq_who_for`) after "How it works" (10 rows). "What is this?", "How it works" (also typed, through the fixed-answer router) and "Who is it for?" describe Karmic Coaching and its three pathways (Release, Understand, Rewire) and end with the Karmic Clarity Call (docs/COPY.md 8f, 8g). Instagram and Messenger's "what" and "how" replies say the same; their quick reply reads "Karmic Coaching".
 
 ### 3.1c Re-prompts during booking
 If a typed message arrives while a booking step is open (language, age, service, who for, day, time, pay, soft gate, my bookings), and it isn't a safety, handoff, opt-out or menu word:
@@ -251,13 +253,14 @@ That's about ₹1 to ₹1.50 per 6-reply conversation. Some providers report the
 - Flag `AI_REPLIES` (default "false") works like SENDS: the env allows it, and /admin can pause it.
 
 **What the AI receives:**
-- System part 1 (cached): rules plus KNOWLEDGE.md.
+- System part 1 (cached): rules plus KNOWLEDGE.md §1–§17 (src/knowledge.ts `KNOWLEDGE`). Ticket 56: only while `KARMIC_FRONT_DOOR` is "true", §18 too (Karmic Coaching, `KNOWLEDGE_KARMIC`, after the marker line in KNOWLEDGE.md); with it "false" this part is byte for byte as before (a pinned SHA-256 in test/ai.test.ts).
 - System part 2 (not cached), the trusted facts:
   - today's date in India
   - the chat language
   - booking facts: next call or session day and time, status, package credits left, and whether they've had a ₹99 call
   - `open_step`: the booking step waiting for a tap, or none (so the AI answers in one line and code resends the step)
   - the `no_sell` flag
+  - ticket 56, only with the front door on: "Bookable services", the catalogue services the AI may name as bookable (active, public, and `NEW_SERVICES` "true"), with their pathway, length and price; their numbers are allowed by the output check. With the front door on the output check also bans `config.ai.karmicBannedWords` (therapy, predict, years of experience …).
 - Messages: the last 10 messages of the chat. Before sending, code:
   - replaces digit runs of 6 or more, emails and links with `[removed]`
   - strips anything that looks like a tag (`<…>`) from customer text

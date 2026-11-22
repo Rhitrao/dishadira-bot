@@ -21,7 +21,7 @@ import { rupees, serviceName, type ForWhom } from "./copy";
 import type { Env } from "./env";
 import { aboutHtml, OUT_OF_SCOPE, seesAbout } from "./intent";
 import { INTAKE_LINE } from "./offer";
-import { cameFor } from "./frontdoor";
+import { cameFor, clarityLabel } from "./frontdoor";
 import { heartbeatStale } from "./mail";
 import { isOutcomeValue, recordOutcome, undoOutcome, type OutcomeValue } from "./outcomes";
 import { razorpay } from "./pay/razorpay";
@@ -288,7 +288,8 @@ async function bookingRow(c: ConsoleCtx, b: Booking, now: number, hero = false) 
     time: clock(b.startUtc, lang),
     name: firstName(b.name, t.noName),
     phone: phoneHtml(b.waId, full),
-    service: otherServiceLabel(b.serviceKey, lang) ? "" : serviceName(b.service, lang), // ticket 49: a newer service by its own name only
+    // ticket 49: a newer service by its own name only; ticket 56: a call from the front door is the Karmic Clarity Call
+    service: clarityLabel(b.kind, b.topic, lang) ?? (otherServiceLabel(b.serviceKey, lang) ? "" : serviceName(b.service, lang)),
     details,
     status: b.oid === null ? bookingChip(b.state, m.locale) : "",
     call: full ? callButton(b.waId, cc.call, hero ? "primary" : "secondary") : "",

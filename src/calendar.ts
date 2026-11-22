@@ -13,7 +13,7 @@ import { config } from "./config";
 import { minutesFor, otherServiceLabel, otherServiceName } from "./catalogue";
 import { maySeeNotes } from "./notes";
 import { INTAKE_LINE } from "./offer";
-import { cameFor } from "./frontdoor";
+import { cameFor, clarityLabel } from "./frontdoor";
 import { appPage, auditStmt, refused, type ConsoleCtx, type ConsoleVars } from "./console";
 import { addTimeOff, bookingsInBlock, clockText, parseBlock, removeTimeOff, TIMEOFF_COPY, upcomingTimeOff } from "./timeoff";
 import { addHoliday, anyDate, bookingsOn, holidayBounds, holidayDate, holidaysBetween, removeHoliday, upcomingHolidays } from "./holidays";
@@ -377,7 +377,8 @@ function entryDetails(e: Entry, m: Member, cc: ConsoleCopy, many: Map<number, st
 // Ticket 47: a booking opens the person page with that booking chosen for a note.
 const personHref = (e: Entry) => `/app/people/${e.convId}?b=${e.kind}-${e.id}#notes`;
 // Healing / Energy cleansing belong to the pranic-healing call and session; a newer service shows only its own name (ticket 49).
-const pranic = (e: Entry, lang: "en" | "hi") => (otherServiceName(e.serviceKey, lang) ? "" : serviceName(e.service, lang));
+// Ticket 56: a call from the front door (it has a topic) is the Karmic Clarity Call, not "Healing".
+const pranic = (e: Entry, lang: "en" | "hi") => clarityLabel(e.kind, e.topic, lang) ?? (otherServiceName(e.serviceKey, lang) ? "" : serviceName(e.service, lang));
 // The kind in a block or chip: "Call" / "Session", or a newer service's own name (ticket 48).
 const shortKind = (e: Entry, cc: ConsoleCopy, lang: "en" | "hi") => otherServiceName(e.serviceKey, lang) ?? (e.kind === "CALL" ? cc.calShortCall : cc.calShortSession);
 const evClass = (e: Entry) => `${e.kind === "CALL" ? "call" : "session"}${e.state === "HELD" ? " held" : ""}`;

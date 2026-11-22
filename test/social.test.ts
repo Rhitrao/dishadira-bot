@@ -1474,4 +1474,31 @@ describe("ticket 52: the reading-safety replies on Instagram and Messenger, and 
     expect(bodyOf(m)).toBe(on.guideMember);
     expect(decodeURIComponent(buttonsOf(m)[0].url)).toContain("Hi, I'd like to book a Karmic Clarity Call (ref: IG");
   });
+
+  it("ticket 56: with KARMIC_FRONT_DOOR 'true', 'What is this?' and 'How the call works' describe Karmic Coaching and end with the Clarity Call; 'false': the pranic answers", async () => {
+    const off = socialWords("en");
+    expect(off.lines.what).toBe("Pranic Healing is a gentle, no-touch energy healing practice. It complements medical care and is not a substitute for it.");
+    expect(off.qrTitles.what).toBe("About Pranic Healing");
+    setFrontDoorWords({ KARMIC_FRONT_DOOR: "true" });
+    const on = socialWords("en");
+    const hiOn = socialWords("hi");
+    expect(on.lines.what).toContain("Karmic Coaching with Shantha Rao");
+    expect(on.lines.what).toContain("Release (healing), Understand (readings) or Rewire (mind work)");
+    expect(on.lines.what.endsWith("The first step is the Karmic Clarity Call (₹99, 15 min) on WhatsApp.")).toBe(true);
+    expect(on.lines.how).toContain("Karmic Clarity Call (₹99, 15 min)");
+    expect(hiOn.lines.what).toContain("कार्मिक कोचिंग");
+    expect(hiOn.lines.what.endsWith("पहला कदम WhatsApp पर कार्मिक क्लैरिटी कॉल (₹99, 15 मिनट) है।")).toBe(true);
+    expect(hiOn.lines.how).toContain("कार्मिक क्लैरिटी कॉल (₹99, 15 मिनट)");
+    expect([on.qrTitles.what, hiOn.qrTitles.what]).toEqual(["Karmic Coaching", "कार्मिक कोचिंग"]);
+    for (const t of [on.lines.what, on.lines.how, hiOn.lines.what, hiOn.lines.how]) {
+      expect(t).not.toMatch(/pranic|प्राणिक|certif|सर्टिफ|years|predict|therap|\bcures?\b|guarantee/i);
+      expect([...t].length).toBeLessThanOrEqual(400);
+    }
+    // Through the webhook: a follower's first "what is this?" on Instagram.
+    (flags as Record<string, string>).KARMIC_FRONT_DOOR = "true";
+    followsFirst = true;
+    await post(dm("instagram", "IGK53", "what is this?"));
+    expect(bodyOf(sent()[0])).toBe(`${on.lines.what}\n\n${on.guideMember}`);
+    setFrontDoorWords({});
+  });
 });

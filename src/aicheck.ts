@@ -50,7 +50,8 @@ export function allowedNumbers(factNumbers: readonly number[] = []): Set<number>
   ]);
 }
 
-export function checkReply(reply: string, factNumbers: readonly number[] = []): Checked {
+// `karmic` (ticket 56): while KARMIC_FRONT_DOOR is "true", config.ai.karmicBannedWords are banned too (therapy, predict …).
+export function checkReply(reply: string, factNumbers: readonly number[] = [], karmic = false): Checked {
   const fail = (reason: RejectReason): Checked => ({ ok: false, reason });
   if (reply.length > config.ai.maxReplyChars) return fail("TOO_LONG");
   if (new RegExp(EMAIL_RE.source).test(reply)) return fail("EMAIL");
@@ -59,6 +60,7 @@ export function checkReply(reply: string, factNumbers: readonly number[] = []): 
   if (!ALLOWED_CHARS.test(reply)) return fail("SCRIPT");
   if (hasPhrase(reply, config.ai.metaWords)) return fail("META");
   if (hasPhrase(asciiDigits(reply), config.ai.bannedWords)) return fail("BANNED_WORD");
+  if (karmic && hasPhrase(asciiDigits(reply), config.ai.karmicBannedWords)) return fail("BANNED_WORD");
   const ok = allowedNumbers(factNumbers);
   if (numbersIn(reply).some((n) => !ok.has(n))) return fail("NUMBER");
   return { ok: true };

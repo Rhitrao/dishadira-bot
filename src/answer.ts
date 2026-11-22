@@ -2,7 +2,7 @@
 // (strikes, quiet, blocks, the fixed crisis and emergency messages), then the reply is checked (src/aicheck.ts), then it is sent according to `next`.
 // The assistant only chooses words and one action from a fixed list; code does everything else. No message text is logged or stored here.
 import { checkReply, type RejectReason } from "./aicheck";
-import { callAI, factNumbers, gatherFacts, type AiOutput, type ChatMessage, type Facts, type NextAction } from "./ai";
+import { callAI, factNumbers, gatherFacts, karmicFacts, type AiOutput, type ChatMessage, type Facts, type NextAction } from "./ai";
 import { copyFor, type Copy } from "./copy";
 import type { Env } from "./env";
 import { requestHuman } from "./handoff";
@@ -59,6 +59,8 @@ export async function answerWithAI(ctx: AnswerCtx): Promise<Answered> {
   const open = await openStep(db, conv.id);
 
   const facts: Facts = await gatherFacts(db, conv.id, conv.locale, Date.now(), open?.step ?? null);
+  const karmic = karmicFacts(env); // ticket 56: §18 and the bookable services, only while the front door is on
+  if (karmic) facts.karmic = karmic;
   await recordAiReply(db, conv.id); // every call counts against the budgets, whatever comes back
   let result: Awaited<ReturnType<typeof callAI>>;
   try {
@@ -96,7 +98,7 @@ export async function answerWithAI(ctx: AnswerCtx): Promise<Answered> {
     }
     reason = "EMPTY";
   } else {
-    const checked = checkReply(reply, factNumbers(facts));
+    const checked = checkReply(reply, factNumbers(facts), !!facts.karmic);
     if (!checked.ok) reason = checked.reason;
   }
   if (reason) {

@@ -372,6 +372,9 @@ export type Copy = {
   clarityPitch: string; // what the Karmic Clarity Call is (buttons: Book ₹99 call, Help)
   directBody: string; // "Or book directly" (a list of the topic's services), only with NEW_SERVICES on too
   directButton: string; // max 20 chars
+  // Ticket 56: Help's "Who is it for?", a row shown only while KARMIC_FRONT_DOOR is "true" (src/whatsapp.ts), after "How it works".
+  faqWhoTitle: string; // max 24 chars
+  faqWhoAnswer: string;
   amma: AmmaCopy;
 };
 
@@ -774,6 +777,11 @@ const en: Copy = {
     `A good first step is the ${CLARITY}: Shantha Rao calls you by phone (audio only, no video), listens to what's going on, and suggests what suits you.`,
   directBody: "Or, if you already know what you'd like, you can book it directly:",
   directButton: "See options",
+  faqWhoTitle: "Who is it for?",
+  faqWhoAnswer:
+    "Adults (18+) who want to understand a pattern in their relationships, family, work or self-worth, who feel heavy or drained, or who face a decision. " +
+    "It is wellness and personal guidance: it works alongside medical or psychological care, never instead of it. " +
+    `Not sure where to start? Begin with the ${CLARITY}.`,
   amma: ammaEn,
 };
 
@@ -1104,6 +1112,11 @@ const hi: Copy = {
     `पहला कदम ${CLARITY_HI} हो सकता है: शांता राव जी आपको फ़ोन पर कॉल करती हैं (सिर्फ़ आवाज़, वीडियो नहीं), आपकी बात सुनती हैं, और बताती हैं कि आपके लिए क्या ठीक रहेगा।`,
   directBody: "या, अगर आप जानते हैं कि आपको क्या चाहिए, तो सीधे बुक कर सकते हैं:",
   directButton: "विकल्प देखें",
+  faqWhoTitle: "यह किसके लिए है?",
+  faqWhoAnswer:
+    "18 साल या उससे बड़े लोगों के लिए, जो रिश्तों, परिवार, काम या आत्म-सम्मान में किसी पैटर्न को समझना चाहते हैं, जिनका मन भारी या थका हुआ है, या जो किसी फ़ैसले पर खड़े हैं। " +
+    "यह वेलनेस और निजी मार्गदर्शन है: यह डॉक्टर या मनोवैज्ञानिक देखभाल के साथ चलता है, उसकी जगह कभी नहीं लेता। " +
+    `तय नहीं कर पा रहे कि कहाँ से शुरू करें? ${CLARITY_HI} से शुरू करें।`,
   amma: ammaEn, // Amma's page copy stays English
 };
 
@@ -1130,8 +1143,19 @@ const karmicEn: Partial<Copy> = {
   myCallWord: CLARITY,
   callRequest: `We don't take calls on this WhatsApp number. The quickest way to talk to Shantha Rao is the ${CLARITY}: you choose a time, and she calls you. It is ${VOICE}.`,
   fallbackQuestion: `Thanks for asking. Shantha Rao can explain this properly on the ${CLARITY}, or you can ask a person from our team.`,
+  answerCall:
+    `The ${CLARITY} is ${VOICE}, at the time you pick. Shantha Rao calls you herself, listens to what is going on, ` +
+    "and suggests a pathway that may suit you. The call is in the language you chat in, English or Hindi.",
   faqAnswers: {
     ...en.faqAnswers,
+    // Ticket 56: what it is and how it works describe Karmic Coaching and its three pathways (with the flag "false", the pranic answers above).
+    what_is_this:
+      "Disha Dira offers Karmic Coaching with Shantha Rao, by phone. She listens, helps you see the patterns in your relationships, family, work and self-worth, " +
+      "and suggests a pathway: Release (healing), Understand (readings) or Rewire (mind work). " +
+      `The first step is the ${CLARITY}: ${VOICE}.`,
+    how_it_works:
+      `1. Pick a time for the ${CLARITY}. 2. Pay ${intro}. 3. Shantha Rao calls you: ${VOICE}. ` +
+      "She listens and suggests a pathway that may suit you. 4. If you both agree, you can book a session with her.",
     price:
       `The ${CLARITY} is the first step. A single session is ${sessionPrice}. ` +
       `Packages: ${p10.sessions} sessions for ${packPrice(p10.sessions)} (${perSession(p10)} each) or ${p20.sessions} for ${packPrice(p20.sessions)} (${perSession(p20)} each), with no expiry.`,
@@ -1174,8 +1198,18 @@ const karmicHi: Partial<Copy> = {
   myCallWord: CLARITY_HI,
   callRequest: `इस WhatsApp नंबर पर हम कॉल नहीं लेते। शांता राव जी से बात करने का सबसे आसान तरीका ${CLARITY_HI} है: आप समय चुनें, और वे आपको कॉल करेंगी। यह ${VOICE_HI} होती है।`,
   fallbackQuestion: `पूछने के लिए धन्यवाद। शांता राव जी ${CLARITY_HI} पर इसे अच्छे से समझा सकती हैं, या आप हमारी टीम के किसी व्यक्ति से बात कर सकते हैं।`,
+  answerCall:
+    `${CLARITY_HI} ${VOICE_HI} होती है, आपके चुने हुए समय पर। शांता राव जी खुद आपको कॉल करती हैं, आपकी बात सुनती हैं, ` +
+    "और बताती हैं कि कौन-सी राह आपके लिए ठीक रह सकती है। कॉल उसी भाषा में होती है जिसमें आप चैट करते हैं, अंग्रेज़ी या हिंदी।",
   faqAnswers: {
     ...hi.faqAnswers,
+    what_is_this:
+      "दिशा दिरा में शांता राव जी फ़ोन पर कार्मिक कोचिंग करती हैं। वे आपकी बात सुनती हैं, रिश्तों, परिवार, काम और आत्म-सम्मान में बार-बार आने वाले पैटर्न समझने में मदद करती हैं, " +
+      "और एक राह सुझाती हैं: रिलीज़ (हीलिंग), समझ (रीडिंग) या रीवायर (मन का अभ्यास)। " +
+      `पहला कदम ${CLARITY_HI} है: ${VOICE_HI}।`,
+    how_it_works:
+      `1. ${CLARITY_HI} का समय चुनें। 2. ${intro} का भुगतान करें। 3. शांता राव जी आपको कॉल करेंगी: ${VOICE_HI}। ` +
+      "वे आपकी बात सुनकर बताएँगी कि कौन-सी राह आपके लिए ठीक रह सकती है। 4. अगर आप दोनों को ठीक लगे, तो आप उनके साथ सेशन बुक कर सकते हैं।",
     price:
       `पहला कदम ${CLARITY_HI} है। एक सेशन ${sessionPrice} का है। ` +
       `पैकेज: ${p10.sessions} सेशन ${packPrice(p10.sessions)} में (${perSession(p10)} प्रति सेशन) या ${p20.sessions} सेशन ${packPrice(p20.sessions)} में (${perSession(p20)} प्रति सेशन), कोई समय-सीमा नहीं।`,
