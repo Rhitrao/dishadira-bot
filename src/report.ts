@@ -1,4 +1,5 @@
 // Numbers and the 9pm summary email, in the console's words (no codes). Everything comes from the database.
+import { cardTestLine } from "./cardtest";
 import { prices, recipients } from "./business";
 import { serviceName } from "./copy";
 import { config } from "./config";
@@ -200,6 +201,7 @@ export async function digestText(env: Env, nowMs = Date.now()): Promise<string> 
     .filter((s) => (s.name === "AMMA_AWAY" ? s.on : !s.on))
     .map((s) => `${SWITCH_OFF_WORDS[s.name]}${s.name !== "AMMA_AWAY" && !s.envOn ? " It's off for this copy of the bot; only a deploy turns it on." : ""}`);
   const leads = await warmLeads(env, nowMs);
+  const cardLine = await cardTestLine(env.DB, "en", nowMs); // ticket 50: the CARD test's numbers, while it runs
   const total = attention.results.reduce((t, a) => t + a.n, 0);
   const lines = [
     `Needs you (${total})`,
@@ -229,6 +231,7 @@ export async function digestText(env: Env, nowMs = Date.now()): Promise<string> 
     "After the call (last 24 hours)",
     ...(await afterCallLines(env, nowMs)),
     "",
+    ...(cardLine ? [cardLine, ""] : []),
     "Worth a follow-up (last 24 hours, not paid yet)",
     ...(leads.length ? leads.map((l) => `- ${firstName(l.name)} · ${consoleLink(env, `/admin/conv/${l.id}`)}`) : ["- Nobody."]),
     "",

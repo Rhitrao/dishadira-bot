@@ -1,5 +1,12 @@
 # STATUS
-Updated: 2026-11-21 (Ticket 52: the Karmic Coaching front door behind KARMIC_FRONT_DOOR)
+Updated: 2026-11-22 (Ticket 53: the CARD test numbers)
+
+## Ticket 53 (PR #70, branch card-numbers, no migration, CONTRACT v21; rebased onto main with #71 and #74; first numbered Ticket 50)
+Rohit, 20 Nov 2026: "do the next ticket" (he chose all three listed; this is the first, 43 and 44 follow as their own tickets). Answers Ticket 49's open question 1: the CARD numbers on Today and in the 9 pm summary.
+- **src/cardtest.ts** `cardTestLine`; **src/today.ts** one muted line under the strip for the owner only; **src/report.ts** the same line in the summary. Nothing shows until someone has tried CARD in the last 14 days, and it disappears again after the test.
+- Checks: `npm run typecheck` clean; test/cardnumbers.test.ts 4/4; today, admin, cardtest and health test files rerun green one at a time. The whole suite was not rerun.
+- Open questions for Rohit: (1) The line says "Pass bar: 5" (your choice of 20 Nov); change the number in src/cardtest.ts if you change the bar. (2) Today's line is English or Hindi by the member's language.
+- Next: Rohit merges, runs Actions → Deploy → live; the line appears after the first CARD draw.
 
 ## Ticket 52 (PR https://github.com/Rhitrao/dishadira-bot/pull/74, branch karmic-front-door, migration 0024_topic, CONTRACT v20; based on main 1e890ed)
 Rohit, 21 Nov 2026: "Disha Dira · Karmic Coaching with Shantha Rao". Customers choose by what they need help with; the ₹99 call becomes the Karmic Clarity Call. Behind a new flag; on live nothing changes except Instagram/Messenger's reading-safety replies.
