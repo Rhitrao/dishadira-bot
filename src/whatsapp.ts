@@ -18,6 +18,7 @@ import { mediaOf } from "./media";
 import { menuOut } from "./menu";
 import { applyLabel, ensureState, noSellActive } from "./noise";
 import { cardReply, isCardChoice, isCardWord, THEME_IDS } from "./cardtest";
+import { isTarotWord, tarotGameOn, tarotOut } from "./tarot/bot";
 import { ACTION_TOPICS, isOutOfScope, isSexualHealth, isVideoQuestion, matchTopic, sentRecently, topicOut, topicText, type Topic } from "./router";
 import { intentChoice, intentText, isIntentStep, raiseOutOfScope } from "./intent";
 import { rescheduleChoice } from "./outcomes";
@@ -556,6 +557,14 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
       else await routeTopic("video");
       return;
     }
+    // Ticket 57: with TAROT_GAME on, the bare word TAROT gets the tarot game's "Open your cards" login button (src/tarot/bot.ts).
+    if (tarotGameOn(env) && isTarotWord(said) && classifyWithoutAI(said) === "TO_CLASSIFIER") {
+      const out = await tarotOut(env, db, conv!.id, langOf(conv!.locale));
+      if (out) {
+        await reply(out, "tarot");
+        return;
+      }
+    }
     // Ticket 49 (the CARD test): the bare word CARD (or TAROT) starts a draw: the theme buttons, or today's cards again. Pre-written, never the assistant.
     if (isCardWord(said) && classifyWithoutAI(said) === "TO_CLASSIFIER") {
       await reply(await cardReply(db, conv!.id, langOf(conv!.locale), null, await noSellActive(db, conv!.id), cp), "card");
@@ -677,6 +686,14 @@ async function handleMessage(env: Env, m: Msg, from: string, name: string | unde
         if (asked && isSexualHealth(asked.text) && classifyWithoutAI(asked.text) !== "abuse") {
           await routeTopic("sexual_health", cp2, (out, step) => sendMessage(env, conv!.id, out, `${key}:${step}`));
           return;
+        }
+        // Ticket 57: TAROT as the first message (the game's "Continue with WhatsApp" text): the login button, in the language just chosen.
+        if (asked && tarotGameOn(env) && isTarotWord(asked.text) && classifyWithoutAI(asked.text) === "TO_CLASSIFIER") {
+          const out = await tarotOut(env, db, conv!.id, langOf(locale));
+          if (out) {
+            await sendMessage(env, conv!.id, out, `${key}:tarot`);
+            return;
+          }
         }
         // Ticket 49: CARD as the first message (the ad's prefilled text): the theme buttons, in the language just chosen.
         if (asked && isCardWord(asked.text) && classifyWithoutAI(asked.text) === "TO_CLASSIFIER") {

@@ -17,7 +17,7 @@ import serif600 from "../fonts/cormorant-garamond-latin-600.woff2";
 
 export const FONT_PATH = "/app/fonts/";
 
-const FILES: Record<string, ArrayBuffer> = {
+export const FILES: Record<string, ArrayBuffer> = {
   "jost-latin-400.woff2": jost400,
   "jost-latin-500.woff2": jost500,
   "jost-latin-600.woff2": jost600,

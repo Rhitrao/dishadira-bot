@@ -20,3 +20,13 @@ packages v5.3.0; the font names and files are otherwise unchanged.
   Licence: fonts/OFL-NotoSansDevanagari.txt
 - Cormorant Garamond: Copyright 2015 The Cormorant Project Authors (https://github.com/CatharsisFonts/Cormorant).
   Licence: fonts/OFL-CormorantGaramond.txt
+
+Tarot card art
+--------------
+The tarot game (/tarot, ticket 57) shows the 78 cards of the 1909 Waite–Smith deck drawn by
+Pamela Colman Smith (1878–1951), first published by William Rider & Son, London, December
+1909. The original 1909 artwork is in the public domain. The images in images/tarot/ are
+resized WebP copies of public-domain scans hosted on Wikimedia Commons ("RWS Tarot NN Name.jpg",
+"Wands01.jpg" … "Pents14.jpg"). They are not the 1971 U.S. Games Systems recolouring, and the
+trademarked name "Rider-Waite" is not used. Card meanings in src/tarot/deck.ts are written
+fresh, following A. E. Waite, "The Pictorial Key to the Tarot" (1911, public domain).

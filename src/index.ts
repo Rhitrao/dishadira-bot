@@ -29,6 +29,7 @@ import { switchOver } from "./switchover";
 import { wipeChats } from "./wipe";
 import { makeGists } from "./gist";
 import { receiveWebhook, verifyWebhook } from "./whatsapp";
+import { tarot } from "./tarot/api";
 
 export const VERSION = "0.1.0";
 
@@ -83,6 +84,7 @@ app.get("/p/:token", payLinkPage);
 for (const path of ["/amma", "/amma/*", "/admin", "/admin/*"]) app.use(path, switchOver);
 app.route("/amma", amma);
 app.route("/admin", admin);
+app.route("/tarot", tarot); // ticket 57: the tarot game, behind TAROT_GAME (a 404 while it is off)
 app.route("/app", consoleApp); // the role-based console, behind CONSOLE_V2 (a 404 while it is off)
 
 // One cron per Worker: the Workers Free plan allows 5 cron triggers per account, and test and live share the account.

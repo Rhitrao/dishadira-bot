@@ -24,6 +24,7 @@ import servicesSql from "../migrations/0021_services.sql?raw";
 import cardSql from "../migrations/0022_card_test.sql?raw";
 import intakeSql from "../migrations/0023_service_intake.sql?raw";
 import topicSql from "../migrations/0024_topic.sql?raw";
+import tarotSql from "../migrations/0025_tarot.sql?raw";
 
 // D1 runs one statement per prepare(); split a migration file on ";" at line ends.
 export async function applySql(db: D1Database, sql: string): Promise<void> {
@@ -35,13 +36,13 @@ export async function applySql(db: D1Database, sql: string): Promise<void> {
   for (const s of statements) await db.prepare(s).run();
 }
 
-export const migrations = { initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql, adClickSql, membersSql, inboxSql, socialSql, socialMoreSql, socialNoiseSql, followupsSql, mediaSql, afterCallSql, intentSql, pushSql, notesSql, servicesSql, cardSql, intakeSql, topicSql };
+export const migrations = { initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql, adClickSql, membersSql, inboxSql, socialSql, socialMoreSql, socialNoiseSql, followupsSql, mediaSql, afterCallSql, intentSql, pushSql, notesSql, servicesSql, cardSql, intakeSql, topicSql, tarotSql };
 
-// A fresh local D1 (real workerd SQLite) with the migrations applied. `through` stops early (4 = before the Hindi/booking-steps migration, 5 = before the gatekeeper migration, 6 = before the packages migration, 7 = before the handoff migration, 8 = before the ad-click migration, 9 = before the members migration, 10 = before the inbox migration, 11 = before the social migration, 12 = before the second social migration, 13 = before the social noise migration, 14 = before the follow-ups migration, 15 = before the media migration 0016, 16 = before the after-call migration 0017, 17 = before the intent migration 0018, 18 = before the push migration 0019, 19 = before the notes and gist migration 0020, 20 = before the services migration 0021, 21 = before the CARD test migration 0022, 22 = before the intake migration 0023, 23 = before the topic migration 0024).
-export async function newDb(through = 24): Promise<{ db: D1Database; close: () => Promise<void> }> {
+// A fresh local D1 (real workerd SQLite) with the migrations applied. `through` stops early (4 = before the Hindi/booking-steps migration, 5 = before the gatekeeper migration, 6 = before the packages migration, 7 = before the handoff migration, 8 = before the ad-click migration, 9 = before the members migration, 10 = before the inbox migration, 11 = before the social migration, 12 = before the second social migration, 13 = before the social noise migration, 14 = before the follow-ups migration, 15 = before the media migration 0016, 16 = before the after-call migration 0017, 17 = before the intent migration 0018, 18 = before the push migration 0019, 19 = before the notes and gist migration 0020, 20 = before the services migration 0021, 21 = before the CARD test migration 0022, 22 = before the intake migration 0023, 23 = before the topic migration 0024, 24 = before the tarot migration 0025).
+export async function newDb(through = 25): Promise<{ db: D1Database; close: () => Promise<void> }> {
   const mf = new Miniflare({ modules: true, script: "export default {}", d1Databases: { DB: "test" } });
   const db = (await mf.getD1Database("DB")) as unknown as D1Database;
-  await applySql(db, [initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql, adClickSql, membersSql, inboxSql, socialSql, socialMoreSql, socialNoiseSql, followupsSql, mediaSql, afterCallSql, intentSql, pushSql, notesSql, servicesSql, cardSql, intakeSql, topicSql].slice(0, through).join("\n"));
+  await applySql(db, [initSql, messagesSql, outcomesSql, paidSql, hindiSql, gatekeeperSql, packagesSql, handoffSql, adClickSql, membersSql, inboxSql, socialSql, socialMoreSql, socialNoiseSql, followupsSql, mediaSql, afterCallSql, intentSql, pushSql, notesSql, servicesSql, cardSql, intakeSql, topicSql, tarotSql].slice(0, through).join("\n"));
   return { db, close: () => mf.dispose() };
 }
 

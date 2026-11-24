@@ -29,6 +29,7 @@ export class Wa {
   aiFlag = "true";
   newServices = "false"; // ticket 49: the NEW_SERVICES env flag
   frontDoor: string | undefined = undefined; // ticket 52: the KARMIC_FRONT_DOOR env flag (unset: off, as on live)
+  tarotGame: string | undefined = undefined; // ticket 57: the TAROT_GAME env flag (unset: off, as on live)
   key = "sk-ant-test-key";
   // What the fake Anthropic API answers; set per test.
   ai: AiReply = {};
@@ -37,7 +38,7 @@ export class Wa {
 
   env = () =>
     ({
-      DB: this.db, SENDS: this.sends, AI_REPLIES: this.aiFlag, ANTHROPIC_API_KEY: this.key, NEW_BOOKINGS: "true", NEW_SERVICES: this.newServices, KARMIC_FRONT_DOOR: this.frontDoor, WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "v", WA_TOKEN: "tok",
+      DB: this.db, SENDS: this.sends, AI_REPLIES: this.aiFlag, ANTHROPIC_API_KEY: this.key, NEW_BOOKINGS: "true", NEW_SERVICES: this.newServices, KARMIC_FRONT_DOOR: this.frontDoor, TAROT_GAME: this.tarotGame, WA_APP_SECRET: SECRET, WA_VERIFY_TOKEN: "v", WA_TOKEN: "tok",
       WA_PHONE_ID: "1000", CHAT_RETENTION_MINUTES: "10", DIGEST_TO: "ops@example.invalid", PUBLIC_URL: "https://bot.example.test",
       EMAIL: { send: async (m: Email) => void this.emails.push(m) }, ...rzpEnv(),
     }) as never;
@@ -85,6 +86,7 @@ export class Wa {
     this.aiFlag = "true";
     this.newServices = "false";
     this.frontDoor = undefined;
+    this.tarotGame = undefined;
     this.key = "sk-ant-test-key";
     this.emails = [];
     this.fake = new FakeRazorpay();
