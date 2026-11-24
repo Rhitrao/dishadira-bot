@@ -6,6 +6,7 @@
 import { config } from "./config";
 import type { Env } from "./env";
 import { iso } from "./slots";
+import { tarotWipeStmts, wipeOldTarot } from "./tarot/store";
 
 const DAY = 86_400_000;
 
@@ -28,6 +29,7 @@ export async function wipeChats(env: Env, nowMs = Date.now()): Promise<number> {
   await removeOldNames(env, nowMs);
   // Ticket 49: the CARD test's draws (no name or number) go 90 days after the draw.
   await env.DB.prepare("DELETE FROM card_draws WHERE created_at < ?1").bind(iso(nowMs - 90 * 86_400_000)).run();
+  await wipeOldTarot(env.DB, nowMs); // ticket 57: 90 days after a person's last reading
   return res.meta.changes;
 }
 
@@ -67,4 +69,5 @@ export const wipePersonStmts = (db: Env["DB"], convId: number, nowIso: string) =
   db.prepare("DELETE FROM notes WHERE conversation_id = ?1").bind(convId),
   db.prepare("DELETE FROM gists WHERE conversation_id = ?1").bind(convId),
   db.prepare("DELETE FROM card_draws WHERE conversation_id = ?1").bind(convId), // ticket 49
+  ...tarotWipeStmts(db, convId), // ticket 57: the tarot game
 ];
