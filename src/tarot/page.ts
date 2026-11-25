@@ -109,6 +109,12 @@ details.art summary::-webkit-details-marker{display:none}
 .ghost-card{width:var(--card-w);aspect-ratio:.575;border-radius:2px;border:1px solid var(--gold);background:rgba(217,181,108,.15)}
 .mini{width:96px;display:flex;justify-content:center;flex:none}
 .stage-table{display:flex;justify-content:center;margin:16px 0 6px}
+.summary.story{border-color:var(--gold);background:linear-gradient(160deg,rgba(217,181,108,.14),rgba(233,167,160,.08))}
+.summary.story h3{display:inline-block;margin-right:8px}
+.story-text p{font-size:1.06rem;line-height:1.65}.story-text p+p{margin-top:10px}
+.listen{float:right;min-height:40px;padding:8px 16px;font-size:.95rem;margin:-4px 0 8px 8px}
+.listen[disabled]{opacity:.5}
+.shimmer{animation:shim 1.6s ease-in-out infinite}@keyframes shim{50%{opacity:.45}}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
@@ -219,7 +225,7 @@ function showLogin(old) {
 }
 
 function showHome() {
-  clear(); document.body.classList.remove("dawn");
+  stopVoice(); clear(); document.body.classList.remove("dawn");
   var d = S.data, ins = d.insights;
   app.appendChild(header());
   app.appendChild(el("div", { class: "hero" }, [moonEl(), el("h1", { text: greeting() + (ins && ins.firstName ? ", " + ins.firstName : "") }), el("p", { class: "muted", text: "Take a breath. What would you like to look at today?" })]));
@@ -490,24 +496,81 @@ function reveal(reading) {
   var skipped = false; s.addEventListener("click", function () { skipped = true; });
   var p = wait(500), gap = reading.cards.length > 5 ? 900 : 1500;
   table.cards.forEach(function (ce, i) {
-    p = p.then(function () { ce.classList.add("flipped"); if (i === 0) document.body.classList.add("dawn"); t.textContent = reading.cards[i].name + (reading.cards[i].reversed ? ", reversed" : ""); return skipped ? null : wait(gap); });
+    p = p.then(function () { ce.classList.add("flipped"); if (i === 0) document.body.classList.add("dawn"); t.textContent = reading.cards[i].name + (reading.cards[i].reversed ? ", upside down" : ""); return skipped ? null : wait(gap); });
   });
   p.then(function () { return skipped ? null : wait(700); }).then(function () { load(true).then(function () { showReading(reading); }); });
 }
 
+// "What this means for you": the reading in plain words, and a Listen button (a warm recorded voice when the server has one, else the phone's).
+var VOICE = { audio: null, url: null, id: null, speaking: false };
+function stopVoice() {
+  if (VOICE.audio) { VOICE.audio.pause(); }
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  VOICE.speaking = false;
+}
+function storyBox(r) {
+  var box = el("div", { class: "summary story" }, [el("h3", { text: "What this means for you" })]);
+  var body = el("div", { class: "story-text" }, [el("p", { class: "muted shimmer", text: "Reading your cards for you…" })]);
+  var btn = el("button", { class: "btn listen", type: "button", disabled: "", "aria-label": "Listen to this reading" }, [el("span", { "aria-hidden": "true", text: "▶" }), el("span", { class: "lbl", text: " Listen" })]);
+  box.appendChild(btn); box.appendChild(body);
+  var text = "";
+  function label(t) { btn.querySelector(".lbl").textContent = t; btn.firstChild.textContent = t === " Pause" ? "❚❚" : "▶"; }
+  api("story/" + r.id).then(function (s) {
+    if (!s.text) { body.innerHTML = ""; body.appendChild(el("p", { class: "muted", text: "Please read the cards below." })); return; }
+    text = s.text; body.innerHTML = "";
+    s.text.split(/\n\n+/).forEach(function (para) { body.appendChild(el("p", { text: para })); });
+    btn.removeAttribute("disabled");
+    VOICE.server = !!s.voice;
+  }).catch(function () { body.innerHTML = ""; body.appendChild(el("p", { class: "muted", text: "No connection. Please read the cards below." })); });
+  btn.addEventListener("click", function () {
+    if (VOICE.speaking && VOICE.id === r.id) { stopVoice(); label(" Listen"); return; }
+    stopVoice(); VOICE.id = r.id; VOICE.speaking = true; label(" Pause");
+    var done = function () { VOICE.speaking = false; label(" Listen"); };
+    if (VOICE.server) {
+      label(" Loading…");
+      fetch("/tarot/api/voice/" + r.id, { credentials: "same-origin" }).then(function (res) {
+        if (!res.ok) throw new Error("voice");
+        return res.blob();
+      }).then(function (b) {
+        if (!VOICE.speaking) return;
+        if (VOICE.url) URL.revokeObjectURL(VOICE.url);
+        VOICE.url = URL.createObjectURL(b); VOICE.audio = new Audio(VOICE.url);
+        VOICE.audio.onended = done; label(" Pause");
+        return VOICE.audio.play();
+      }).catch(function () { if (VOICE.speaking) phoneVoice(text, done, label); });
+    } else phoneVoice(text, done, label);
+  });
+  return box;
+}
+// The phone's own voice: a female English voice if the phone has one (Indian English first), slow and soft.
+function phoneVoice(text, done, label) {
+  if (!window.speechSynthesis) { toast("This phone cannot read aloud."); done(); return; }
+  var vs = window.speechSynthesis.getVoices();
+  var female = /female|woman|samantha|veena|lekha|heera|kalpana|zira|susan|karen|moira|tessa|fiona|victoria|serena|neerja|swara/i;
+  var pick = vs.filter(function (v) { return /^en[-_]IN/i.test(v.lang) && female.test(v.name); })[0] || vs.filter(function (v) { return /^en/i.test(v.lang) && female.test(v.name); })[0] || vs.filter(function (v) { return /^en[-_]IN/i.test(v.lang); })[0] || null;
+  var u = new SpeechSynthesisUtterance(text.replace(/\n\n+/g, " … "));
+  if (pick) u.voice = pick;
+  u.lang = pick ? pick.lang : "en-IN"; u.rate = 0.9; u.pitch = 1.08;
+  u.onend = done; u.onerror = done;
+  label(" Pause");
+  window.speechSynthesis.speak(u);
+}
+
 function showReading(r) {
-  clear(); document.body.classList.add("dawn");
+  stopVoice(); clear(); document.body.classList.add("dawn");
   app.appendChild(el("button", { class: "back", on: { click: showHome }, text: "‹ Home" }));
   app.appendChild(el("h2", { text: r.kind === "daily" ? "Today's card" : r.question }));
   if (r.kind !== "daily") {
     app.appendChild(el("p", { class: "muted", text: r.spread + " · " + S.data.themes[r.theme].label }));
     if (r.cards.length > 1) { var tb = layoutEl(r.cards, r.cards, Math.min((app.clientWidth || 392) - 32, 528), true); tb.cards.forEach(function (c) { c.classList.add("flipped"); }); app.appendChild(el("div", { class: "stage-table" }, [tb])); }
   }
+  app.appendChild(storyBox(r));
   if (r.personal && r.personal.length) {
     var pb = el("div", { class: "summary for-you" }, [el("h3", { text: "For you" })]);
     r.personal.forEach(function (l) { pb.appendChild(el("p", { text: l })); });
     app.appendChild(pb);
   }
+  app.appendChild(el("h3", { text: r.cards.length > 1 ? "Your cards, one by one" : "Your card", style: "margin-top:22px" }));
   var box = el("div", { class: "reading" });
   r.cards.forEach(function (c) {
     var kw = el("div", { class: "kw" }); c.keywords.forEach(function (k) { kw.appendChild(el("span", { text: k })); });
@@ -515,16 +578,17 @@ function showReading(r) {
       cardEl(c.id, c.reversed, true),
       el("div", {}, [
         el("div", { class: "pos", text: c.position + " · " + c.frame }),
-        el("h3", { text: c.name + (c.reversed ? " (reversed)" : "") }),
+        el("h3", { text: c.name + (c.reversed ? " (upside down)" : "") }),
+        c.reversed ? el("p", { class: "small muted", text: "Upside down means the card's energy is blocked or turned inward." }) : null,
         kw,
         el("p", { text: c.meaning }),
-        c.theme ? el("p", { class: "theme", text: c.theme }) : null,
+        c.theme ? el("p", { class: "theme", text: "For you: " + c.theme }) : null,
         el("p", { class: "ask", text: c.ask }),
       ]),
     ]));
   });
   app.appendChild(box);
-  var sum = el("div", { class: "summary" }, [el("h3", { text: r.kind === "daily" ? "The card" : "The reading as a whole" })]);
+  var sum = el("div", { class: "summary" }, [el("h3", { text: "In short" })]);
   r.summary.forEach(function (l) { sum.appendChild(el("p", { text: l })); });
   app.appendChild(sum);
   var ta = el("textarea", { "aria-label": "Your note", placeholder: "What does this bring up for you? Your note is private." });
@@ -555,7 +619,7 @@ function share(c) {
     else x.drawImage(img, left, topY, w, h);
     x.restore(); x.strokeStyle = "#d9b56c"; x.lineWidth = 4; x.strokeRect(left, topY, w, h);
     x.fillStyle = "#f5eee1"; x.textAlign = "center"; x.font = "600 76px 'Cormorant Garamond', serif";
-    x.fillText(c.name + (c.reversed ? " (reversed)" : ""), 540, topY + h + 120);
+    x.fillText(c.name + (c.reversed ? " (upside down)" : ""), 540, topY + h + 120);
     x.fillStyle = "#f0d79b"; x.font = "400 40px Jost, sans-serif"; x.fillText(c.keywords.join(" · "), 540, topY + h + 190);
     x.fillStyle = "#f5eee1"; x.font = "400 36px Jost, sans-serif"; x.fillText("Draw your own: send TAROT on WhatsApp", 540, 1780);
     x.fillStyle = "#d9b56c"; x.font = "600 44px 'Cormorant Garamond', serif"; x.fillText("Disha Dira Tarot", 540, 200);
