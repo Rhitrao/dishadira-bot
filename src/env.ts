@@ -53,6 +53,14 @@ export type Env = {
   // Ticket 57 (CONTRACT v25): "true" opens the tarot game at /tarot and lets the word TAROT in the chat send the "Open your cards" login
   // button; anything else: /tarot is a 404 and TAROT goes to the CARD test as before. Top level and live "false", test "true".
   TAROT_GAME?: string;
+  // Ticket 59 (CONTRACT v27): "true" lets the assistant write each tarot reading's plain-words explanation (src/tarot/story.ts); anything else:
+  // the rule-built explanation. Top level and live "false", test "true".
+  TAROT_AI?: string;
+  // Ticket 59: "true" reads that explanation aloud with Workers AI (Deepgram Aura 2) through the AI binding; anything else: the page uses the
+  // phone's own voice. Top level and live "false", test "true".
+  TAROT_VOICE?: string;
+  // Ticket 59: the Workers AI binding ([ai] in wrangler.toml), used only for the tarot voice.
+  AI?: { run(model: string, input: Record<string, unknown>): Promise<unknown> };
   // Minutes after a person's last message that their chat text is wiped: live "10080" (7 days), test "10".
   CHAT_RETENTION_MINUTES: string;
   // The Worker's public address, for links in emails to Rohit (https://bot.disha-dira.com); unset: a relative /admin link.

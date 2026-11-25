@@ -67,9 +67,9 @@ export async function endSession(db: D1Database, id: string | undefined): Promis
 export type Kind = "daily" | "spread";
 type ReadingRow = {
   id: number; day: string; kind: Kind; n: number; spread: SpreadId; theme: ThemeId | null; question: string | null; custom: number;
-  deck: string | null; cards: string | null; note: string | null; done_at: string | null;
+  deck: string | null; cards: string | null; note: string | null; done_at: string | null; story: string | null;
 };
-const COLS = "id, day, kind, n, spread, theme, question, custom, deck, cards, note, done_at";
+const COLS = "id, day, kind, n, spread, theme, question, custom, deck, cards, note, done_at, story";
 
 export async function todayRows(db: D1Database, convId: number, day: string): Promise<ReadingRow[]> {
   const r = await db.prepare(`SELECT ${COLS} FROM tarot_readings WHERE conversation_id = ?1 AND day = ?2 ORDER BY n`).bind(convId, day).all<ReadingRow>();
@@ -117,7 +117,7 @@ export async function finishReading(db: D1Database, convId: number, kind: Kind, 
     .run();
   if (res.meta.changes !== 1) return null;
   await db.batch(cards.map((c) => db.prepare("INSERT OR IGNORE INTO tarot_seen (conversation_id, card_id, first_at) VALUES (?1, ?2, ?3)").bind(convId, c.id, iso(nowMs))));
-  return { row: { ...row, cards: JSON.stringify(cards), deck: null, done_at: iso(nowMs) }, cards };
+  return { row: { ...row, cards: JSON.stringify(cards), deck: null, done_at: iso(nowMs), story: null }, cards };
 }
 
 export async function setNote(db: D1Database, convId: number, readingId: number, note: string): Promise<boolean> {
@@ -129,9 +129,9 @@ export async function setNote(db: D1Database, convId: number, readingId: number,
   return res.meta.changes === 1;
 }
 
-export type JournalEntry = { id: number; day: string; kind: Kind; spread: SpreadId; theme: ThemeId | null; question: string | null; custom: boolean; cards: Drawn[]; note: string | null };
+export type JournalEntry = { id: number; day: string; kind: Kind; spread: SpreadId; theme: ThemeId | null; question: string | null; custom: boolean; cards: Drawn[]; note: string | null; story?: string | null };
 const entry = (x: ReadingRow): JournalEntry => ({
-  id: x.id, day: x.day, kind: x.kind, spread: x.spread, theme: x.theme, question: x.question, custom: x.custom === 1, cards: JSON.parse(x.cards ?? "[]") as Drawn[], note: x.note,
+  id: x.id, day: x.day, kind: x.kind, spread: x.spread, theme: x.theme, question: x.question, custom: x.custom === 1, cards: JSON.parse(x.cards ?? "[]") as Drawn[], note: x.note, story: x.story,
 });
 export const asEntry = entry;
 
@@ -142,6 +142,12 @@ export async function journal(db: D1Database, convId: number, nowMs = Date.now()
     .bind(convId, since)
     .all<ReadingRow>();
   return r.results.map(entry);
+}
+
+// One finished reading of this person's, or null (ticket 59).
+export async function readingById(db: D1Database, convId: number, id: number): Promise<JournalEntry | null> {
+  const r = await db.prepare(`SELECT ${COLS} FROM tarot_readings WHERE id = ?1 AND conversation_id = ?2 AND done_at IS NOT NULL`).bind(id, convId).first<ReadingRow>();
+  return r ? entry(r) : null;
 }
 
 // Cards drawn in the 30 days before a reading (not counting it): what the personal lines look back on.

@@ -88,13 +88,13 @@ describe("the draw", () => {
 describe("the reading", () => {
   it("names a leading suit, repeated numbers, reversals, court cards and elements", () => {
     const lines = summarize([{ id: "cups05", r: true }, { id: "cups13", r: true }, { id: "wands05", r: false }]);
-    expect(lines.join(" ")).toMatch(/Cups lead this reading/);
-    expect(lines.join(" ")).toMatch(/Repeated Fives/);
-    expect(lines.join(" ")).toMatch(/Most cards are reversed/);
+    expect(lines.join(" ")).toMatch(/Most of your cards are about feelings and relationships/);
+    expect(lines.join(" ")).toMatch(/The number five comes up more than once/);
+    expect(lines.join(" ")).toMatch(/Most cards came out upside down/);
     expect(lines.length).toBeLessThanOrEqual(4);
-    expect(summarize([{ id: "m00", r: false }, { id: "m13", r: false }, { id: "m21", r: false }])[0]).toMatch(/Major Arcana/);
-    expect(summarize([{ id: "wands02", r: false }, { id: "cups03", r: false }, { id: "swords04", r: false }]).join(" ")).toMatch(/pull against each other/);
-    expect(summarize([{ id: "m17", r: true }])[0]).toMatch(/reversed/);
+    expect(summarize([{ id: "m00", r: false }, { id: "m13", r: false }, { id: "m21", r: false }])[0]).toMatch(/big .life lesson. cards/);
+    expect(summarize([{ id: "wands02", r: false }, { id: "cups03", r: false }, { id: "swords04", r: false }]).join(" ")).toMatch(/pull in different directions/);
+    expect(summarize([{ id: "m17", r: true }])[0]).toMatch(/upside down/);
   });
   it("has six questions for each of the three themes", () => {
     for (const t of Object.values(THEMES)) expect(t.questions.length).toBe(6);

@@ -171,26 +171,26 @@ export function pickCards(deck: Drawn[], picks: unknown, count: number): Drawn[]
 
 const ELEMENT: Record<Suit, "fire" | "water" | "air" | "earth"> = { wands: "fire", cups: "water", swords: "air", pentacles: "earth" };
 const SUIT_LINE: Record<Suit, string> = {
-  wands: "Wands lead this reading: drive, ambition and the will to act are at the centre.",
-  cups: "Cups lead this reading: feelings and relationships are at the centre.",
-  swords: "Swords lead this reading: thoughts, words and decisions are at the centre, and perhaps some conflict.",
-  pentacles: "Pentacles lead this reading: practical matters such as work, money, home and the body are at the centre.",
+  wands: "Most of your cards are about energy and action: this is about what you want to do and how much drive you have.",
+  cups: "Most of your cards are about feelings and relationships: this is really about the heart.",
+  swords: "Most of your cards are about thoughts and words: what you are thinking, saying and deciding, and maybe some tension.",
+  pentacles: "Most of your cards are about practical life: work, money, home and health. Small practical steps matter here.",
 };
 const RANK_LINE: Record<number, string> = {
-  1: "Repeated Aces: new beginnings are gathering.",
-  2: "Repeated Twos: balance, partnership and a choice between two things.",
-  3: "Repeated Threes: growth and working with others.",
-  4: "Repeated Fours: stability, rest or holding on.",
-  5: "Repeated Fives: change and friction that can lead to growth.",
-  6: "Repeated Sixes: harmony, giving and receiving.",
-  7: "Repeated Sevens: a time to reflect and assess.",
-  8: "Repeated Eights: movement and steady mastery.",
-  9: "Repeated Nines: you are near the end of something.",
-  10: "Repeated Tens: a cycle completing.",
-  11: "Repeated Pages: messages, learning and fresh curiosity.",
-  12: "Repeated Knights: movement, action and things speeding up.",
-  13: "Repeated Queens: care, nurture and inner wisdom.",
-  14: "Repeated Kings: leadership and taking charge.",
+  1: "The number one comes up more than once: something new is starting.",
+  2: "The number two comes up more than once: this is about balance, a partnership, or choosing between two things.",
+  3: "The number three comes up more than once: things are growing, often with the help of others.",
+  4: "The number four comes up more than once: you need steadiness, rest, or to stop holding on so tightly.",
+  5: "The number five comes up more than once: there is some upheaval, and it can help you grow.",
+  6: "The number six comes up more than once: this is about harmony, giving and receiving.",
+  7: "The number seven comes up more than once: it is a time to pause and think things over.",
+  8: "The number eight comes up more than once: things are moving, and steady effort pays off.",
+  9: "The number nine comes up more than once: you are close to the end of something.",
+  10: "The number ten comes up more than once: one chapter is finishing.",
+  11: "More than one young 'page' card: news, learning or a fresh start is in the air.",
+  12: "More than one 'knight' card: things are speeding up and asking for action.",
+  13: "More than one 'queen' card: care, kindness and quiet wisdom are needed.",
+  14: "More than one 'king' card: someone needs to take charge, perhaps you.",
 };
 
 const card = (d: Drawn): Card => {
@@ -204,12 +204,12 @@ export function summarize(drawn: Drawn[]): string[] {
   const cards = drawn.map(card);
   if (cards.length === 1) {
     const c = cards[0];
-    return [drawn[0].r ? `${c.name}, reversed, asks you to look at what is blocked: ${c.rev[0]}.` : `${c.name} brings ${c.up[0]} into your day.`];
+    return [drawn[0].r ? `${c.name} came out upside down. That usually means something is held back: watch for ${c.rev[0]} today.` : `${c.name} brings ${c.up[0]} into your day.`];
   }
   const lines: string[] = [];
   const majors = cards.filter((c) => c.suit === null).length;
-  if (majors >= Math.ceil(cards.length * 0.6)) lines.push("Mostly Major Arcana: this touches big life themes, not just daily details. Take it seriously and slowly.");
-  else if (majors === 0) lines.push("No Major Arcana: this is about everyday choices that are in your hands.");
+  if (majors >= Math.ceil(cards.length * 0.6)) lines.push("Many of your cards are the deck's big 'life lesson' cards: this is about something important in your life, so take it slowly.");
+  else if (majors === 0) lines.push("All your cards are everyday cards: this is about choices that are in your own hands.");
   const suits = new Map<Suit, number>();
   for (const c of cards) if (c.suit) suits.set(c.suit, (suits.get(c.suit) ?? 0) + 1);
   const top = [...suits.entries()].sort((a, b) => b[1] - a[1])[0];
@@ -218,22 +218,22 @@ export function summarize(drawn: Drawn[]): string[] {
   for (const c of cards) if (c.suit) ranks.set(c.rank, (ranks.get(c.rank) ?? 0) + 1);
   for (const [rank, n] of ranks) if (n >= 2 && RANK_LINE[rank]) lines.push(RANK_LINE[rank]);
   const reversed = drawn.filter((d) => d.r).length;
-  if (reversed > cards.length / 2) lines.push("Most cards are reversed: energy is turned inward or blocked. Look at what is holding you back before pushing forward.");
-  if (cards.some(isCourt)) lines.push("A court card appears: a person, or a side of you, plays a part here.");
+  if (reversed > cards.length / 2) lines.push("Most cards came out upside down: something feels stuck or held back inside. Look at what is holding you back before you push forward.");
+  if (cards.some(isCourt)) lines.push("One of the 'people' cards came up: someone in your life, or a side of you, plays a part in this.");
   for (let i = 0; i + 1 < cards.length; i++) {
     const a = cards[i].suit, b = cards[i + 1].suit;
     if (!a || !b || a === b) continue;
     const pair = [ELEMENT[a], ELEMENT[b]].sort().join("+");
     if (pair === "fire+water" || pair === "air+earth") {
-      lines.push(`${cards[i].name} and ${cards[i + 1].name} pull against each other: ${pair === "fire+water" ? "drive and feeling" : "ideas and practical limits"} need to be balanced.`);
+      lines.push(`${cards[i].name} and ${cards[i + 1].name} pull in different directions: ${pair === "fire+water" ? "what you want to do and how you feel" : "your ideas and what is practical"} need to be brought into balance.`);
       break;
     }
     if (pair === "air+fire" || pair === "earth+water") {
-      lines.push(`${cards[i].name} and ${cards[i + 1].name} support each other: ${pair === "air+fire" ? "ideas feed action" : "feeling and practical care work together"}.`);
+      lines.push(`${cards[i].name} and ${cards[i + 1].name} help each other: ${pair === "air+fire" ? "good ideas will turn into action" : "your feelings and practical care work well together"}.`);
       break;
     }
   }
-  if (lines.length === 0) lines.push("Read the cards in order: where you have been, where you stand, and where things are heading.");
+  if (lines.length === 0) lines.push("Read the cards one by one, in order: each place tells part of the story.");
   return lines.slice(0, 4);
 }
 

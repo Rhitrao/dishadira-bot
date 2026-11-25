@@ -7,6 +7,8 @@
 //   POST /tarot/api/start       shuffle and cut for today's daily card or reading (a theme, one of its spreads, a ready or own question)
 //   POST /tarot/api/check       is a typed question one we can read for (not a crisis, a prediction of health or death, a spell)
 //   POST /tarot/api/pick        the cards picked from the fan become the reading
+//   GET  /tarot/api/story/<id>  "What this means for you": the reading in plain words (ticket 59)
+//   GET  /tarot/api/voice/<id>  the same words read aloud (MP3), or 404 when the voice is off (the page then uses the phone's voice)
 //   POST /tarot/api/note        the person's own note on a reading
 //   POST /tarot/api/logout
 // Posts must be JSON from this site (Origin checked; the cookie is SameSite=Lax), so another site cannot act for a logged-in person.
@@ -21,9 +23,10 @@ import { APP_JS, pageHtml } from "./page";
 import { detectSafety } from "../safety";
 import { classifyWithoutAI, readingSafety } from "../gate";
 import { insights, personalLines, type Insights } from "./profile";
+import { aiStory, plainStory, tarotVoiceOn, voiceMp3 } from "./story";
 import { cardView, isSpread, isTheme, spreadFits, SPREADS, summarize, THEMES, type Drawn, type SpreadId, type ThemeId } from "./reading";
 import {
-  asEntry, deleteProfile, endSession, finishReading, getProfile, history, isTester, journal, latest, newSession, parseProfile, redeemLogin, saveProfile,
+  asEntry, deleteProfile, readingById, endSession, finishReading, getProfile, history, isTester, journal, latest, newSession, parseProfile, redeemLogin, saveProfile,
   seenCards, sessionConv, setNote, startReading, streak, todayRows, SESSION_DAYS, type JournalEntry,
 } from "./store";
 
@@ -31,7 +34,7 @@ type Ctx = Context<{ Bindings: Env }>;
 export const COOKIE = "dd_tarot";
 export const tarotOn = (env: Env | undefined) => env?.TAROT_GAME === "true";
 export const TAROT_CSP =
-  "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+  "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 export const tarot = new Hono<{ Bindings: Env }>();
 
@@ -241,6 +244,50 @@ tarot.post("/api/pick", async (c) => {
   const now = Date.now();
   const { ins } = await profileInsights(c, conv, now);
   return c.json({ ok: true, reading: readingView(asEntry(res.row), ins, await history(c.env.DB, conv, res.row.id, now)) });
+});
+
+async function storyFor(c: Ctx, conv: number, id: number): Promise<{ text: string; by: "ai" | "rules" } | null> {
+  const e = await readingById(c.env.DB, conv, id);
+  if (!e) return null;
+  const now = Date.now();
+  const { ins } = await profileInsights(c, conv, now);
+  const past = await history(c.env.DB, conv, e.id, now);
+  const ai = await aiStory(c.env, c.env.DB, conv, e, ins, past, now);
+  return ai ? { text: ai, by: "ai" } : { text: plainStory(e, ins, past), by: "rules" };
+}
+
+tarot.get("/api/story/:id", async (c) => {
+  c.header("Cache-Control", "no-store");
+  const conv = await who(c);
+  if (conv === null) return c.json({ error: "login" }, 401);
+  const s = await storyFor(c, conv, Number(c.req.param("id")));
+  return s ? c.json({ ...s, voice: tarotVoiceOn(c.env) }) : c.json({ error: "bad" }, 404);
+});
+
+// The voice is made once per reading and kept in the edge cache for a day; the person is checked before the cache is looked at.
+tarot.get("/api/voice/:id", async (c) => {
+  const conv = await who(c);
+  if (conv === null) return c.json({ error: "login" }, 401);
+  if (!tarotVoiceOn(c.env)) return c.json({ error: "off" }, 404);
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) return c.json({ error: "bad" }, 404);
+  const key = new Request(`https://tarot-voice.internal/${conv}/${id}`);
+  const cache = typeof caches !== "undefined" ? (caches as unknown as { default: Cache }).default : null;
+  const hit = cache ? await cache.match(key) : undefined;
+  if (hit) return new Response(hit.body, { headers: { "Content-Type": "audio/mpeg", "Cache-Control": "private, max-age=86400" } });
+  const s = await storyFor(c, conv, id);
+  if (!s) return c.json({ error: "bad" }, 404);
+  const mp3 = await voiceMp3(c.env, s.text);
+  if (!mp3) return c.json({ error: "voice" }, 503);
+  if (cache) {
+    const put = cache.put(key, new Response(mp3, { headers: { "Content-Type": "audio/mpeg", "Cache-Control": "max-age=86400" } }));
+    try {
+      c.executionCtx.waitUntil(put);
+    } catch {
+      await put;
+    }
+  }
+  return new Response(mp3, { headers: { "Content-Type": "audio/mpeg", "Cache-Control": "private, max-age=86400" } });
 });
 
 tarot.post("/api/note", async (c) => {
