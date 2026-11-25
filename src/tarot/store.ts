@@ -3,6 +3,7 @@
 // SHA-256 hashes are stored, so a copy of the database cannot be used to log in.
 import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import { iso, istDay } from "../slots";
+import type { Profile } from "./profile";
 import { cutDeck, type Drawn, pickCards, shuffledDeck, SPREADS, type SpreadId, type ThemeId } from "./reading";
 
 export const LOGIN_MINUTES = 15;
@@ -63,38 +64,52 @@ export async function endSession(db: D1Database, id: string | undefined): Promis
   if (id) await db.prepare("DELETE FROM tarot_sessions WHERE id_hash = ?1").bind(await sha256(id)).run();
 }
 
-type ReadingRow = { id: number; day: string; kind: SpreadId; theme: ThemeId | null; question: string | null; deck: string | null; cards: string | null; note: string | null; done_at: string | null };
+export type Kind = "daily" | "spread";
+type ReadingRow = {
+  id: number; day: string; kind: Kind; n: number; spread: SpreadId; theme: ThemeId | null; question: string | null; custom: number;
+  deck: string | null; cards: string | null; note: string | null; done_at: string | null;
+};
+const COLS = "id, day, kind, n, spread, theme, question, custom, deck, cards, note, done_at";
 
 export async function todayRows(db: D1Database, convId: number, day: string): Promise<ReadingRow[]> {
-  const r = await db.prepare("SELECT id, day, kind, theme, question, deck, cards, note, done_at FROM tarot_readings WHERE conversation_id = ?1 AND day = ?2").bind(convId, day).all<ReadingRow>();
+  const r = await db.prepare(`SELECT ${COLS} FROM tarot_readings WHERE conversation_id = ?1 AND day = ?2 ORDER BY n`).bind(convId, day).all<ReadingRow>();
   return r.results;
 }
+// The latest reading of a kind today (a tester can have several).
+export const latest = (rows: ReadingRow[], kind: Kind) => rows.filter((r) => r.kind === kind).at(-1);
 
-// Shuffle and cut for today's reading of this kind. A reading already finished today stays as it is (the free reading cannot be re-rolled).
-export async function startReading(
-  db: D1Database, convId: number, kind: SpreadId, theme: ThemeId | null, question: string | null, pile: number,
-  nowMs = Date.now(), below?: (n: number) => number,
-): Promise<"started" | "done"> {
+export type Start = { kind: Kind; spread: SpreadId; theme: ThemeId | null; question: string | null; custom: boolean; pile: number };
+
+// Shuffle and cut for today's reading of this kind. A finished reading stays as it is (no re-roll); a tester (unlimited) gets a new one.
+export async function startReading(db: D1Database, convId: number, s: Start, unlimited = false, nowMs = Date.now(), below?: (n: number) => number): Promise<"started" | "done"> {
   const day = istDay(nowMs);
-  const existing = (await todayRows(db, convId, day)).find((r) => r.kind === kind);
-  if (existing?.done_at) return "done";
-  const deck = JSON.stringify(cutDeck(shuffledDeck(below), pile));
+  const last = latest(await todayRows(db, convId, day), s.kind);
+  if (last?.done_at && !unlimited) return "done";
+  const deck = JSON.stringify(cutDeck(shuffledDeck(below), s.pile));
+  const theme = s.kind === "daily" ? null : s.theme;
+  const question = s.kind === "daily" ? null : s.question;
+  if (last && !last.done_at) {
+    await db
+      .prepare("UPDATE tarot_readings SET spread = ?2, theme = ?3, question = ?4, custom = ?5, deck = ?6, created_at = ?7 WHERE id = ?1 AND done_at IS NULL")
+      .bind(last.id, s.spread, theme, question, s.custom ? 1 : 0, deck, iso(nowMs))
+      .run();
+    return "started";
+  }
   await db
     .prepare(
-      `INSERT INTO tarot_readings (conversation_id, day, kind, theme, question, deck, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-       ON CONFLICT (conversation_id, day, kind) DO UPDATE SET theme = ?4, question = ?5, deck = ?6, created_at = ?7 WHERE done_at IS NULL`,
+      `INSERT INTO tarot_readings (conversation_id, day, kind, n, spread, theme, question, custom, deck, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
     )
-    .bind(convId, day, kind, kind === "daily" ? null : theme, kind === "daily" ? null : question, deck, iso(nowMs))
+    .bind(convId, day, s.kind, (last?.n ?? 0) + 1, s.spread, theme, question, s.custom ? 1 : 0, deck, iso(nowMs))
     .run();
   return "started";
 }
 
-// The picks become the reading. Returns the drawn cards, or null for bad picks or no open reading.
-export async function finishReading(db: D1Database, convId: number, kind: SpreadId, picks: unknown, nowMs = Date.now()): Promise<{ id: number; cards: Drawn[] } | null> {
-  const day = istDay(nowMs);
-  const row = (await todayRows(db, convId, day)).find((r) => r.kind === kind);
+// The picks become the reading. Returns the row and the drawn cards, or null for bad picks or no open reading.
+export async function finishReading(db: D1Database, convId: number, kind: Kind, picks: unknown, nowMs = Date.now()): Promise<{ row: ReadingRow; cards: Drawn[] } | null> {
+  const row = latest(await todayRows(db, convId, istDay(nowMs)), kind);
   if (!row || row.done_at || !row.deck) return null;
-  const cards = pickCards(JSON.parse(row.deck) as Drawn[], picks, SPREADS[kind].positions.length);
+  const cards = pickCards(JSON.parse(row.deck) as Drawn[], picks, SPREADS[row.spread].positions.length);
   if (!cards) return null;
   const res = await db
     .prepare("UPDATE tarot_readings SET cards = ?2, deck = NULL, done_at = ?3 WHERE id = ?1 AND done_at IS NULL")
@@ -102,7 +117,7 @@ export async function finishReading(db: D1Database, convId: number, kind: Spread
     .run();
   if (res.meta.changes !== 1) return null;
   await db.batch(cards.map((c) => db.prepare("INSERT OR IGNORE INTO tarot_seen (conversation_id, card_id, first_at) VALUES (?1, ?2, ?3)").bind(convId, c.id, iso(nowMs))));
-  return { id: row.id, cards };
+  return { row: { ...row, cards: JSON.stringify(cards), deck: null, done_at: iso(nowMs) }, cards };
 }
 
 export async function setNote(db: D1Database, convId: number, readingId: number, note: string): Promise<boolean> {
@@ -114,15 +129,94 @@ export async function setNote(db: D1Database, convId: number, readingId: number,
   return res.meta.changes === 1;
 }
 
-export type JournalEntry = { id: number; day: string; kind: SpreadId; theme: ThemeId | null; question: string | null; cards: Drawn[]; note: string | null };
+export type JournalEntry = { id: number; day: string; kind: Kind; spread: SpreadId; theme: ThemeId | null; question: string | null; custom: boolean; cards: Drawn[]; note: string | null };
+const entry = (x: ReadingRow): JournalEntry => ({
+  id: x.id, day: x.day, kind: x.kind, spread: x.spread, theme: x.theme, question: x.question, custom: x.custom === 1, cards: JSON.parse(x.cards ?? "[]") as Drawn[], note: x.note,
+});
+export const asEntry = entry;
 
 export async function journal(db: D1Database, convId: number, nowMs = Date.now(), days = JOURNAL_DAYS): Promise<JournalEntry[]> {
   const since = istDay(nowMs - (days - 1) * 86_400_000);
   const r = await db
-    .prepare("SELECT id, day, kind, theme, question, cards, note FROM tarot_readings WHERE conversation_id = ?1 AND done_at IS NOT NULL AND day >= ?2 ORDER BY day DESC, id DESC")
+    .prepare(`SELECT ${COLS} FROM tarot_readings WHERE conversation_id = ?1 AND done_at IS NOT NULL AND day >= ?2 ORDER BY day DESC, id DESC LIMIT 60`)
     .bind(convId, since)
     .all<ReadingRow>();
-  return r.results.map((x) => ({ id: x.id, day: x.day, kind: x.kind, theme: x.theme, question: x.question, cards: JSON.parse(x.cards ?? "[]") as Drawn[], note: x.note }));
+  return r.results.map(entry);
+}
+
+// Cards drawn in the 30 days before a reading (not counting it): what the personal lines look back on.
+export async function history(db: D1Database, convId: number, beforeId: number, nowMs = Date.now()): Promise<Drawn[]> {
+  const r = await db
+    .prepare("SELECT cards FROM tarot_readings WHERE conversation_id = ?1 AND done_at IS NOT NULL AND id <> ?2 AND id < ?2 AND day >= ?3")
+    .bind(convId, beforeId, istDay(nowMs - 29 * 86_400_000))
+    .all<{ cards: string }>();
+  return r.results.flatMap((x) => JSON.parse(x.cards) as Drawn[]);
+}
+
+// ---------- the profile (ticket 58) ----------
+type ProfileRow = { name: string; dob: string; birth_time: string | null; tz_minutes: number; birth_place: string | null };
+export async function getProfile(db: D1Database, convId: number): Promise<Profile | null> {
+  const r = await db.prepare("SELECT name, dob, birth_time, tz_minutes, birth_place FROM tarot_profiles WHERE conversation_id = ?1").bind(convId).first<ProfileRow>();
+  return r ? { name: r.name, dob: r.dob, birthTime: r.birth_time, tzMinutes: r.tz_minutes, birthPlace: r.birth_place } : null;
+}
+
+export const MIN_AGE = 18;
+// Checks what the form sent. Returns the profile, or a short reason it cannot be saved.
+export function parseProfile(b: Record<string, unknown>, nowMs = Date.now()): Profile | { error: string } {
+  const name = typeof b.name === "string" ? b.name.replace(/\s+/g, " ").trim() : "";
+  if (name.length < 1 || name.length > 80) return { error: "name" };
+  const dob = typeof b.dob === "string" ? b.dob : "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob);
+  if (!m) return { error: "dob" };
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const when = Date.UTC(y, mo - 1, d);
+  if (new Date(when).getUTCDate() !== d || y < 1900 || when > nowMs) return { error: "dob" };
+  const today = istDay(nowMs);
+  const age = Number(today.slice(0, 4)) - y - (today.slice(5) < dob.slice(5) ? 1 : 0);
+  if (age < MIN_AGE) return { error: "age" };
+  let birthTime: string | null = null;
+  if (typeof b.birthTime === "string" && b.birthTime !== "") {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(b.birthTime)) return { error: "time" };
+    birthTime = b.birthTime;
+  }
+  const tz = b.tzMinutes === undefined || b.tzMinutes === null || b.tzMinutes === "" ? 330 : Number(b.tzMinutes);
+  if (!Number.isInteger(tz) || tz < -720 || tz > 840 || tz % 15 !== 0) return { error: "tz" };
+  const place = typeof b.birthPlace === "string" ? b.birthPlace.replace(/\s+/g, " ").trim().slice(0, 80) : "";
+  if (b.consent !== true) return { error: "consent" };
+  return { name, dob, birthTime, tzMinutes: tz, birthPlace: place === "" ? null : place };
+}
+
+export async function saveProfile(db: D1Database, convId: number, p: Profile, nowMs = Date.now()): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO tarot_profiles (conversation_id, name, dob, birth_time, tz_minutes, birth_place, consent_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+       ON CONFLICT (conversation_id) DO UPDATE SET name = ?2, dob = ?3, birth_time = ?4, tz_minutes = ?5, birth_place = ?6, updated_at = ?7`,
+    )
+    .bind(convId, p.name, p.dob, p.birthTime, p.tzMinutes, p.birthPlace, iso(nowMs))
+    .run();
+}
+export async function deleteProfile(db: D1Database, convId: number): Promise<void> {
+  await db.prepare("DELETE FROM tarot_profiles WHERE conversation_id = ?1").bind(convId).run();
+}
+
+// ---------- testers (ticket 58) ----------
+// TAROT_TESTERS, a Worker secret: phone numbers with country code, separated by commas (a 10-digit number is read as Indian, +91). These
+// people can draw as often as they like each day. Never in git: the repo is public.
+export function testerNumbers(secret: string | undefined): Set<string> {
+  return new Set(
+    (secret ?? "")
+      .split(/[,;\n]+/)
+      .map((x) => x.replace(/\D/g, ""))
+      .filter((x) => x.length >= 10)
+      .map((x) => (x.length === 10 ? `91${x}` : x)),
+  );
+}
+export async function isTester(db: D1Database, convId: number, secret: string | undefined): Promise<boolean> {
+  const set = testerNumbers(secret);
+  if (set.size === 0) return false;
+  const r = await db.prepare("SELECT wa_id FROM conversations WHERE id = ?1").bind(convId).first<{ wa_id: string | null }>();
+  return !!r?.wa_id && set.has(r.wa_id.replace(/\D/g, ""));
 }
 
 export async function seenCards(db: D1Database, convId: number): Promise<string[]> {
@@ -153,6 +247,7 @@ export const tarotWipeStmts = (db: D1Database, convId: number): D1PreparedStatem
   db.prepare("DELETE FROM tarot_sessions WHERE conversation_id = ?1").bind(convId),
   db.prepare("DELETE FROM tarot_readings WHERE conversation_id = ?1").bind(convId),
   db.prepare("DELETE FROM tarot_seen WHERE conversation_id = ?1").bind(convId),
+  db.prepare("DELETE FROM tarot_profiles WHERE conversation_id = ?1").bind(convId), // ticket 58
 ];
 
 // The daily wipe: everything of a person whose last reading is older than KEEP_DAYS, and expired logins and sessions.
@@ -161,6 +256,10 @@ export async function wipeOldTarot(db: D1Database, nowMs = Date.now()): Promise<
   const stale = "SELECT conversation_id FROM tarot_readings GROUP BY conversation_id HAVING MAX(created_at) < ?1";
   await db.batch([
     db.prepare(`DELETE FROM tarot_seen WHERE conversation_id IN (${stale})`).bind(cutoff),
+    db.prepare(`DELETE FROM tarot_profiles WHERE conversation_id IN (${stale})`).bind(cutoff), // ticket 58
+    db.prepare(
+      `DELETE FROM tarot_profiles WHERE updated_at < ?1 AND conversation_id NOT IN (SELECT conversation_id FROM tarot_readings WHERE created_at >= ?1)`,
+    ).bind(cutoff), // a profile with no reading in 90 days
     db.prepare(`DELETE FROM tarot_readings WHERE conversation_id IN (${stale})`).bind(cutoff),
     db.prepare("DELETE FROM tarot_sessions WHERE expires_at < ?1").bind(iso(nowMs)),
     db.prepare("DELETE FROM tarot_logins WHERE expires_at < ?1").bind(iso(nowMs - 86_400_000)),
