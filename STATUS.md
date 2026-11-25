@@ -1,5 +1,18 @@
 # STATUS
-Updated: 2026-11-25 (Ticket 59: the tarot game in plain words, with a voice)
+Updated: 2026-11-25 (Ticket 60: the Android app, step one)
+
+## Ticket 60 (PR https://github.com/Rhitrao/dishadira-bot/pull/79, branch app-android, migration 0028_tarot_codes, CONTRACT v28; based on main 56d957a with #78)
+Rohit, 25 Nov 2026: "start now" on the Android and iOS app plan (Claude Docs, "Disha Dira Tarot: the Android and iOS app plan"), and asked whose name the store accounts should be in (answered in chat: the Disha Dira Gmail as the login; the legal holder depends on whether Disha Dira is a registered company).
+- **app/** (Capacitor 8.6.2, Android): appId com.dishadira.tarot, name "Disha Dira Tarot"; the page is https://bot-test.disha-dira.com/tarot (server.url), so game changes reach the app without a new install; offline.html when there is no internet; icon and splash drawn from the card back's lotus (app/assets, sizes made by @capacitor/assets); a white-star status-bar icon for the reminder.
+- **Daily reminder** (page.ts reminderBox, only inside the app): a time picker; "Turn on" asks Android for permission and schedules one local notification a day ("Your card is waiting"); "Turn off". Nothing is sent by the server or WhatsApp.
+- **Login by WhatsApp code** (store.ts startCode/linkCode/pollCode, api.ts /api/code/start and /api/code/poll, bot.ts tarotCodeOut, whatsapp.ts both TAROT hooks): the web page and the app now log in with "Continue with WhatsApp" → WhatsApp opens with "TAROT ABCD2345" → the bot replies "You are logged in" → the page logs itself in. Codes: 8 characters from 32 (no 0/O/1/I), 10 minutes, once, a device secret (hash only kept), at most 500 open. The old "Open your cards" link still works.
+- **Delete my account** (api.ts /api/account/delete, page.ts profile screen, two taps): every tarot row for the person. Their WhatsApp chat with the bot stays.
+- **Build** (.github/workflows/android.yml): on a push to app/ or by hand (test or live game), builds a debug APK and keeps it 30 days as a run artifact. No signing key, no Play upload.
+- **Checks**: typecheck clean; tarot 19/19, tarotprofile 14/14, tarotstory 7/7, tarotapp 9/9 (one at a time; CI runs the whole suite). The Android build passed in the "Android app" workflow on this branch (run 45644131873), producing the test APK artifact.
+- **To verify on a phone**: the reminder relies on Capacitor's bridge in a page served from the Worker; if the "Daily reminder" box does not appear in the app, the page's strict script policy is blocking the bridge and the next ticket bundles the page into the app.
+- **Store accounts (Rohit)**: Disha Dira is a sole proprietorship (Udyam), so Apple takes only an individual account in a person's own name; Google is kept the same way. **Decided by Rohit, 25 Nov: Shantha Rao is the account holder** on Google Play and Apple (she owns the business and the Razorpay account, so payouts and tax match), logging in with the Disha Dira Gmail, Rohit added as admin on both. Nothing opened or changed here.
+- Next: Rohit merges, runs Deploy → test (applies 0028), downloads the APK from Actions → Android app, installs it, logs in with the WhatsApp code, sets a reminder; then ticket 61: Google Play billing for Plus, a release key, the Play listing.
+
 
 ## Ticket 59 (PR https://github.com/Rhitrao/dishadira-bot/pull/78, branch tarot-voice, migration 0027_tarot_story, CONTRACT v27; based on main c7f7dd8 with #77)
 Rohit, 25 Nov 2026, after a test reading (screenshot): the reading is not understandable for a layman; wants a plain explanation that answers the question, and a voice button with a sweet, therapeutic female voice; Amma's number got no reply from the test bot.

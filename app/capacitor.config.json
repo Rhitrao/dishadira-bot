@@ -1,0 +1,20 @@
+{
+  "appId": "com.dishadira.tarot",
+  "appName": "Disha Dira Tarot",
+  "webDir": "www",
+  "server": {
+    "url": "https://bot-test.disha-dira.com/tarot",
+    "allowNavigation": ["bot-test.disha-dira.com", "bot.disha-dira.com"],
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "backgroundColor": "#120f26",
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_tarot",
+      "iconColor": "#d9b56c"
+    }
+  }
+}

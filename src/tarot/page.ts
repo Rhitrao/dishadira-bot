@@ -218,10 +218,62 @@ function showLogin(old) {
   var s = el("div", { class: "stage" });
   s.appendChild(cardEl(null, false, false));
   s.appendChild(el("h1", { text: "Disha Dira Tarot" }));
-  s.appendChild(el("p", { class: "muted", text: old ? "That link has already been used or has expired. Ask for a fresh one in WhatsApp." : "One calm reading a day, for the questions that matter to you. With Shantha Rao." }));
-  s.appendChild(el("a", { class: "btn", href: waLink("TAROT"), rel: "noopener", text: "Continue with WhatsApp" }));
-  s.appendChild(el("p", { class: "small muted", text: "WhatsApp opens with TAROT typed in. Send it and we reply with your private link. No password needed." }));
+  s.appendChild(el("p", { class: "muted", text: old ? "That link has already been used or has expired. Log in again below." : "One calm reading a day, for the questions that matter to you. With Shantha Rao." }));
+  var status = el("p", { class: "small muted", role: "status", text: "WhatsApp opens with a short code typed in. Send it, come back here, and you are in. No password needed." });
+  var go = el("button", { class: "btn", type: "button", text: "Continue with WhatsApp" });
+  go.onclick = function () { codeLogin(status, go); };
+  s.appendChild(go); s.appendChild(status);
   app.appendChild(s); app.appendChild(footer());
+  var saved = null; try { saved = JSON.parse(sessionStorage.getItem("ddCode") || "null"); } catch (e) {}
+  if (saved && saved.code) pollCode(saved, status, go);
+}
+// Ticket 60: log in by sending "TAROT <code>" on WhatsApp; this page (or the app) waits for the bot to see it.
+function codeLogin(status, go) {
+  go.setAttribute("disabled", "");
+  api("code/start", {}).then(function (r) {
+    if (!r.code) { go.removeAttribute("disabled"); status.textContent = "Too many people are logging in right now. Please try again in a minute."; return; }
+    try { sessionStorage.setItem("ddCode", JSON.stringify({ code: r.code, secret: r.secret, at: Date.now() })); } catch (e) {}
+    window.open(r.wa, "_blank");
+    pollCode(r, status, go);
+  }).catch(function () { go.removeAttribute("disabled"); status.textContent = "No connection. Please try again."; });
+}
+function pollCode(r, status, go) {
+  status.textContent = "Waiting for your message with the code " + r.code + "… Send it in WhatsApp, then come back here.";
+  go.textContent = "Open WhatsApp again";
+  go.removeAttribute("disabled");
+  go.onclick = function () { window.open("https://wa.me/" + WA + "?text=" + encodeURIComponent("TAROT " + r.code), "_blank"); };
+  var tries = 0;
+  (function tick() {
+    api("code/poll", { code: r.code, secret: r.secret }).then(function (p) {
+      if (p.ok) { try { sessionStorage.removeItem("ddCode"); } catch (e) {} load(); return; }
+      if (p.expired || ++tries > 240) { try { sessionStorage.removeItem("ddCode"); } catch (e) {} showLogin(false); return; }
+      setTimeout(tick, 2500);
+    }).catch(function () { setTimeout(tick, 5000); });
+  })();
+}
+
+// Ticket 60: in the Android app, a daily reminder from the phone itself (no message is sent by us). Off until the person turns it on.
+function isApp() { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
+function notes() { return isApp() && window.Capacitor.Plugins ? window.Capacitor.Plugins.LocalNotifications : null; }
+function reminderBox() {
+  var LN = notes(); if (!LN) return null;
+  var saved = null; try { saved = localStorage.getItem("ddReminder"); } catch (e) {}
+  var time = el("input", { type: "time", value: saved || "07:30", "aria-label": "Reminder time" });
+  var state = el("p", { class: "small muted", text: saved ? "On, every day at " + saved + "." : "Off." });
+  var on = el("button", { class: "btn ghost", type: "button", text: saved ? "Change time" : "Turn on", on: { click: function () {
+    LN.requestPermissions().then(function (p) {
+      if (p.display !== "granted") { state.textContent = "Please allow notifications for Disha Dira Tarot in your phone's settings."; return; }
+      var hm = time.value.split(":");
+      return LN.cancel({ notifications: [{ id: 1 }] }).catch(function () {}).then(function () {
+        return LN.schedule({ notifications: [{ id: 1, title: "Your card is waiting", body: "Take a breath and draw today's card.", schedule: { on: { hour: Number(hm[0]), minute: Number(hm[1]) } } }] });
+      }).then(function () { try { localStorage.setItem("ddReminder", time.value); } catch (e) {} state.textContent = "On, every day at " + time.value + "."; off.style.display = ""; });
+    }).catch(function () { state.textContent = "Could not set the reminder."; });
+  } } });
+  var off = el("button", { class: "btn ghost", type: "button", text: "Turn off", style: saved ? "" : "display:none", on: { click: function () {
+    LN.cancel({ notifications: [{ id: 1 }] }).catch(function () {}); try { localStorage.removeItem("ddReminder"); } catch (e) {}
+    state.textContent = "Off."; off.style.display = "none";
+  } } });
+  return el("div", { class: "summary" }, [el("h3", { text: "Daily reminder" }), el("p", { class: "small", text: "A gentle note from your phone once a day. Nothing is sent to us." }), el("label", { class: "field" }, [el("span", { text: "Time" }), time]), el("div", { class: "actions" }, [on, off]), state]);
 }
 
 function showHome() {
@@ -265,6 +317,7 @@ function showHome() {
     });
     app.appendChild(el("div", { class: "actions" }, [el("button", { class: "btn ghost", text: "Edit my details", on: { click: function () { showProfileForm(d.profile); } } })]));
   }
+  var rb = reminderBox(); if (rb) app.appendChild(rb);
   if (d.journal.length) {
     app.appendChild(el("h2", { text: "Your journal", style: "margin-top:26px" }));
     app.appendChild(el("p", { class: "muted small", text: "Your readings from the last 7 days." }));
@@ -323,7 +376,15 @@ function showProfileForm(p) {
     }).catch(function () { err.textContent = "No connection. Please try again."; });
   });
   app.appendChild(f);
-  if (p) app.appendChild(el("div", { class: "actions" }, [el("button", { class: "btn ghost", text: "Delete my details", on: { click: function () { api("profile/delete", {}).then(function () { toast("Your details are deleted."); load(); }); } } })]));
+  if (p) {
+    var armed = false;
+    var del = el("button", { class: "btn ghost", text: "Delete my account", on: { click: function () {
+      if (!armed) { armed = true; del.textContent = "Tap again to delete everything"; return; }
+      api("account/delete", {}).then(function () { try { localStorage.clear(); sessionStorage.clear(); } catch (e) {} S.data = null; showLogin(false); toast("Your account and readings are deleted."); });
+    } } });
+    app.appendChild(el("div", { class: "actions" }, [el("button", { class: "btn ghost", text: "Delete my details", on: { click: function () { api("profile/delete", {}).then(function () { toast("Your details are deleted."); load(); }); } } }), del]));
+    app.appendChild(el("p", { class: "small muted", text: "Delete my details removes your birth details. Delete my account removes everything: details, readings, notes and your collection." }));
+  }
   app.appendChild(footer());
 }
 

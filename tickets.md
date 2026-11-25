@@ -773,3 +773,13 @@ Rohit, 25 Nov 2026, after a test reading: "1. A layman cannot understand this, i
 3. **Plain labels**: "upside down" for reversed, with a one-line explanation; "For you:" before the theme line; "In short" in everyday words; no tarot jargon.
 4. **Amma's number**: not a code problem: the test number is Meta's test number, which only answers numbers on its recipient list (Meta → WhatsApp → API Setup → To). Rohit adds her number there.
 - Migration 0027 (tarot_readings.story). Tests: plain words without jargon; the safety check; written once and kept; fallback on a failed check, when off, past the cap; only your own reading; the voice on, off and failing; audio shapes.
+
+### Ticket 60: the Android app, step one (CONTRACT v28)
+Rohit, 25 Nov 2026, on the app plan: "start now". Step one of the plan's groundwork and Android phases, without the store accounts (Rohit is opening them).
+1. **app/**: a Capacitor 8 Android project (com.dishadira.tarot, "Disha Dira Tarot") whose page is the game at /tarot (test), icon and splash from the card back's lotus, an offline page.
+2. **Daily reminder** in the app: the person picks a time; the phone shows "Your card is waiting" daily (local notifications). Off by default; nothing sent by us.
+3. **Login by WhatsApp code** (app and web): "Continue with WhatsApp" opens WhatsApp with "TAROT <code>"; the bot ties the code to the chat; the device logs in. Migration 0028 (tarot_codes).
+4. **Delete my account**: removes every tarot row for the person (the stores require it).
+5. **Build**: .github/workflows/android.yml builds a test APK (test or live game) as a downloadable artifact. No Play publishing, no signing key.
+- Not in this ticket: Google Play billing for Plus, the release key and Play listing, offline cards, the home-screen widget, iOS.
+- Tests: codes (alphabet, spread, once, secret, expiry, ceiling); the routes (start, poll, cookie, Origin); delete account; the chat (link, old code, first message, game off).
