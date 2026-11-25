@@ -6,15 +6,92 @@ import { BY_ID, type Card, DECK, isCourt, type Suit } from "./deck";
 
 export type Drawn = { id: string; r: boolean }; // r: reversed
 export type ThemeId = "love" | "work" | "self";
-export type SpreadId = "daily" | "ppf";
 
 export const FAN = 22; // face-down cards shown to pick from
 export const CUT_PILES = 3;
 
-export const THEMES: Record<ThemeId, { label: string; blurb: string; questions: string[] }> = {
+// Ticket 58: each spread's positions with where they sit on the table (x, y in card widths and heights; cross: laid across the card under it).
+type Position = { name: string; frame: string; x: number; y: number; cross?: true };
+type Spread = { label: string; blurb: string; positions: Position[] };
+const row = (items: [string, string][]): Position[] => items.map(([name, frame], i) => ({ name, frame, x: i, y: 0 }));
+
+export const SPREADS = {
+  daily: { label: "Today's card", blurb: "One card to carry through the day", positions: [{ name: "Today", frame: "A message to carry through today", x: 0, y: 0 }] },
+  ppf: {
+    label: "Past, present, future", blurb: "Three cards: how you got here, where you are, where it is heading",
+    positions: row([["Past", "Where you have been: what shaped this"], ["Present", "Where you stand now"], ["Future", "Where it is heading if you keep on as you are"]]),
+  },
+  sao: {
+    label: "Situation, action, outcome", blurb: "Three cards for a practical question",
+    positions: row([["Situation", "What is really going on"], ["Action", "What you can do"], ["Outcome", "Where that action leads"]]),
+  },
+  love_bond: {
+    label: "Two hearts", blurb: "Five cards for a relationship: you, them, and what is between you",
+    positions: [
+      { name: "You", frame: "What you bring and feel", x: 0, y: 0 }, { name: "The bond", frame: "What lives between you", x: 1, y: 0 },
+      { name: "Them", frame: "What they bring and feel, as far as you can see it", x: 2, y: 0 },
+      { name: "What helps", frame: "What strengthens the bond", x: 0.5, y: 1 }, { name: "What blocks", frame: "What stands in the way", x: 1.5, y: 1 },
+    ],
+  },
+  love_open: {
+    label: "Opening to love", blurb: "Four cards for finding or deepening love",
+    positions: [
+      { name: "What I bring", frame: "The love you have to give", x: 0, y: 0 }, { name: "What I seek", frame: "What your heart is looking for", x: 1, y: 0 },
+      { name: "What holds me back", frame: "The fear or habit in the way", x: 2, y: 0 }, { name: "Next step", frame: "One step towards love", x: 1, y: 1 },
+    ],
+  },
+  love_heal: {
+    label: "Healing a hurt", blurb: "Three cards for a painful time with someone",
+    positions: row([["The hurt", "What is hurting"], ["The lesson", "What it is teaching you"], ["The way forward", "How to move on gently"]]),
+  },
+  work_path: {
+    label: "Career path", blurb: "Five cards from where you are to where it leads",
+    positions: [
+      { name: "Where I am", frame: "Your work life now", x: 0, y: 1 }, { name: "My strengths", frame: "What you can lean on", x: 1, y: 0 },
+      { name: "The hurdle", frame: "What stands in the way", x: 2, y: 1 }, { name: "Next step", frame: "The step in front of you", x: 3, y: 0 },
+      { name: "Where it leads", frame: "Where this path is heading", x: 4, y: 1 },
+    ],
+  },
+  work_cross: {
+    label: "Crossroads", blurb: "Five cards for a choice between two paths",
+    positions: [
+      { name: "What A asks", frame: "What path A will ask of you", x: 0, y: 0 }, { name: "What B asks", frame: "What path B will ask of you", x: 2, y: 0 },
+      { name: "Path A", frame: "The first choice", x: 0, y: 1 }, { name: "Path B", frame: "The second choice", x: 2, y: 1 },
+      { name: "You now", frame: "Where you stand as you choose", x: 1, y: 2 },
+    ],
+  },
+  self_mbs: {
+    label: "Mind, body, spirit", blurb: "Three cards for how you are, inside and out",
+    positions: [
+      { name: "Spirit", frame: "Your inner self", x: 1, y: 0 }, { name: "Mind", frame: "Your thoughts and feelings", x: 0, y: 1 },
+      { name: "Body", frame: "Your energy and body", x: 2, y: 1 },
+    ],
+  },
+  self_heal: {
+    label: "Inner healing", blurb: "Four cards to release and renew",
+    positions: [
+      { name: "What I carry", frame: "What weighs on you", x: 0, y: 0 }, { name: "What it teaches", frame: "The lesson inside it", x: 1, y: 0 },
+      { name: "What to release", frame: "What you can put down", x: 0, y: 1 }, { name: "What to welcome", frame: "What can come in its place", x: 1, y: 1 },
+    ],
+  },
+  celtic: {
+    label: "Celtic Cross", blurb: "The classic ten-card reading, for a big question",
+    positions: [
+      { name: "The heart of it", frame: "The present situation", x: 1, y: 1 }, { name: "The challenge", frame: "What crosses you", x: 1, y: 1, cross: true },
+      { name: "The root", frame: "What lies beneath", x: 1, y: 2 }, { name: "The recent past", frame: "What is passing", x: 0, y: 1 },
+      { name: "What you aim for", frame: "Your hope or goal", x: 1, y: 0 }, { name: "Near future", frame: "What is coming next", x: 2, y: 1 },
+      { name: "You", frame: "How you meet this", x: 3.3, y: 3 }, { name: "Around you", frame: "People and surroundings", x: 3.3, y: 2 },
+      { name: "Hopes and fears", frame: "What you hope, and fear", x: 3.3, y: 1 }, { name: "Where it leads", frame: "Where it is heading if you keep on as you are", x: 3.3, y: 0 },
+    ],
+  },
+} satisfies Record<string, Spread>;
+export type SpreadId = keyof typeof SPREADS;
+
+export const THEMES: Record<ThemeId, { label: string; blurb: string; spreads: SpreadId[]; questions: string[] }> = {
   love: {
     label: "Love and relationships",
     blurb: "Partners, family, friends: the people close to you",
+    spreads: ["ppf", "love_bond", "love_open", "love_heal", "celtic"],
     questions: [
       "What do I need to see about this relationship?",
       "How can I bring more warmth into my closest bond?",
@@ -27,6 +104,7 @@ export const THEMES: Record<ThemeId, { label: string; blurb: string; questions: 
   work: {
     label: "Career and work",
     blurb: "Your job, your craft, your next step",
+    spreads: ["ppf", "sao", "work_path", "work_cross", "celtic"],
     questions: [
       "What should I focus on at work this month?",
       "What is holding back my progress?",
@@ -39,6 +117,7 @@ export const THEMES: Record<ThemeId, { label: string; blurb: string; questions: 
   self: {
     label: "Self and inner calm",
     blurb: "Your feelings, energy and inner life",
+    spreads: ["ppf", "self_mbs", "self_heal", "sao", "celtic"],
     questions: [
       "What am I carrying that I can put down?",
       "What helps me feel steady and whole?",
@@ -50,20 +129,9 @@ export const THEMES: Record<ThemeId, { label: string; blurb: string; questions: 
   },
 };
 
-export const SPREADS: Record<SpreadId, { label: string; positions: { name: string; frame: string }[] }> = {
-  daily: { label: "Today's card", positions: [{ name: "Today", frame: "A message to carry through today" }] },
-  ppf: {
-    label: "Past, present, future",
-    positions: [
-      { name: "Past", frame: "Where you have been: what shaped this" },
-      { name: "Present", frame: "Where you stand now" },
-      { name: "Future", frame: "Where it is heading if you keep on as you are" },
-    ],
-  },
-};
-
-export const isTheme = (t: unknown): t is ThemeId => typeof t === "string" && t in THEMES;
-export const isSpread = (s: unknown): s is SpreadId => typeof s === "string" && s in SPREADS;
+export const isTheme = (t: unknown): t is ThemeId => typeof t === "string" && Object.hasOwn(THEMES, t);
+export const isSpread = (s: unknown): s is SpreadId => typeof s === "string" && Object.hasOwn(SPREADS, s);
+export const spreadFits = (theme: ThemeId, s: SpreadId) => THEMES[theme].spreads.includes(s);
 
 // A uniform integer in [0, n) from secure random bytes, without modulo bias (rejection sampling).
 export function secureBelow(n: number, rand: (buf: Uint32Array) => Uint32Array = (b) => crypto.getRandomValues(b)): number {
@@ -168,6 +236,7 @@ export function summarize(drawn: Drawn[]): string[] {
   if (lines.length === 0) lines.push("Read the cards in order: where you have been, where you stand, and where things are heading.");
   return lines.slice(0, 4);
 }
+
 
 // What the page shows for one drawn card in one position.
 export function cardView(d: Drawn, theme: ThemeId | null) {

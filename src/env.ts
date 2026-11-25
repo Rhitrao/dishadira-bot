@@ -24,6 +24,9 @@ export const SECRET_NAMES = [
   // The team's phone alerts (ticket 45, src/push.ts): a VAPID key pair, base64url, made with `npm run vapid-keys`. Unset: alerts are off.
   "VAPID_PUBLIC_KEY",
   "VAPID_PRIVATE_KEY",
+  // Ticket 58: the tarot game's testers, who may draw as often as they like each day: phone numbers with country code, comma-separated.
+  // Unset: no one. Never in git (the repo is public).
+  "TAROT_TESTERS",
 ] as const;
 
 export type SecretName = (typeof SECRET_NAMES)[number];

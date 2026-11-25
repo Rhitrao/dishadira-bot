@@ -11,6 +11,7 @@ import { wipePersonStmts } from "../src/wipe";
 import { Wa } from "./wa";
 
 const w = new Wa();
+const PROFILE = { name: "Asha Kumari", dob: "1990-05-15", birthTime: "06:30", tzMinutes: 330, birthPlace: "Mysuru", consent: true };
 beforeEach(() => w.start());
 afterEach(() => w.stop());
 const DAY = 86_400_000;
@@ -100,6 +101,8 @@ describe("the reading", () => {
   });
 });
 
+const DAILY = { kind: "daily", spread: "daily", theme: null, question: null, custom: false, pile: 0 } as const;
+
 describe("login and readings", () => {
   const person = async () => (await w.db.prepare("INSERT INTO conversations (wa_id) VALUES (?1)").bind(w.newPhone()).run()).meta.last_row_id;
   it("logs in once with a fresh link, never with an old or used one, and keeps only hashes", async () => {
@@ -121,21 +124,22 @@ describe("login and readings", () => {
   it("keeps today's reading once picked, fills the collection and counts the streak", async () => {
     const id = await person();
     const now = Date.now();
-    expect(await startReading(w.db, id, "ppf", "love", THEMES.love.questions[0], 1, now)).toBe("started");
-    expect(await finishReading(w.db, id, "ppf", [0, 0, 1], now)).toBeNull();
-    const done = await finishReading(w.db, id, "ppf", [4, 9, 13], now);
+    expect(await startReading(w.db, id, { kind: "spread", spread: "ppf", theme: "love", question: THEMES.love.questions[0], custom: false, pile: 1 }, false, now)).toBe("started");
+    expect(await finishReading(w.db, id, "spread", [0, 0, 1], now)).toBeNull();
+    const done = await finishReading(w.db, id, "spread", [4, 9, 13], now);
     expect(done!.cards.length).toBe(3);
-    expect(await startReading(w.db, id, "ppf", "work", THEMES.work.questions[0], 0, now)).toBe("done");
-    expect(await finishReading(w.db, id, "ppf", [1, 2, 3], now)).toBeNull();
+    expect(await startReading(w.db, id, { kind: "spread", spread: "sao", theme: "work", question: THEMES.work.questions[0], custom: false, pile: 0 }, false, now)).toBe("done");
+    expect(await finishReading(w.db, id, "spread", [1, 2, 3], now)).toBeNull();
     expect((await seenCards(w.db, id)).sort()).toEqual(done!.cards.map((c) => c.id).sort());
     expect(await streak(w.db, id, now)).toBe(1);
-    await startReading(w.db, id, "daily", null, null, 0, now + DAY);
+    await startReading(w.db, id, DAILY, false, now + DAY);
     await finishReading(w.db, id, "daily", [5], now + DAY);
     expect(await streak(w.db, id, now + DAY)).toBe(2);
     expect(await streak(w.db, id, now + 2 * DAY)).toBe(2); // today not done yet: still counts from yesterday
     expect(await streak(w.db, id, now + 3 * DAY)).toBe(0);
     const j = await journal(w.db, id, now + DAY);
-    expect(j.map((x) => x.kind)).toEqual(["daily", "ppf"]);
+    expect(j.map((x) => x.kind)).toEqual(["daily", "spread"]);
+    expect(j[1].spread).toBe("ppf");
     expect(j[1].question).toBe(THEMES.love.questions[0]);
     expect((await journal(w.db, id, now + 8 * DAY)).length).toBe(0);
   });
@@ -143,7 +147,7 @@ describe("login and readings", () => {
     const a = await person();
     const b = await person();
     for (const id of [a, b]) {
-      await startReading(w.db, id, "daily", null, null, 0);
+      await startReading(w.db, id, DAILY);
       await finishReading(w.db, id, "daily", [0]);
       await newSession(w.db, id);
     }
@@ -195,24 +199,28 @@ describe("the routes", () => {
   });
   it("run a whole reading for a logged-in person, and refuse posts from other sites", async () => {
     const cookie = await login();
-    expect((await post("/tarot/api/start", { kind: "ppf", theme: "love", question: 2, pile: 1 }, cookie, "https://evil.example")).status).toBe(400);
-    expect((await post("/tarot/api/start", { kind: "ppf", theme: "love", question: 2, pile: 1 }, cookie, null)).status).toBe(400);
-    expect((await post("/tarot/api/start", { kind: "ppf", theme: "money", question: 0 }, cookie)).status).toBe(400);
-    expect((await post("/tarot/api/start", { kind: "ppf", theme: "love", question: 6 }, cookie)).status).toBe(400);
-    expect((await post("/tarot/api/start", { kind: "ppf", theme: "love", question: 2, pile: 1 }, cookie)).status).toBe(200);
-    const pick = await post("/tarot/api/pick", { kind: "ppf", picks: [2, 7, 11] }, cookie);
+    const ask = { kind: "spread", theme: "love", spread: "ppf", question: 2, pile: 1 };
+    expect((await post("/tarot/api/start", ask, cookie)).status).toBe(409); // details first
+    expect((await post("/tarot/api/profile", PROFILE, cookie)).status).toBe(200);
+    expect((await post("/tarot/api/start", ask, cookie, "https://evil.example")).status).toBe(400);
+    expect((await post("/tarot/api/start", ask, cookie, null)).status).toBe(400);
+    expect((await post("/tarot/api/start", { ...ask, theme: "money" }, cookie)).status).toBe(400);
+    expect((await post("/tarot/api/start", { ...ask, question: 6 }, cookie)).status).toBe(400);
+    expect((await post("/tarot/api/start", { ...ask, spread: "work_path" }, cookie)).status).toBe(400); // not a love spread
+    expect((await post("/tarot/api/start", ask, cookie)).status).toBe(200);
+    const pick = await post("/tarot/api/pick", { kind: "spread", picks: [2, 7, 11] }, cookie);
     const r = ((await pick.json()) as { reading: { cards: { position: string; theme: string }[]; summary: string[]; question: string; id: number } }).reading;
     expect(r.cards.map((c) => c.position)).toEqual(["Past", "Present", "Future"]);
     expect(r.cards.every((c) => c.theme.length > 0)).toBe(true);
     expect(r.question).toBe(THEMES.love.questions[2]);
     expect(r.summary.length).toBeGreaterThan(0);
-    expect((await post("/tarot/api/start", { kind: "ppf", theme: "work", question: 0 }, cookie)).status).toBe(409);
+    expect((await post("/tarot/api/start", { kind: "spread", theme: "work", spread: "sao", question: 0 }, cookie)).status).toBe(409);
     expect((await post("/tarot/api/note", { id: r.id, note: "  Feels true about my sister.  " }, cookie)).status).toBe(200);
-    const state = (await (await app.request(`${ORIGIN}/tarot/api/state`, { headers: { Cookie: cookie } }, env())).json()) as { in: boolean; streak: number; seen: string[]; today: { ppf: { note: string } }; journal: unknown[] };
+    const state = (await (await app.request(`${ORIGIN}/tarot/api/state`, { headers: { Cookie: cookie } }, env())).json()) as { in: boolean; streak: number; seen: string[]; today: { spread: { note: string } }; journal: unknown[] };
     expect(state.in).toBe(true);
     expect(state.streak).toBe(1);
     expect(state.seen.length).toBe(3);
-    expect(state.today.ppf.note).toBe("Feels true about my sister.");
+    expect(state.today.spread.note).toBe("Feels true about my sister.");
     expect(state.journal.length).toBe(1);
     expect((await post("/tarot/api/logout", {}, cookie)).status).toBe(200);
     expect(await (await app.request(`${ORIGIN}/tarot/api/state`, { headers: { Cookie: cookie } }, env())).json()).toEqual({ in: false });

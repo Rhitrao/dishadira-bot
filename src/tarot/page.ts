@@ -86,6 +86,29 @@ textarea{width:100%;min-height:90px;border-radius:14px;border:1px solid var(--li
 .jitem{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line);cursor:pointer;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;color:inherit;font:inherit;text-align:left}
 .jitem img{width:34px;border-radius:4px}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#2b2150;border:1px solid var(--line);padding:10px 16px;border-radius:999px;font-size:.9rem;z-index:5}
+.again{display:block;margin:-4px 0 10px auto;background:none;border:0;color:var(--gold2);font:500 .88rem Jost,sans-serif;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.summary.today{background:linear-gradient(160deg,rgba(233,167,160,.12),rgba(217,181,108,.06))}
+.summary.for-you{border-color:var(--rose);background:rgba(233,167,160,.08)}.summary.for-you h3{color:var(--rose)}
+details.art{border:1px solid var(--line);border-radius:16px;padding:12px 16px;margin:10px 0;background:rgba(255,255,255,.03)}
+details.art summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+details.art summary::-webkit-details-marker{display:none}
+.art-name{font-size:1.25rem;color:var(--gold2)}
+.art-item{padding:10px 0;border-top:1px solid rgba(217,181,108,.18)}.art-item:first-of-type{margin-top:8px}
+.art-label{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mist)}.art-value{font-size:1.3rem;color:var(--ivory)}
+.form{display:flex;flex-direction:column;gap:14px;margin-top:14px}
+.field{display:flex;flex-direction:column;gap:6px}.field span{font-weight:500}
+.field input,.field select{width:100%;min-height:48px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ivory);font:inherit;padding:10px 12px;color-scheme:dark}
+.field input:focus,.field select:focus,textarea:focus{outline:2px solid var(--gold);outline-offset:1px}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:.92rem}.check input{width:22px;height:22px;margin-top:2px;accent-color:var(--gold)}
+.err{color:var(--rose);min-height:1.2em}
+.table{position:relative;margin:0 auto}
+.tslot{position:absolute;display:flex;flex-direction:column;align-items:center}
+.tslot .pos{display:block;height:30px;font-size:.62rem;line-height:1.15;letter-spacing:.08em;text-transform:uppercase;color:var(--gold2);text-align:center;overflow:hidden}
+.tslot .tcard{display:flex;align-items:center;justify-content:center}
+.tslot.cross{z-index:2}.tslot.cross .tcard{transform:rotate(90deg)}
+.ghost-card{width:var(--card-w);aspect-ratio:.575;border-radius:2px;border:1px solid var(--gold);background:rgba(217,181,108,.15)}
+.mini{width:96px;display:flex;justify-content:center;flex:none}
+.stage-table{display:flex;justify-content:center;margin:16px 0 6px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
@@ -111,7 +134,7 @@ var WA = document.currentScript.getAttribute("data-wa");
 var app = document.getElementById("app");
 var BACK = document.getElementById("back").innerHTML;
 var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-var S = { data: null, kind: null, theme: null, qi: null, picks: [], count: 0 };
+var S = { data: null, kind: null, theme: null, spread: null, qi: null, own: null, picks: [], count: 0 };
 
 function el(tag, attrs, kids) {
   var n = document.createElement(tag);
@@ -197,10 +220,14 @@ function showLogin(old) {
 
 function showHome() {
   clear(); document.body.classList.remove("dawn");
-  var d = S.data;
+  var d = S.data, ins = d.insights;
   app.appendChild(header());
-  var hero = el("div", { class: "hero" }, [moonEl(), el("h1", { text: greeting() }), el("p", { class: "muted", text: "Take a breath. What would you like to look at today?" })]);
-  app.appendChild(hero);
+  app.appendChild(el("div", { class: "hero" }, [moonEl(), el("h1", { text: greeting() + (ins && ins.firstName ? ", " + ins.firstName : "") }), el("p", { class: "muted", text: "Take a breath. What would you like to look at today?" })]));
+  if (ins) {
+    var box = el("div", { class: "summary today" }, [el("h3", { text: "Today for you" })]);
+    ins.today.forEach(function (l) { box.appendChild(el("p", { text: l })); });
+    app.appendChild(box);
+  }
   var daily = d.today.daily;
   app.appendChild(el("button", { class: "tile" + (daily ? " done" : ""), on: { click: function () { daily ? showReading(daily) : beginDaily(); } } }, [
     el("div", { class: "row" }, [
@@ -209,12 +236,29 @@ function showHome() {
     ]),
     el("span", { class: "go", text: "›" }),
   ]));
-  var ppf = d.today.ppf;
-  app.appendChild(el("button", { class: "tile" + (ppf ? " done" : ""), on: { click: function () { ppf ? showReading(ppf) : showThemes(); } } }, [
-    el("h3", { text: ppf ? "Today's reading is done" : "Your free reading" }),
-    el("p", { class: "muted small", text: ppf ? ppf.question : "Choose a theme and a question. Three cards: past, present and future." }),
+  if (daily && d.tester) app.appendChild(el("button", { class: "again", text: "Draw another card (tester)", on: { click: beginDaily } }));
+  var sp = d.today.spread;
+  app.appendChild(el("button", { class: "tile" + (sp ? " done" : ""), on: { click: function () { sp ? showReading(sp) : showThemes(); } } }, [
+    el("h3", { text: sp ? "Today's reading: " + sp.spread : "Today's reading" }),
+    el("p", { class: "muted small", text: sp ? sp.question : "Choose a theme, a spread and your question." }),
     el("span", { class: "go", text: "›" }),
   ]));
+  if (sp && d.tester) app.appendChild(el("button", { class: "again", text: "Do another reading (tester)", on: { click: showThemes } }));
+  if (ins) {
+    app.appendChild(el("h2", { text: "Your path across the arts", style: "margin-top:26px" }));
+    app.appendChild(el("p", { class: "muted small", text: "Worked out from your birth details. They shape how your readings are explained, never which cards appear." }));
+    ins.arts.forEach(function (a, i) {
+      var det = el("details", { class: "art" }, [el("summary", {}, [el("span", { class: "serif art-name", text: a.art }), el("span", { class: "small muted", text: a.items.map(function (x) { return x.value; }).slice(0, 2).join(" · ") })])]);
+      if (i === 0) det.setAttribute("open", "");
+      a.items.forEach(function (x) {
+        det.appendChild(el("div", { class: "art-item" }, [el("div", { class: "art-label", text: x.label }), el("div", { class: "art-value serif", text: x.value }), el("p", { class: "small", text: x.text })]));
+      });
+      if (a.note) det.appendChild(el("p", { class: "small muted", text: a.note }));
+      det.appendChild(el("p", { class: "small muted", text: "Method: " + a.method }));
+      app.appendChild(det);
+    });
+    app.appendChild(el("div", { class: "actions" }, [el("button", { class: "btn ghost", text: "Edit my details", on: { click: function () { showProfileForm(d.profile); } } })]));
+  }
   if (d.journal.length) {
     app.appendChild(el("h2", { text: "Your journal", style: "margin-top:26px" }));
     app.appendChild(el("p", { class: "muted small", text: "Your readings from the last 7 days." }));
@@ -222,7 +266,7 @@ function showHome() {
       var c = j.cards[0];
       app.appendChild(el("button", { class: "jitem", on: { click: function () { showReading(j); } } }, [
         el("img", { src: "/tarot/art/" + c.id + ".webp", alt: "", style: c.reversed ? "transform:rotate(180deg)" : null }),
-        el("div", {}, [el("div", { text: (j.kind === "daily" ? "Daily card: " + c.name : j.question) }), el("div", { class: "small muted", text: j.day + (j.note ? " · has your note" : "") })]),
+        el("div", {}, [el("div", { text: (j.kind === "daily" ? "Daily card: " + c.name : j.question) }), el("div", { class: "small muted", text: j.day + (j.kind === "daily" ? "" : " · " + j.spread) + (j.note ? " · has your note" : "") })]),
       ]));
     });
   }
@@ -240,25 +284,123 @@ function allIds() {
   return out;
 }
 
+// The first visit (and "Edit my details"): name as at birth, date of birth, birth time and place if known, and consent.
+var OFFSETS = [[330, "India (IST, UTC+5:30)"], [345, "Nepal (UTC+5:45)"], [360, "Bangladesh (UTC+6)"], [300, "Pakistan, Maldives (UTC+5)"], [240, "UAE, Oman (UTC+4)"], [180, "Saudi Arabia, Qatar, Kuwait (UTC+3)"], [480, "Singapore, Malaysia (UTC+8)"], [600, "Sydney, Melbourne, standard time (UTC+10)"], [0, "UK, standard time (UTC+0)"], [60, "UK summer time, central Europe (UTC+1)"], [-300, "US East, standard time (UTC−5)"], [-240, "US East, summer time (UTC−4)"], [-480, "US West, standard time (UTC−8)"], [-420, "US West, summer time (UTC−7)"]];
+function showProfileForm(p) {
+  clear(); document.body.classList.remove("dawn");
+  if (p) app.appendChild(el("button", { class: "back", on: { click: showHome }, text: "‹ Home" }));
+  app.appendChild(el("h2", { text: p ? "Your details" : "Welcome" }));
+  app.appendChild(el("p", { class: "muted", text: "Tell us a little about you once. We use it to read your numbers and stars, and to make each reading speak to you." }));
+  var f = el("form", { class: "form", novalidate: "" });
+  function field(label, input, hint) { return el("label", { class: "field" }, [el("span", { text: label }), input, hint ? el("small", { class: "muted", text: hint }) : null]); }
+  var name = el("input", { name: "name", autocomplete: "name", maxlength: "80", required: "" }); name.value = p ? p.name : "";
+  var dob = el("input", { name: "dob", type: "date", required: "", max: new Date(Date.now() - 18 * 365.25 * 864e5).toISOString().slice(0, 10), min: "1900-01-01" }); dob.value = p ? p.dob : "";
+  var time = el("input", { name: "time", type: "time" }); time.value = p && p.birthTime ? p.birthTime : "";
+  var tz = el("select", { name: "tz" });
+  OFFSETS.forEach(function (o) { var op = el("option", { value: String(o[0]), text: o[1] }); if ((p ? p.tzMinutes : 330) === o[0]) op.selected = true; tz.appendChild(op); });
+  var place = el("input", { name: "place", maxlength: "80", placeholder: "City, for example Bengaluru" }); place.value = p && p.birthPlace ? p.birthPlace : "";
+  var consent = el("input", { type: "checkbox", name: "consent" }); if (p) consent.checked = true;
+  f.appendChild(field("Your full name, as at birth", name, "Used for your name numbers. English letters work best."));
+  f.appendChild(field("Date of birth", dob, "For adults 18 and over."));
+  f.appendChild(field("Time of birth (if you know it)", time, "Leave empty if you don't know. It makes your Moon sign and birth star exact."));
+  f.appendChild(field("Where you were born: time zone", tz, null));
+  f.appendChild(field("Place of birth (optional)", place, null));
+  f.appendChild(el("label", { class: "check" }, [consent, el("span", { text: "I am 18 or older, and I agree that Disha Dira keeps these details to personalise my readings. I can delete them at any time." })]));
+  var err = el("p", { class: "err", role: "alert" });
+  f.appendChild(err);
+  f.appendChild(el("button", { class: "btn", type: "submit", text: p ? "Save" : "See my path" }));
+  f.addEventListener("submit", function (e) {
+    e.preventDefault(); err.textContent = "";
+    api("profile", { name: name.value, dob: dob.value, birthTime: time.value, tzMinutes: Number(tz.value), birthPlace: place.value, consent: consent.checked }).then(function (r) {
+      if (r.ok) { load(); return; }
+      err.textContent = { name: "Please write your name.", dob: "Please choose a real date of birth.", age: "Disha Dira Tarot is for adults 18 and over.", time: "Please check the birth time.", tz: "Please choose a time zone.", consent: "Please tick the box to agree." }[r.error] || "Something went wrong. Please try again.";
+    }).catch(function () { err.textContent = "No connection. Please try again."; });
+  });
+  app.appendChild(f);
+  if (p) app.appendChild(el("div", { class: "actions" }, [el("button", { class: "btn ghost", text: "Delete my details", on: { click: function () { api("profile/delete", {}).then(function () { toast("Your details are deleted."); load(); }); } } })]));
+  app.appendChild(footer());
+}
+
+// A spread laid out as it sits on the table. cards: the reading's cards, or null for an empty preview.
+function layoutEl(positions, cards, maxW, labels) {
+  var cols = 1, rows = 1;
+  positions.forEach(function (p) { cols = Math.max(cols, p.x + 1); rows = Math.max(rows, p.y + 1); });
+  var w = Math.min(labels ? 104 : 16, Math.floor(maxW / (cols * 1.12)));
+  var h = Math.round(w / 0.575), lab = labels ? 30 : 0, gx = Math.round(w * 0.12), gy = Math.round(h * 0.08);
+  var box = el("div", { class: "table", style: "width:" + Math.ceil(cols * w + (cols - 1) * gx) + "px;height:" + Math.ceil(rows * (h + lab) + (rows - 1) * gy) + "px" });
+  var out = [];
+  positions.forEach(function (p, i) {
+    var c = cards ? cards[i] : null;
+    var slot = el("div", { class: "tslot" + (p.cross ? " cross" : ""), style: "left:" + Math.round(p.x * (w + gx)) + "px;top:" + Math.round(p.y * (h + lab + gy)) + "px;width:" + w + "px" });
+    if (labels && !p.cross) slot.appendChild(el("span", { class: "pos", text: c ? c.position : "" }));
+    var ce = cards ? cardEl(c.id, c.reversed, false) : el("div", { class: "ghost-card" });
+    ce.style.setProperty("--card-w", w + "px");
+    var holder = el("div", { class: "tcard", style: "height:" + h + "px;margin-top:" + (labels && p.cross ? lab : 0) + "px" }, [ce]);
+    slot.appendChild(holder);
+    box.appendChild(slot); out.push(ce);
+  });
+  box.cards = out;
+  return box;
+}
+
 function showThemes() {
   clear(); app.appendChild(el("button", { class: "back", on: { click: showHome }, text: "‹ Back" }));
   app.appendChild(el("h2", { text: "Choose today's theme" }));
-  app.appendChild(el("p", { class: "muted", text: "You can read one theme a day for free." }));
+  app.appendChild(el("p", { class: "muted", text: S.data.tester ? "Tester: as many readings as you like." : "One free reading a day." }));
   Object.keys(S.data.themes).forEach(function (k) {
     var t = S.data.themes[k];
-    app.appendChild(el("button", { class: "tile", on: { click: function () { S.theme = k; showQuestions(); } } }, [el("h3", { text: t.label }), el("p", { class: "muted small", text: t.blurb }), el("span", { class: "go", text: "›" })]));
+    app.appendChild(el("button", { class: "tile", on: { click: function () { S.theme = k; showSpreads(); } } }, [el("h3", { text: t.label }), el("p", { class: "muted small", text: t.blurb }), el("span", { class: "go", text: "›" })]));
   });
 }
-function showQuestions() {
+function showSpreads() {
   clear(); app.appendChild(el("button", { class: "back", on: { click: showThemes }, text: "‹ Themes" }));
   var t = S.data.themes[S.theme];
   app.appendChild(el("h2", { text: t.label }));
-  app.appendChild(el("p", { class: "muted", text: "Pick the question closest to your heart." }));
+  app.appendChild(el("p", { class: "muted", text: "Choose a spread: the shape of your reading." }));
+  t.spreads.forEach(function (s) {
+    app.appendChild(el("button", { class: "tile spread", on: { click: function () { S.spread = s.id; S.count = s.count; showQuestions(); } } }, [
+      el("div", { class: "row" }, [el("div", { class: "mini" }, [layoutEl(s.layout, null, 90, false)]), el("div", {}, [el("h3", { text: s.label }), el("p", { class: "muted small", text: s.blurb + " · " + s.count + (s.count === 1 ? " card" : " cards") })])]),
+      el("span", { class: "go", text: "›" }),
+    ]));
+  });
+}
+function showQuestions() {
+  clear(); app.appendChild(el("button", { class: "back", on: { click: showSpreads }, text: "‹ Spreads" }));
+  var t = S.data.themes[S.theme];
+  app.appendChild(el("h2", { text: "Your question" }));
+  app.appendChild(el("p", { class: "muted", text: "Ask in your own words, or pick one of ours." }));
+  var own = el("textarea", { "aria-label": "Your question", maxlength: "300", placeholder: "For example: How can I feel closer to my sister?" });
+  var err = el("p", { class: "err", role: "alert" });
+  app.appendChild(own);
+  app.appendChild(el("p", { class: "small muted", text: "Tarot here is for reflection. Ask what you can understand or do, not what will happen to you." }));
+  app.appendChild(err);
+  app.appendChild(el("div", { class: "actions" }, [el("button", { class: "btn", text: "Ask this", on: { click: function () {
+    var q = own.value.replace(/\s+/g, " ").trim();
+    if (q.length < 3) { err.textContent = "Please write your question."; return; }
+    api("check", { own: q }).then(function (r) {
+      if (r.ok) { S.own = q; S.qi = null; S.kind = "spread"; ritual(); return; }
+      if (r.error === "crisis") return showCrisis();
+      err.textContent = { predict: "Tarot here cannot tell you about health, pregnancy, death, exams or court results. Try asking what would help you, or how to find peace with it.", spell: "We do not read for black magic, curses or the evil eye. You could ask what would help you feel safe and strong.", bad: "Please ask your question kindly.", length: "Please keep your question under 300 letters." }[r.error] || "Something went wrong. Please try again.";
+    }).catch(function () { err.textContent = "No connection. Please try again."; });
+  } } })]));
+  app.appendChild(el("h3", { text: "Or choose one", style: "margin-top:18px" }));
   var l = el("div", { class: "list" });
-  t.questions.forEach(function (q, i) { l.appendChild(el("button", { on: { click: function () { S.qi = i; S.kind = "ppf"; S.count = 3; ritual(); } }, text: q })); });
+  t.questions.forEach(function (q, i) { l.appendChild(el("button", { on: { click: function () { S.qi = i; S.own = null; S.kind = "spread"; ritual(); } }, text: q })); });
   app.appendChild(l);
 }
-function beginDaily() { S.kind = "daily"; S.theme = null; S.qi = null; S.count = 1; ritual(); }
+function showCrisis() {
+  clear();
+  app.appendChild(el("div", { class: "stage" }, [
+    el("h2", { text: "You don't have to carry this alone" }),
+    el("p", { text: "It sounds like you are going through something very hard. Please talk to someone now." }),
+    el("p", { class: "serif", style: "font-size:1.3rem", text: "Tele-MANAS: 14416 (free, any time, India)" }),
+    el("p", { text: "In an emergency, call 112." }),
+    el("a", { class: "btn", href: "tel:14416", text: "Call 14416" }),
+    el("button", { class: "btn ghost", text: "Back home", on: { click: showHome } }),
+  ]));
+}
+function beginDaily() { S.kind = "daily"; S.theme = null; S.spread = "daily"; S.qi = null; S.own = null; S.count = 1; ritual(); }
+function questionText() { return S.own || (S.qi !== null ? S.data.themes[S.theme].questions[S.qi] : ""); }
 
 // The ritual: breathe, shuffle, cut, choose, turn over.
 function ritual() {
@@ -266,7 +408,7 @@ function ritual() {
   var s = el("div", { class: "stage" });
   var b = el("div", { class: "breath", "aria-hidden": "true" });
   var t = el("p", { class: "serif", style: "font-size:1.4rem", text: "Breathe in slowly…" });
-  var q = S.kind === "ppf" ? el("p", { class: "muted", text: S.data.themes[S.theme].questions[S.qi] }) : el("p", { class: "muted", text: "Hold your day in mind." });
+  var q = S.kind === "spread" ? el("p", { class: "muted", text: questionText() }) : el("p", { class: "muted", text: "Hold your day in mind." });
   var skip = el("button", { class: "btn ghost", text: "I'm ready", on: { click: shuffleStep } });
   s.appendChild(b); s.appendChild(t); s.appendChild(q); s.appendChild(skip); app.appendChild(s);
   var done = false; skip.addEventListener("click", function () { done = true; });
@@ -302,10 +444,11 @@ function cutStep() {
 }
 function start(pile) {
   var body = { kind: S.kind, pile: pile };
-  if (S.kind === "ppf") { body.theme = S.theme; body.question = S.qi; }
+  if (S.kind === "spread") { body.theme = S.theme; body.spread = S.spread; if (S.own) body.own = S.own; else body.question = S.qi; }
   api("start", body).then(function (r) {
     if (r._status === 401) return load();
-    if (r._status === 409) { toast("Today's reading is already done."); return load(); }
+    if (r.error === "crisis") return showCrisis();
+    if (r._status === 409) { toast(r.error === "profile" ? "Please add your details first." : "Today's reading is already done."); return load(); }
     if (!r.ok) { toast("Something went wrong. Please try again."); return; }
     fanStep();
   }).catch(function () { toast("No connection. Please try again."); });
@@ -341,18 +484,13 @@ function pick() {
 function reveal(reading) {
   S.stage = null; clear();
   var s = el("div", { class: "stage" });
-  var slots = el("div", { class: "slots" });
-  var cards = reading.cards.map(function (c) {
-    var ce = cardEl(c.id, c.reversed, false);
-    slots.appendChild(el("div", { class: "slot" }, [el("span", { class: "pos", text: c.position }), ce]));
-    return ce;
-  });
+  var table = layoutEl(reading.cards, reading.cards, Math.min((app.clientWidth || 392) - 32, 528), true);
   var t = el("p", { class: "serif", style: "font-size:1.4rem", text: "Turning over…" });
-  s.appendChild(slots); s.appendChild(t); app.appendChild(s);
+  s.appendChild(table); s.appendChild(t); app.appendChild(s);
   var skipped = false; s.addEventListener("click", function () { skipped = true; });
-  var p = wait(500);
-  cards.forEach(function (ce, i) {
-    p = p.then(function () { ce.classList.add("flipped"); if (i === 0) document.body.classList.add("dawn"); t.textContent = reading.cards[i].name + (reading.cards[i].reversed ? ", reversed" : ""); return skipped ? null : wait(1500); });
+  var p = wait(500), gap = reading.cards.length > 5 ? 900 : 1500;
+  table.cards.forEach(function (ce, i) {
+    p = p.then(function () { ce.classList.add("flipped"); if (i === 0) document.body.classList.add("dawn"); t.textContent = reading.cards[i].name + (reading.cards[i].reversed ? ", reversed" : ""); return skipped ? null : wait(gap); });
   });
   p.then(function () { return skipped ? null : wait(700); }).then(function () { load(true).then(function () { showReading(reading); }); });
 }
@@ -361,7 +499,15 @@ function showReading(r) {
   clear(); document.body.classList.add("dawn");
   app.appendChild(el("button", { class: "back", on: { click: showHome }, text: "‹ Home" }));
   app.appendChild(el("h2", { text: r.kind === "daily" ? "Today's card" : r.question }));
-  if (r.kind !== "daily") app.appendChild(el("p", { class: "muted", text: r.spread + " · " + S.data.themes[r.theme].label }));
+  if (r.kind !== "daily") {
+    app.appendChild(el("p", { class: "muted", text: r.spread + " · " + S.data.themes[r.theme].label }));
+    if (r.cards.length > 1) { var tb = layoutEl(r.cards, r.cards, Math.min((app.clientWidth || 392) - 32, 528), true); tb.cards.forEach(function (c) { c.classList.add("flipped"); }); app.appendChild(el("div", { class: "stage-table" }, [tb])); }
+  }
+  if (r.personal && r.personal.length) {
+    var pb = el("div", { class: "summary for-you" }, [el("h3", { text: "For you" })]);
+    r.personal.forEach(function (l) { pb.appendChild(el("p", { text: l })); });
+    app.appendChild(pb);
+  }
   var box = el("div", { class: "reading" });
   r.cards.forEach(function (c) {
     var kw = el("div", { class: "kw" }); c.keywords.forEach(function (k) { kw.appendChild(el("span", { text: k })); });
@@ -378,7 +524,7 @@ function showReading(r) {
     ]));
   });
   app.appendChild(box);
-  var sum = el("div", { class: "summary" }, [el("h3", { text: r.kind === "daily" ? "For today" : "The reading as a whole" })]);
+  var sum = el("div", { class: "summary" }, [el("h3", { text: r.kind === "daily" ? "The card" : "The reading as a whole" })]);
   r.summary.forEach(function (l) { sum.appendChild(el("p", { text: l })); });
   app.appendChild(sum);
   var ta = el("textarea", { "aria-label": "Your note", placeholder: "What does this bring up for you? Your note is private." });
@@ -426,7 +572,8 @@ function logout() { api("logout", {}).then(function () { S.data = null; showLogi
 function load(quiet) {
   return api("state").then(function (d) {
     if (!d.in) { showLogin(/link=old/.test(location.search)); return; }
-    S.data = d; if (!quiet) showHome();
+    S.data = d; if (quiet) return;
+    if (!d.profile) showProfileForm(null); else showHome();
   }).catch(function () { clear(); app.appendChild(el("div", { class: "stage" }, [el("p", { text: "No connection. Please check your internet and reload." })])); });
 }
 
