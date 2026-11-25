@@ -1,7 +1,7 @@
 # STATUS
 Updated: 2026-11-25 (Ticket 60: the Android app, step one)
 
-## Ticket 60 (PR to follow, branch app-android, migration 0028_tarot_codes, CONTRACT v28; based on main 56d957a with #78)
+## Ticket 60 (PR https://github.com/Rhitrao/dishadira-bot/pull/79, branch app-android, migration 0028_tarot_codes, CONTRACT v28; based on main 56d957a with #78)
 Rohit, 25 Nov 2026: "start now" on the Android and iOS app plan (Claude Docs, "Disha Dira Tarot: the Android and iOS app plan"), and asked whose name the store accounts should be in (answered in chat: the Disha Dira Gmail as the login; the legal holder depends on whether Disha Dira is a registered company).
 - **app/** (Capacitor 8.6.2, Android): appId com.dishadira.tarot, name "Disha Dira Tarot"; the page is https://bot-test.disha-dira.com/tarot (server.url), so game changes reach the app without a new install; offline.html when there is no internet; icon and splash drawn from the card back's lotus (app/assets, sizes made by @capacitor/assets); a white-star status-bar icon for the reminder.
 - **Daily reminder** (page.ts reminderBox, only inside the app): a time picker; "Turn on" asks Android for permission and schedules one local notification a day ("Your card is waiting"); "Turn off". Nothing is sent by the server or WhatsApp.
