@@ -10,6 +10,8 @@
 //   GET  /tarot/api/story/<id>  "What this means for you": the reading in plain words (ticket 59)
 //   GET  /tarot/api/voice/<id>  the same words read aloud (MP3), or 404 when the voice is off (the page then uses the phone's voice)
 //   POST /tarot/api/note        the person's own note on a reading
+//   POST /tarot/api/code/start  a WhatsApp login code for this device (ticket 60); /code/poll asks whether it has been sent yet
+//   POST /tarot/api/account/delete  everything the game keeps about the person (ticket 60; the app stores require it)
 //   POST /tarot/api/logout
 // Posts must be JSON from this site (Origin checked; the cookie is SameSite=Lax), so another site cannot act for a logged-in person.
 import { Hono, type Context } from "hono";
@@ -26,7 +28,7 @@ import { insights, personalLines, type Insights } from "./profile";
 import { aiStory, plainStory, tarotVoiceOn, voiceMp3 } from "./story";
 import { cardView, isSpread, isTheme, spreadFits, SPREADS, summarize, THEMES, type Drawn, type SpreadId, type ThemeId } from "./reading";
 import {
-  asEntry, deleteProfile, readingById, endSession, finishReading, getProfile, history, isTester, journal, latest, newSession, parseProfile, redeemLogin, saveProfile,
+  asEntry, deleteProfile, readingById, pollCode, startCode, tarotWipeStmts, endSession, finishReading, getProfile, history, isTester, journal, latest, newSession, parseProfile, redeemLogin, saveProfile,
   seenCards, sessionConv, setNote, startReading, streak, todayRows, SESSION_DAYS, type JournalEntry,
 } from "./store";
 
@@ -296,6 +298,33 @@ tarot.post("/api/note", async (c) => {
   const b = await body(c);
   if (!b || !Number.isInteger(b.id) || typeof b.note !== "string") return c.json({ error: "bad" }, 400);
   return (await setNote(c.env.DB, conv, b.id as number, b.note)) ? c.json({ ok: true }) : c.json({ error: "bad" }, 400);
+});
+
+// Ticket 60: logging in by sending "TAROT <code>" on WhatsApp. The device keeps the secret; the code alone cannot log anyone in.
+tarot.post("/api/code/start", async (c) => {
+  if (!(await body(c))) return c.json({ error: "bad" }, 400);
+  const r = await startCode(c.env.DB);
+  if (!r) return c.json({ error: "busy" }, 429);
+  return c.json({ code: r.code, secret: r.secret, wa: `https://wa.me/${waDigits()}?text=${encodeURIComponent(`TAROT ${r.code}`)}` });
+});
+
+tarot.post("/api/code/poll", async (c) => {
+  const b = await body(c);
+  if (!b || typeof b.code !== "string" || typeof b.secret !== "string") return c.json({ error: "bad" }, 400);
+  const r = await pollCode(c.env.DB, b.code, b.secret);
+  if (r === "waiting" || r === "expired") return c.json({ [r]: true });
+  const sid = await newSession(c.env.DB, r);
+  setCookie(c, COOKIE, sid, { path: "/tarot", httpOnly: true, secure: true, sameSite: "Lax", maxAge: SESSION_DAYS * 86_400 });
+  return c.json({ ok: true });
+});
+
+tarot.post("/api/account/delete", async (c) => {
+  const conv = await who(c);
+  if (conv === null) return c.json({ error: "login" }, 401);
+  if (!(await body(c))) return c.json({ error: "bad" }, 400);
+  await c.env.DB.batch(tarotWipeStmts(c.env.DB, conv));
+  deleteCookie(c, COOKIE, { path: "/tarot", secure: true });
+  return c.json({ ok: true });
 });
 
 tarot.post("/api/logout", async (c) => {

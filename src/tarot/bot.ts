@@ -6,7 +6,7 @@ import type { Lang } from "../copy";
 import type { Env } from "../env";
 import { normalize } from "../safety";
 import type { Out } from "../send";
-import { newLoginLink } from "./store";
+import { linkCode, newLoginLink } from "./store";
 
 const TAROT_WORDS = new Set(["tarot", "tarot game", "tarot card", "tarot cards", "open my cards", "open your cards", "टैरो", "टैरो कार्ड", "टैरो गेम"]);
 export const isTarotWord = (text: string): boolean => TAROT_WORDS.has(normalize(text));
@@ -23,4 +23,21 @@ export async function tarotOut(env: Env, db: D1Database, convId: number, lang: L
   const base = (env.PUBLIC_URL ?? "").trim();
   if (!/^https:\/\//.test(base)) return null;
   return { type: "cta", body: BODY[lang], label: LABEL[lang], url: await newLoginLink(db, convId, base, nowMs) };
+}
+
+// Ticket 60: "TAROT ABCD2345", the message the app (or the website) pre-types: the code it is waiting on.
+export function tarotCodeIn(text: string): string | null {
+  const m = /^(?:tarot|टैरो)\s+([a-z2-9]{8})$/.exec(normalize(text));
+  return m ? m[1].toUpperCase() : null;
+}
+
+const LINKED: Record<Lang, string> = {
+  en: "You are logged in. Go back to Disha Dira Tarot: your cards are waiting.",
+  hi: "आप लॉग इन हो गए। Disha Dira Tarot पर वापस जाइए: आपके कार्ड इंतज़ार कर रहे हैं।",
+};
+// The answer to a code message: "you are logged in" when it tied the code to this chat; else the usual login button (an old or mistyped
+// code still gets the person in), or null when there is no public address to link to.
+export async function tarotCodeOut(env: Env, db: D1Database, convId: number, lang: Lang, code: string, nowMs = Date.now()): Promise<Out | null> {
+  if (await linkCode(db, code, convId, nowMs)) return { type: "text", text: LINKED[lang] };
+  return tarotOut(env, db, convId, lang, nowMs);
 }

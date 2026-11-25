@@ -206,6 +206,52 @@ export async function deleteProfile(db: D1Database, convId: number): Promise<voi
   await db.prepare("DELETE FROM tarot_profiles WHERE conversation_id = ?1").bind(convId).run();
 }
 
+// ---------- logging in with a WhatsApp code (ticket 60) ----------
+export const CODE_MINUTES = 10;
+export const MAX_OPEN_CODES = 500; // across everyone: a flood of code requests stops here
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I: easy to read aloud and type
+export function newCodeValue(rand: (b: Uint8Array) => Uint8Array = (b) => crypto.getRandomValues(b)): string {
+  const bytes = rand(new Uint8Array(8));
+  return [...bytes].map((b) => CODE_ALPHABET[b % 32]).join(""); // 32 letters: 256 is a multiple, so no bias
+}
+export const isCode = (s: string) => /^[A-HJ-NP-Z2-9]{8}$/.test(s);
+
+export async function startCode(db: D1Database, nowMs = Date.now()): Promise<{ code: string; secret: string } | null> {
+  await db.prepare("DELETE FROM tarot_codes WHERE expires_at < ?1").bind(iso(nowMs - 86_400_000)).run();
+  const open = await db.prepare("SELECT COUNT(*) AS n FROM tarot_codes WHERE expires_at > ?1 AND used_at IS NULL").bind(iso(nowMs)).first<{ n: number }>();
+  if ((open?.n ?? 0) >= MAX_OPEN_CODES) return null;
+  const secret = randomToken();
+  for (let i = 0; i < 5; i++) {
+    const code = newCodeValue();
+    const res = await db
+      .prepare("INSERT OR IGNORE INTO tarot_codes (code, secret_hash, created_at, expires_at) VALUES (?1, ?2, ?3, ?4)")
+      .bind(code, await sha256(secret), iso(nowMs), iso(nowMs + CODE_MINUTES * 60_000))
+      .run();
+    if (res.meta.changes === 1) return { code, secret };
+  }
+  return null;
+}
+
+// The bot saw "TAROT <code>" from this chat. True when it tied a fresh, unclaimed code to them.
+export async function linkCode(db: D1Database, code: string, convId: number, nowMs = Date.now()): Promise<boolean> {
+  if (!isCode(code)) return false;
+  const res = await db
+    .prepare("UPDATE tarot_codes SET conversation_id = ?2, linked_at = ?3 WHERE code = ?1 AND conversation_id IS NULL AND used_at IS NULL AND expires_at > ?3")
+    .bind(code, convId, iso(nowMs))
+    .run();
+  return res.meta.changes === 1;
+}
+
+// The device asks with its code and secret: "waiting", "expired", or the conversation it may now log in as (once).
+export async function pollCode(db: D1Database, code: string, secret: string, nowMs = Date.now()): Promise<"waiting" | "expired" | number> {
+  if (!isCode(code) || !/^[A-Za-z0-9_-]{43}$/.test(secret)) return "expired";
+  const row = await db.prepare("SELECT secret_hash, conversation_id, expires_at, used_at FROM tarot_codes WHERE code = ?1").bind(code).first<{ secret_hash: string; conversation_id: number | null; expires_at: string; used_at: string | null }>();
+  if (!row || row.used_at || row.secret_hash !== (await sha256(secret))) return "expired";
+  if (row.conversation_id === null) return row.expires_at > iso(nowMs) ? "waiting" : "expired";
+  const res = await db.prepare("UPDATE tarot_codes SET used_at = ?2 WHERE code = ?1 AND used_at IS NULL").bind(code, iso(nowMs)).run();
+  return res.meta.changes === 1 ? row.conversation_id : "expired";
+}
+
 // ---------- testers (ticket 58) ----------
 // TAROT_TESTERS, a Worker secret: phone numbers with country code, separated by commas (a 10-digit number is read as Indian, +91). These
 // people can draw as often as they like each day. Never in git: the repo is public.
@@ -254,6 +300,7 @@ export const tarotWipeStmts = (db: D1Database, convId: number): D1PreparedStatem
   db.prepare("DELETE FROM tarot_readings WHERE conversation_id = ?1").bind(convId),
   db.prepare("DELETE FROM tarot_seen WHERE conversation_id = ?1").bind(convId),
   db.prepare("DELETE FROM tarot_profiles WHERE conversation_id = ?1").bind(convId), // ticket 58
+  db.prepare("DELETE FROM tarot_codes WHERE conversation_id = ?1").bind(convId), // ticket 60
 ];
 
 // The daily wipe: everything of a person whose last reading is older than KEEP_DAYS, and expired logins and sessions.
