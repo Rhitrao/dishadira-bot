@@ -1,7 +1,7 @@
 # STATUS
 Updated: 2026-11-25 (Ticket 58: the tarot game — profile, readings that use it, spreads per theme, own question, testers)
 
-## Ticket 58 (PR to follow, branch tarot-profile, migration 0026_tarot_profile, CONTRACT v26; based on main 743dfca with #76)
+## Ticket 58 (PR https://github.com/Rhitrao/dishadira-bot/pull/77, branch tarot-profile, migration 0026_tarot_profile, CONTRACT v26; based on main 743dfca with #76)
 Rohit, 25 Nov 2026, five asks after trying Ticket 57: details on first login used for numerology and astrology; that interpretation on the home screen before today's card and reading; readings that improve with it; unlimited turns for his and Amma's numbers; any question of the person's own, and different spreads in each theme.
 - **First login** (src/tarot/page.ts showProfileForm, api.ts /api/profile, store.ts parseProfile): name as at birth, date of birth (18+), birth time (optional), time zone (India by default; a short list of others), birth place (optional), consent. /api/start answers 409 until it is done. "Edit my details" and "Delete my details".
 - **The profile** (src/tarot/profile.ts, all code, no AI): Pythagorean numerology with master numbers and the Indian Mulank and Bhagyank; Personal Year, Month and Day; tropical Sun sign from the Sun's true longitude; Vedic Moon sign, nakshatra and pada and sidereal Sun (Lahiri); Chinese year turning at Li Chun; Greer's tarot birth cards. Without a birth time, a Moon that changes sign that day shows both ("Dhanu or Makara") and asks for the time. Tested against the 2024 March equinox, the 8 Apr 2024 solar eclipse and the 14 Mar 2025 lunar eclipse (within 0.3°).
