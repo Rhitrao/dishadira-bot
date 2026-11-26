@@ -40,6 +40,27 @@ export const SPREADS = {
       { name: "What holds me back", frame: "The fear or habit in the way", x: 2, y: 0 }, { name: "Next step", frame: "One step towards love", x: 1, y: 1 },
     ],
   },
+  // Ticket 61: the two love readings people ask for most, framed as what the cards suggest, never as a certainty about another person or a
+  // prediction of events.
+  love_heart: {
+    label: "Their heart", blurb: "Four cards on how things may feel from their side, as the cards suggest it",
+    positions: [
+      { name: "Their feelings", frame: "The feelings the cards suggest around them now: a possibility, not a certainty", x: 0, y: 0 },
+      { name: "Their intention", frame: "What they may be hoping for with you, as the cards suggest it", x: 1, y: 0 },
+      { name: "Their message", frame: "What their side of the bond may be asking you to hear", x: 2, y: 0 },
+      { name: "Your heart", frame: "What you can do with this, from your side", x: 1, y: 1 },
+    ],
+  },
+  love_months: {
+    label: "The next three months", blurb: "Five cards: where you two stand, the energy of each coming month, and your part in it",
+    positions: [
+      { name: "Between you now", frame: "Where the two of you stand today", x: 0, y: 0 },
+      { name: "Month one", frame: "The energy to work with in the first month", x: 1, y: 0 },
+      { name: "Month two", frame: "The energy to work with in the second month", x: 2, y: 0 },
+      { name: "Month three", frame: "The energy to work with in the third month", x: 3, y: 0 },
+      { name: "Your part", frame: "What you can bring that shapes what comes", x: 1.5, y: 1 },
+    ],
+  },
   love_heal: {
     label: "Healing a hurt", blurb: "Three cards for a painful time with someone",
     positions: row([["The hurt", "What is hurting"], ["The lesson", "What it is teaching you"], ["The way forward", "How to move on gently"]]),
@@ -91,14 +112,16 @@ export const THEMES: Record<ThemeId, { label: string; blurb: string; spreads: Sp
   love: {
     label: "Love and relationships",
     blurb: "Partners, family, friends: the people close to you",
-    spreads: ["ppf", "love_bond", "love_open", "love_heal", "celtic"],
+    spreads: ["love_heart", "love_months", "ppf", "love_bond", "love_open", "love_heal", "celtic"],
     questions: [
+      "What might my partner be feeling about me right now?",
+      "What might my partner's intention be with me?",
+      "What message might my partner's heart hold for me?",
+      "What energy surrounds us over the next one to three months?",
+      "Where is this relationship heading if we keep on as we are?",
       "What do I need to see about this relationship?",
-      "How can I bring more warmth into my closest bond?",
       "What is keeping me from feeling loved?",
-      "What do I need to say, or stop carrying, with someone close to me?",
-      "How can I be a better friend to the people I care about?",
-      "What am I learning about love right now?",
+      "How can I bring more warmth into my closest bond?",
     ],
   },
   work: {
@@ -106,7 +129,9 @@ export const THEMES: Record<ThemeId, { label: string; blurb: string; spreads: Sp
     blurb: "Your job, your craft, your next step",
     spreads: ["ppf", "sao", "work_path", "work_cross", "celtic"],
     questions: [
+      "What energy surrounds my career over the next three months?",
       "What should I focus on at work this month?",
+      "How do the people at work see me right now?",
       "What is holding back my progress?",
       "How can I make my work feel more meaningful?",
       "What do I need to know before a big work decision?",
@@ -119,7 +144,9 @@ export const THEMES: Record<ThemeId, { label: string; blurb: string; spreads: Sp
     blurb: "Your feelings, energy and inner life",
     spreads: ["ppf", "self_mbs", "self_heal", "sao", "celtic"],
     questions: [
+      "What is my soul asking of me right now?",
       "What am I carrying that I can put down?",
+      "What do I need to forgive myself for?",
       "What helps me feel steady and whole?",
       "What is my lesson right now?",
       "Where am I being too hard on myself?",

@@ -12,7 +12,11 @@
 //   POST /tarot/api/note        the person's own note on a reading
 //   POST /tarot/api/code/start  a WhatsApp login code for this device (ticket 60); /code/poll asks whether it has been sent yet
 //   POST /tarot/api/account/delete  everything the game keeps about the person (ticket 60; the app stores require it)
+//   POST /tarot/api/history/delete  the person's readings, notes and today's messages (ticket 61); details and collection stay
+//   POST /tarot/api/tester-login    a tester's number and the TAROT_TESTER_PIN secret (ticket 61; off when the secret is unset)
 //   POST /tarot/api/logout
+// Ticket 61: the daily card and "Today's message" in each theme are always free; a person's first reading in each theme is free once; after
+// that a theme reading needs a pass (tarot_passes; sold in a later ticket), and /api/start answers 402 "pass". Testers never need one.
 // Posts must be JSON from this site (Origin checked; the cookie is SameSite=Lax), so another site cannot act for a logged-in person.
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -28,6 +32,7 @@ import { insights, personalLines, type Insights } from "./profile";
 import { aiStory, plainStory, tarotVoiceOn, voiceMp3 } from "./story";
 import { cardView, isSpread, isTheme, spreadFits, SPREADS, summarize, THEMES, type Drawn, type SpreadId, type ThemeId } from "./reading";
 import {
+  activePass, deleteHistory, markFreeUsed, pinLogin, testerNumbers, themeAccess, todayMessages, FREE_READINGS_PER_THEME,
   asEntry, deleteProfile, readingById, pollCode, startCode, tarotWipeStmts, endSession, finishReading, getProfile, history, isTester, journal, latest, newSession, parseProfile, redeemLogin, saveProfile,
   seenCards, sessionConv, setNote, startReading, streak, todayRows, SESSION_DAYS, type JournalEntry,
 } from "./store";
@@ -52,7 +57,7 @@ const waDigits = () => config.businessNumber.replace(/\D/g, "");
 
 tarot.get("/", (c) => {
   c.header("Cache-Control", "no-store");
-  return c.html(pageHtml(waDigits()));
+  return c.html(pageHtml(waDigits(), !!c.env.TAROT_TESTER_PIN));
 });
 
 tarot.get("/app.js", () => new Response(APP_JS, { headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache" } }));
@@ -143,13 +148,19 @@ tarot.get("/api/state", async (c) => {
   const tester = await isTester(c.env.DB, conv, c.env.TAROT_TESTERS);
   const rows = await todayRows(c.env.DB, conv, istDay(now));
   const view = async (kind: "daily" | "spread") => {
-    const r = latest(rows, kind);
+    const r = latest(rows.filter((x) => x.done_at && x.cards), kind); // ticket 61: an open, unfinished reading does not hide the last one
     return r?.done_at && r.cards ? readingView(asEntry(r), ins, await history(c.env.DB, conv, r.id, now)) : null;
   };
   const days = await journal(c.env.DB, conv, now);
+  const msgs = await todayMessages(c.env.DB, conv, now);
+  const access = await themeAccess(c.env.DB, conv, tester, now);
   return c.json({
     in: true,
     tester,
+    access,
+    pass: tester ? null : await activePass(c.env.DB, conv, now),
+    freePerTheme: FREE_READINGS_PER_THEME,
+    messages: Object.fromEntries(Object.entries(msgs).map(([th, d]) => [th, cardView(d, th as ThemeId)])),
     day: istDay(now),
     profile,
     insights: ins && { firstName: ins.firstName, today: ins.today, arts: ins.arts },
@@ -210,8 +221,9 @@ tarot.post("/api/start", async (c) => {
   if (!b || (b.kind !== "daily" && b.kind !== "spread")) return c.json({ error: "bad" }, 400);
   if (!(await getProfile(c.env.DB, conv))) return c.json({ error: "profile" }, 409);
   const pile = Number.isInteger(b.pile) ? (b.pile as number) : 0;
-  const unlimited = await isTester(c.env.DB, conv, c.env.TAROT_TESTERS);
+  const tester = await isTester(c.env.DB, conv, c.env.TAROT_TESTERS);
   if (b.kind === "daily") {
+    const unlimited = tester;
     const res = await startReading(c.env.DB, conv, { kind: "daily", spread: "daily", theme: null, question: null, custom: false, pile }, unlimited);
     return res === "done" ? c.json({ error: "done" }, 409) : c.json({ ok: true, count: 1 });
   }
@@ -231,7 +243,9 @@ tarot.post("/api/start", async (c) => {
     if (!Number.isInteger(qi) || qi < 0 || qi >= THEMES[theme].questions.length) return c.json({ error: "bad" }, 400);
     question = THEMES[theme].questions[qi];
   }
-  const res = await startReading(c.env.DB, conv, { kind: "spread", spread, theme, question, custom, pile }, unlimited);
+  const access = (await themeAccess(c.env.DB, conv, tester))[theme];
+  if (access === "locked") return c.json({ error: "pass" }, 402);
+  const res = await startReading(c.env.DB, conv, { kind: "spread", spread, theme, question, custom, pile }, true);
   if (res === "done") return c.json({ error: "done" }, 409);
   return c.json({ ok: true, count: SPREADS[spread].positions.length });
 });
@@ -241,9 +255,16 @@ tarot.post("/api/pick", async (c) => {
   if (conv === null) return c.json({ error: "login" }, 401);
   const b = await body(c);
   if (!b || (b.kind !== "daily" && b.kind !== "spread")) return c.json({ error: "bad" }, 400);
-  const res = await finishReading(c.env.DB, conv, b.kind, b.picks);
-  if (!res) return c.json({ error: "bad" }, 400);
   const now = Date.now();
+  if (b.kind === "spread") {
+    // A theme that is no longer free (a second tab used it up) cannot be finished without a pass.
+    const open = latest(await todayRows(c.env.DB, conv, istDay(now)), "spread");
+    const tester = await isTester(c.env.DB, conv, c.env.TAROT_TESTERS);
+    if (open && !open.done_at && open.theme && isTheme(open.theme) && (await themeAccess(c.env.DB, conv, tester, now))[open.theme] === "locked") return c.json({ error: "pass" }, 402);
+  }
+  const res = await finishReading(c.env.DB, conv, b.kind, b.picks, now);
+  if (!res) return c.json({ error: "bad" }, 400);
+  if (res.row.kind === "spread" && res.row.theme && isTheme(res.row.theme)) await markFreeUsed(c.env.DB, conv, res.row.theme, now);
   const { ins } = await profileInsights(c, conv, now);
   return c.json({ ok: true, reading: readingView(asEntry(res.row), ins, await history(c.env.DB, conv, res.row.id, now)) });
 });
@@ -324,6 +345,27 @@ tarot.post("/api/account/delete", async (c) => {
   if (!(await body(c))) return c.json({ error: "bad" }, 400);
   await c.env.DB.batch(tarotWipeStmts(c.env.DB, conv));
   deleteCookie(c, COOKIE, { path: "/tarot", secure: true });
+  return c.json({ ok: true });
+});
+
+tarot.post("/api/history/delete", async (c) => {
+  const conv = await who(c);
+  if (conv === null) return c.json({ error: "login" }, 401);
+  if (!(await body(c))) return c.json({ error: "bad" }, 400);
+  await deleteHistory(c.env.DB, conv);
+  return c.json({ ok: true });
+});
+
+// Ticket 61: testers on the test Worker log in with their number and a short PIN. Five wrong tries per number in 15 minutes, then a wait.
+tarot.post("/api/tester-login", async (c) => {
+  if (!c.env.TAROT_TESTER_PIN) return c.json({ error: "off" }, 404);
+  const b = await body(c);
+  if (!b || typeof b.phone !== "string" || typeof b.pin !== "string" || b.phone.length > 20 || b.pin.length > 20) return c.json({ error: "bad" }, 400);
+  const r = await pinLogin(c.env.DB, b.phone, b.pin, testerNumbers(c.env.TAROT_TESTERS), c.env.TAROT_TESTER_PIN);
+  if (r === "wait") return c.json({ error: "wait" }, 429);
+  if (r === "no") return c.json({ error: "no" }, 403);
+  const sid = await newSession(c.env.DB, r);
+  setCookie(c, COOKIE, sid, { path: "/tarot", httpOnly: true, secure: true, sameSite: "Lax", maxAge: SESSION_DAYS * 86_400 });
   return c.json({ ok: true });
 });
 

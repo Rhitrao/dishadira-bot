@@ -1,5 +1,21 @@
 # STATUS
-Updated: 2026-11-25 (Ticket 60: the Android app, step one)
+Updated: 2026-11-26 (Ticket 61: tarot home screen, free readings and passes, fixes)
+
+## Ticket 61 (branch tarot-home, migration 0029_tarot_home, CONTRACT v29; based on main d053a9e with #79)
+Rohit, 26 Nov 2026, eleven asks after trying the Android app (screenshot): login and OTP options, first-time details, themes on the home screen, a bigger back button, delete history, an easy tester login, the voice starting late and playing with the screen off, a pricing model, more engaging love questions, a "today's message" per theme, a light UI polish.
+- **Home** (page.ts themeCard, showMessage): the three themes sit on the home screen, each with **Today's message** (one card per theme per IST day, store.ts todayMessages, table tarot_messages, added to the collection) and "Ask the cards". The separate themes screen is gone.
+- **Free and paid** (store.ts themeAccess, activePass, markFreeUsed; api.ts /api/start and /api/pick): daily card and messages always free; first reading in each theme free once (tarot_free); then 402 "pass" and a "Passes open soon" screen with the ₹99 call. Testers and pass holders unlimited. tarot_passes is ready for sales; nothing sells passes yet.
+- **Delete my history** (/api/history/delete; on home under the journal and in Your details): readings, notes and today's messages; details, collection and the free-reading record stay.
+- **Email**: optional field in the details (checked, lower-cased; tarot_profiles.email). No email login yet.
+- **Tester PIN** (/api/tester-login, store.ts pinLogin): only when the new secret **TAROT_TESTER_PIN** is set and the number is in TAROT_TESTERS; 5 wrong tries per number in 15 minutes, then a wait. A "Tester login" link appears on the login screen only then. The PIN is not in git; Rohit sets it on the test Worker only.
+- **Love readings** (reading.ts): "Their heart" (their feelings, intention, message: what the card suggests, never a fact) and "The next three months" (the energy of each month, never events); new ready questions in all three themes; story.ts rules updated to match and still forbid "will he come back / leave / marry / cheat".
+- **Page**: sticky top bar with a 48px back button and the screen's name; safe-area padding top and bottom (the app drew under the status bar); voice fetched as soon as the words arrive, stopped when leaving a reading, on screen-off (visibilitychange) and on pagehide, and a late voice never starts by itself; small polish (theme cards, chips). App: SystemBars insetsHandling css, viewport hint cover, light icons.
+- **Fixed on the way**: "Your latest reading" no longer disappears when a newer reading is started and left unfinished.
+- **Checks**: typecheck clean; tarothome 12/12, tarot 19/19, tarotprofile 14/14, tarotstory 7/7, tarotapp 9/9, config 9/9, release, people, chat, cardtest, logging pass (one at a time; CI runs the whole suite); wrangler dry-run (test) 2,543 KiB gzipped.
+- **Open questions for Rohit**: (1) pass prices and lengths (proposal in chat; his example ladder made the longest pass dearer per day); (2) the ₹888 session price would change the ₹799 everywhere, including the other chat's catalogue; (3) WhatsApp one-time codes need an approved authentication template in Meta (about ₹0.12 each), email codes need an email sending account; (4) whether the "partner's feelings" wording, framed as possibilities, is acceptable under the content rules (no "will he come back" predictions).
+- Next: Rohit sets TAROT_TESTER_PIN on the test Worker, merges, runs Deploy → test (applies 0029), installs the new APK from Actions → Android app; then the passes ticket once prices are decided.
+
+
 
 ## Ticket 60 (PR https://github.com/Rhitrao/dishadira-bot/pull/79, branch app-android, migration 0028_tarot_codes, CONTRACT v28; based on main 56d957a with #78)
 Rohit, 25 Nov 2026: "start now" on the Android and iOS app plan (Claude Docs, "Disha Dira Tarot: the Android and iOS app plan"), and asked whose name the store accounts should be in (answered in chat: the Disha Dira Gmail as the login; the legal holder depends on whether Disha Dira is a registered company).

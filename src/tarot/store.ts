@@ -160,10 +160,10 @@ export async function history(db: D1Database, convId: number, beforeId: number, 
 }
 
 // ---------- the profile (ticket 58) ----------
-type ProfileRow = { name: string; dob: string; birth_time: string | null; tz_minutes: number; birth_place: string | null };
+type ProfileRow = { name: string; dob: string; birth_time: string | null; tz_minutes: number; birth_place: string | null; email: string | null };
 export async function getProfile(db: D1Database, convId: number): Promise<Profile | null> {
-  const r = await db.prepare("SELECT name, dob, birth_time, tz_minutes, birth_place FROM tarot_profiles WHERE conversation_id = ?1").bind(convId).first<ProfileRow>();
-  return r ? { name: r.name, dob: r.dob, birthTime: r.birth_time, tzMinutes: r.tz_minutes, birthPlace: r.birth_place } : null;
+  const r = await db.prepare("SELECT name, dob, birth_time, tz_minutes, birth_place, email FROM tarot_profiles WHERE conversation_id = ?1").bind(convId).first<ProfileRow>();
+  return r ? { name: r.name, dob: r.dob, birthTime: r.birth_time, tzMinutes: r.tz_minutes, birthPlace: r.birth_place, email: r.email } : null;
 }
 
 export const MIN_AGE = 18;
@@ -188,18 +188,23 @@ export function parseProfile(b: Record<string, unknown>, nowMs = Date.now()): Pr
   const tz = b.tzMinutes === undefined || b.tzMinutes === null || b.tzMinutes === "" ? 330 : Number(b.tzMinutes);
   if (!Number.isInteger(tz) || tz < -720 || tz > 840 || tz % 15 !== 0) return { error: "tz" };
   const place = typeof b.birthPlace === "string" ? b.birthPlace.replace(/\s+/g, " ").trim().slice(0, 80) : "";
+  let email: string | null = null;
+  if (typeof b.email === "string" && b.email.trim() !== "") {
+    email = b.email.trim().toLowerCase();
+    if (email.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { error: "email" };
+  }
   if (b.consent !== true) return { error: "consent" };
-  return { name, dob, birthTime, tzMinutes: tz, birthPlace: place === "" ? null : place };
+  return { name, dob, birthTime, tzMinutes: tz, birthPlace: place === "" ? null : place, email };
 }
 
 export async function saveProfile(db: D1Database, convId: number, p: Profile, nowMs = Date.now()): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO tarot_profiles (conversation_id, name, dob, birth_time, tz_minutes, birth_place, consent_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
-       ON CONFLICT (conversation_id) DO UPDATE SET name = ?2, dob = ?3, birth_time = ?4, tz_minutes = ?5, birth_place = ?6, updated_at = ?7`,
+      `INSERT INTO tarot_profiles (conversation_id, name, dob, birth_time, tz_minutes, birth_place, consent_at, updated_at, email)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8)
+       ON CONFLICT (conversation_id) DO UPDATE SET name = ?2, dob = ?3, birth_time = ?4, tz_minutes = ?5, birth_place = ?6, updated_at = ?7, email = ?8`,
     )
-    .bind(convId, p.name, p.dob, p.birthTime, p.tzMinutes, p.birthPlace, iso(nowMs))
+    .bind(convId, p.name, p.dob, p.birthTime, p.tzMinutes, p.birthPlace, iso(nowMs), p.email ?? null)
     .run();
 }
 export async function deleteProfile(db: D1Database, convId: number): Promise<void> {
@@ -252,6 +257,87 @@ export async function pollCode(db: D1Database, code: string, secret: string, now
   return res.meta.changes === 1 ? row.conversation_id : "expired";
 }
 
+// ---------- the home screen and the first pricing rules (ticket 61) ----------
+export const THEME_IDS: ThemeId[] = ["love", "work", "self"];
+export const FREE_READINGS_PER_THEME = 1; // a person's first reading in each theme is free, once
+
+// Today's message for each theme: one card per theme per day, drawn by the same fair shuffle the first time the person opens the home screen.
+export async function todayMessages(db: D1Database, convId: number, nowMs = Date.now(), below?: (n: number) => number): Promise<Record<ThemeId, Drawn>> {
+  const day = istDay(nowMs);
+  const have = await db.prepare("SELECT theme, card_id, reversed FROM tarot_messages WHERE conversation_id = ?1 AND day = ?2").bind(convId, day).all<{ theme: ThemeId; card_id: string; reversed: number }>();
+  const out = Object.fromEntries(have.results.map((r) => [r.theme, { id: r.card_id, r: r.reversed === 1 }])) as Record<ThemeId, Drawn>;
+  const missing = THEME_IDS.filter((th) => !out[th]);
+  if (missing.length) {
+    const stmts: D1PreparedStatement[] = [];
+    for (const th of missing) {
+      const d = shuffledDeck(below)[0];
+      out[th] = d;
+      stmts.push(db.prepare("INSERT OR IGNORE INTO tarot_messages (conversation_id, day, theme, card_id, reversed, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(convId, day, th, d.id, d.r ? 1 : 0, iso(nowMs)));
+      stmts.push(db.prepare("INSERT OR IGNORE INTO tarot_seen (conversation_id, card_id, first_at) VALUES (?1, ?2, ?3)").bind(convId, d.id, iso(nowMs)));
+    }
+    await db.batch(stmts);
+    const again = await db.prepare("SELECT theme, card_id, reversed FROM tarot_messages WHERE conversation_id = ?1 AND day = ?2").bind(convId, day).all<{ theme: ThemeId; card_id: string; reversed: number }>();
+    for (const r of again.results) out[r.theme] = { id: r.card_id, r: r.reversed === 1 }; // two tabs at once: the stored one wins
+  }
+  return out;
+}
+
+export async function freeUsed(db: D1Database, convId: number): Promise<Set<ThemeId>> {
+  const r = await db.prepare("SELECT theme FROM tarot_free WHERE conversation_id = ?1").bind(convId).all<{ theme: ThemeId }>();
+  return new Set(r.results.map((x) => x.theme));
+}
+export async function markFreeUsed(db: D1Database, convId: number, theme: ThemeId, nowMs = Date.now()): Promise<void> {
+  await db.prepare("INSERT OR IGNORE INTO tarot_free (conversation_id, theme, used_at) VALUES (?1, ?2, ?3)").bind(convId, theme, iso(nowMs)).run();
+}
+
+export type Pass = { plan: string; endsAt: string };
+export async function activePass(db: D1Database, convId: number, nowMs = Date.now()): Promise<Pass | null> {
+  const r = await db
+    .prepare("SELECT plan, ends_at FROM tarot_passes WHERE conversation_id = ?1 AND starts_at <= ?2 AND ends_at > ?2 ORDER BY ends_at DESC LIMIT 1")
+    .bind(convId, iso(nowMs))
+    .first<{ plan: string; ends_at: string }>();
+  return r ? { plan: r.plan, endsAt: r.ends_at } : null;
+}
+
+// What a person may read in each theme right now: "tester" and "pass" are unlimited, "free" is their one free reading, "locked" needs a pass.
+export type Access = "tester" | "pass" | "free" | "locked";
+export async function themeAccess(db: D1Database, convId: number, tester: boolean, nowMs = Date.now()): Promise<Record<ThemeId, Access>> {
+  const pass = tester ? null : await activePass(db, convId, nowMs);
+  const used = await freeUsed(db, convId);
+  return Object.fromEntries(THEME_IDS.map((th) => [th, tester ? "tester" : pass ? "pass" : used.has(th) ? "locked" : "free"])) as Record<ThemeId, Access>;
+}
+
+// "Delete my history": readings, notes and today's messages. The details, the collection and the free-reading record stay.
+export async function deleteHistory(db: D1Database, convId: number): Promise<void> {
+  await db.batch([
+    db.prepare("DELETE FROM tarot_readings WHERE conversation_id = ?1").bind(convId),
+    db.prepare("DELETE FROM tarot_messages WHERE conversation_id = ?1").bind(convId),
+  ]);
+}
+
+// ---------- the tester PIN (ticket 61, test only) ----------
+export const PIN_TRIES = 5;
+export const PIN_WINDOW_MINUTES = 15;
+const sameText = (a: string, b: string) => a.length === b.length && [...a].reduce((d, ch, i) => d | (ch.charCodeAt(0) ^ b.charCodeAt(i)), 0) === 0;
+// A tester's number and the shared PIN (the TAROT_TESTER_PIN secret) give that tester's chat, or a reason they do not.
+export async function pinLogin(db: D1Database, phone: string, pin: string, testers: Set<string>, secretPin: string | undefined, nowMs = Date.now()): Promise<number | "no" | "wait"> {
+  const digits = phone.replace(/\D/g, "");
+  const num = digits.length === 10 ? `91${digits}` : digits;
+  if (!secretPin || secretPin.length < 4) return "no";
+  const since = iso(nowMs - PIN_WINDOW_MINUTES * 60_000);
+  const tries = await db.prepare("SELECT COUNT(*) AS n FROM tarot_pin_tries WHERE phone = ?1 AND at > ?2").bind(num, since).first<{ n: number }>();
+  if ((tries?.n ?? 0) >= PIN_TRIES) return "wait";
+  const conv = testers.has(num) ? await db.prepare("SELECT id FROM conversations WHERE wa_id = ?1").bind(num).first<{ id: number }>() : null;
+  if (!conv || !sameText(pin, secretPin)) {
+    await db.batch([
+      db.prepare("INSERT INTO tarot_pin_tries (phone, at) VALUES (?1, ?2)").bind(num, iso(nowMs)),
+      db.prepare("DELETE FROM tarot_pin_tries WHERE at < ?1").bind(iso(nowMs - 86_400_000)),
+    ]);
+    return "no";
+  }
+  return conv.id;
+}
+
 // ---------- testers (ticket 58) ----------
 // TAROT_TESTERS, a Worker secret: phone numbers with country code, separated by commas (a 10-digit number is read as Indian, +91). These
 // people can draw as often as they like each day. Never in git: the repo is public.
@@ -301,6 +387,9 @@ export const tarotWipeStmts = (db: D1Database, convId: number): D1PreparedStatem
   db.prepare("DELETE FROM tarot_seen WHERE conversation_id = ?1").bind(convId),
   db.prepare("DELETE FROM tarot_profiles WHERE conversation_id = ?1").bind(convId), // ticket 58
   db.prepare("DELETE FROM tarot_codes WHERE conversation_id = ?1").bind(convId), // ticket 60
+  db.prepare("DELETE FROM tarot_messages WHERE conversation_id = ?1").bind(convId), // ticket 61
+  db.prepare("DELETE FROM tarot_free WHERE conversation_id = ?1").bind(convId),
+  db.prepare("DELETE FROM tarot_passes WHERE conversation_id = ?1").bind(convId),
 ];
 
 // The daily wipe: everything of a person whose last reading is older than KEEP_DAYS, and expired logins and sessions.
@@ -309,6 +398,9 @@ export async function wipeOldTarot(db: D1Database, nowMs = Date.now()): Promise<
   const stale = "SELECT conversation_id FROM tarot_readings GROUP BY conversation_id HAVING MAX(created_at) < ?1";
   await db.batch([
     db.prepare(`DELETE FROM tarot_seen WHERE conversation_id IN (${stale})`).bind(cutoff),
+    db.prepare(`DELETE FROM tarot_messages WHERE conversation_id IN (${stale})`).bind(cutoff), // ticket 61
+    db.prepare(`DELETE FROM tarot_messages WHERE day < ?1`).bind(cutoff.slice(0, 10)),
+    db.prepare(`DELETE FROM tarot_free WHERE conversation_id IN (${stale})`).bind(cutoff),
     db.prepare(`DELETE FROM tarot_profiles WHERE conversation_id IN (${stale})`).bind(cutoff), // ticket 58
     db.prepare(
       `DELETE FROM tarot_profiles WHERE updated_at < ?1 AND conversation_id NOT IN (SELECT conversation_id FROM tarot_readings WHERE created_at >= ?1)`,
