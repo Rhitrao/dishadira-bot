@@ -13,7 +13,7 @@
 import { BY_ID, type Card, type Suit } from "./deck";
 import type { Drawn } from "./reading";
 
-export type Profile = { name: string; dob: string; birthTime: string | null; tzMinutes: number; birthPlace: string | null };
+export type Profile = { name: string; dob: string; birthTime: string | null; tzMinutes: number; birthPlace: string | null; email?: string | null };
 
 // ---------- numerology ----------
 const digitSum = (n: number) => String(Math.abs(n)).split("").reduce((s, d) => s + Number(d), 0);

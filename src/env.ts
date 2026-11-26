@@ -27,6 +27,9 @@ export const SECRET_NAMES = [
   // Ticket 58: the tarot game's testers, who may draw as often as they like each day: phone numbers with country code, comma-separated.
   // Unset: no one. Never in git (the repo is public).
   "TAROT_TESTERS",
+  // Ticket 61: a short PIN those testers may log in with (number + PIN) on the test Worker, instead of the WhatsApp link. Unset (live): no PIN
+  // login at all. Never in git.
+  "TAROT_TESTER_PIN",
 ] as const;
 
 export type SecretName = (typeof SECRET_NAMES)[number];

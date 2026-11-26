@@ -96,8 +96,8 @@ describe("the reading", () => {
     expect(summarize([{ id: "wands02", r: false }, { id: "cups03", r: false }, { id: "swords04", r: false }]).join(" ")).toMatch(/pull in different directions/);
     expect(summarize([{ id: "m17", r: true }])[0]).toMatch(/upside down/);
   });
-  it("has six questions for each of the three themes", () => {
-    for (const t of Object.values(THEMES)) expect(t.questions.length).toBe(6);
+  it("has six to eight questions for each of the three themes", () => {
+    for (const t of Object.values(THEMES)) expect(t.questions.length).toBeGreaterThanOrEqual(6), expect(t.questions.length).toBeLessThanOrEqual(8);
   });
 });
 
@@ -205,7 +205,7 @@ describe("the routes", () => {
     expect((await post("/tarot/api/start", ask, cookie, "https://evil.example")).status).toBe(400);
     expect((await post("/tarot/api/start", ask, cookie, null)).status).toBe(400);
     expect((await post("/tarot/api/start", { ...ask, theme: "money" }, cookie)).status).toBe(400);
-    expect((await post("/tarot/api/start", { ...ask, question: 6 }, cookie)).status).toBe(400);
+    expect((await post("/tarot/api/start", { ...ask, question: THEMES.love.questions.length }, cookie)).status).toBe(400);
     expect((await post("/tarot/api/start", { ...ask, spread: "work_path" }, cookie)).status).toBe(400); // not a love spread
     expect((await post("/tarot/api/start", ask, cookie)).status).toBe(200);
     const pick = await post("/tarot/api/pick", { kind: "spread", picks: [2, 7, 11] }, cookie);
@@ -214,12 +214,13 @@ describe("the routes", () => {
     expect(r.cards.every((c) => c.theme.length > 0)).toBe(true);
     expect(r.question).toBe(THEMES.love.questions[2]);
     expect(r.summary.length).toBeGreaterThan(0);
-    expect((await post("/tarot/api/start", { kind: "spread", theme: "work", spread: "sao", question: 0 }, cookie)).status).toBe(409);
+    expect((await post("/tarot/api/start", { kind: "spread", theme: "love", spread: "ppf", question: 0 }, cookie)).status).toBe(402); // ticket 61: the free love reading is used
+    expect((await post("/tarot/api/start", { kind: "spread", theme: "work", spread: "sao", question: 0 }, cookie)).status).toBe(200); // career has its own
     expect((await post("/tarot/api/note", { id: r.id, note: "  Feels true about my sister.  " }, cookie)).status).toBe(200);
     const state = (await (await app.request(`${ORIGIN}/tarot/api/state`, { headers: { Cookie: cookie } }, env())).json()) as { in: boolean; streak: number; seen: string[]; today: { spread: { note: string } }; journal: unknown[] };
     expect(state.in).toBe(true);
     expect(state.streak).toBe(1);
-    expect(state.seen.length).toBe(3);
+    expect(state.seen.length).toBeGreaterThanOrEqual(3); // the reading's three, and today's messages (ticket 61)
     expect(state.today.spread.note).toBe("Feels true about my sister.");
     expect(state.journal.length).toBe(1);
     expect((await post("/tarot/api/logout", {}, cookie)).status).toBe(200);

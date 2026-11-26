@@ -20,7 +20,7 @@ html,body{min-height:100%;background:var(--night);color:var(--ivory);font-family
 body{background:radial-gradient(120% 60% at 50% -10%,#3b2a6e 0%,rgba(58,44,107,0) 60%),radial-gradient(90% 50% at 50% 110%,#4a2340 0%,rgba(74,35,64,0) 60%),var(--night);background-attachment:fixed;transition:background .9s}
 body.dawn{background:radial-gradient(120% 60% at 50% -10%,#6b3a5e 0%,rgba(107,58,94,0) 60%),radial-gradient(90% 60% at 50% 110%,#a65d4f 0%,rgba(166,93,79,0) 65%),#24163a;background-attachment:fixed}
 .stars{position:fixed;inset:0;pointer-events:none;opacity:.55;z-index:0}
-main{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:20px 16px 56px}
+main{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top)) 16px calc(56px + env(safe-area-inset-bottom))}
 h1,h2,h3,.serif{font-family:"Cormorant Garamond",Georgia,serif;font-weight:600;letter-spacing:.01em}
 h1{font-size:2.2rem;line-height:1.1}h2{font-size:1.7rem;line-height:1.15;margin-bottom:6px}h3{font-size:1.3rem}
 .muted{color:var(--mist)}.small{font-size:.85rem}.center{text-align:center}
@@ -38,7 +38,10 @@ h1{font-size:2.2rem;line-height:1.1}h2{font-size:1.7rem;line-height:1.15;margin-
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:999px;padding:13px 22px;font:500 1rem Jost,sans-serif;cursor:pointer;background:linear-gradient(180deg,var(--gold2),var(--gold));color:#2a1d0c;text-decoration:none;min-height:48px}
 .btn.ghost{background:transparent;color:var(--gold2);border:1px solid var(--line)}
 .btn:focus-visible{outline:2px solid var(--ivory);outline-offset:3px}
-.back{background:none;border:0;color:var(--mist);font:inherit;cursor:pointer;padding:6px 0;margin-bottom:8px}
+.bar{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:12px;margin:calc(-14px - env(safe-area-inset-top)) -16px 16px;padding:calc(8px + env(safe-area-inset-top)) 16px 8px;background:rgba(18,15,38,.86);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid rgba(217,181,108,.18)}
+.bar .title{font-family:"Cormorant Garamond",serif;font-weight:600;font-size:1.15rem;color:var(--gold2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.back{display:inline-flex;align-items:center;gap:6px;min-height:48px;min-width:48px;padding:8px 18px 8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--ivory);font:500 1rem Jost,sans-serif;cursor:pointer;flex:none}
+.back b{font-size:1.5rem;line-height:1;color:var(--gold2);font-weight:400}.back:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .list button{display:block;width:100%;text-align:left;padding:14px 16px;margin:8px 0;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:inherit;font:inherit;cursor:pointer}
 .list button:hover,.list button:focus-visible{border-color:var(--gold);outline:none}
 .stage{min-height:62vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:18px}
@@ -85,7 +88,7 @@ textarea{width:100%;min-height:90px;border-radius:14px;border:1px solid var(--li
 .grid img{width:100%;height:100%;object-fit:cover;display:block}
 .jitem{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line);cursor:pointer;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;color:inherit;font:inherit;text-align:left}
 .jitem img{width:34px;border-radius:4px}
-.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#2b2150;border:1px solid var(--line);padding:10px 16px;border-radius:999px;font-size:.9rem;z-index:5}
+.toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#2b2150;border:1px solid var(--line);padding:10px 16px;border-radius:999px;font-size:.9rem;z-index:5}
 .again{display:block;margin:-4px 0 10px auto;background:none;border:0;color:var(--gold2);font:500 .88rem Jost,sans-serif;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .summary.today{background:linear-gradient(160deg,rgba(233,167,160,.12),rgba(217,181,108,.06))}
 .summary.for-you{border-color:var(--rose);background:rgba(233,167,160,.08)}.summary.for-you h3{color:var(--rose)}
@@ -115,13 +118,19 @@ details.art summary::-webkit-details-marker{display:none}
 .listen{float:right;min-height:40px;padding:8px 16px;font-size:.95rem;margin:-4px 0 8px 8px}
 .listen[disabled]{opacity:.5}
 .shimmer{animation:shim 1.6s ease-in-out infinite}@keyframes shim{50%{opacity:.45}}
+.theme-card{border:1px solid var(--line);border-radius:20px;padding:16px;margin:14px 0;background:linear-gradient(160deg,rgba(255,255,255,.07),rgba(255,255,255,.015))}
+.theme-card .head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.theme-card h3{color:var(--gold2)}
+.msg{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;margin:12px 0;width:100%;padding:10px;border-radius:14px;border:1px solid rgba(217,181,108,.2);background:rgba(0,0,0,.14);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.msg .card{--card-w:58px}.msg .lbl{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--rose)}.msg .nm{font-family:"Cormorant Garamond",serif;font-size:1.15rem;font-weight:600}
+.chip.free{color:#b9e3c6;border-color:rgba(185,227,198,.4);background:rgba(185,227,198,.07)}.chip.lock{color:var(--mist)}
+.section{margin-top:28px}.danger{color:var(--rose)!important;border-color:rgba(233,167,160,.45)!important}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
 
 const BACK_SVG = `<svg viewBox="0 0 100 140" aria-hidden="true" fill="none" stroke="#d9b56c" stroke-width="1.2"><circle cx="50" cy="70" r="30"/><circle cx="50" cy="70" r="22" stroke-opacity=".5"/><path d="M50 30v80M10 70h80M22 42l56 56M78 42l-56 56" stroke-opacity=".35"/><path d="M50 52c6 6 6 14 0 22-6-8-6-16 0-22zM50 74c8-2 14 2 16 8-8 2-14 0-16-8zM50 74c-8-2-14 2-16 8 8 2 14 0 16-8z" fill="#d9b56c" fill-opacity=".18"/><circle cx="50" cy="70" r="2" fill="#f0d79b"/></svg>`;
 
-export function pageHtml(waDigits: string): string {
+export function pageHtml(waDigits: string, pin = false): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Disha Dira Tarot</title><meta name="theme-color" content="#120f26"><meta name="robots" content="noindex">
 <meta name="description" content="A daily tarot ritual for calm moments, with Shantha Rao. A reflection tool, not advice or prediction.">
@@ -129,7 +138,7 @@ export function pageHtml(waDigits: string): string {
 <canvas class="stars" id="stars" aria-hidden="true"></canvas>
 <main id="app" aria-live="polite"><div class="stage"><p class="muted">Shuffling the stars…</p></div></main>
 <template id="back">${BACK_SVG}</template>
-<script src="/tarot/app.js" data-wa="${esc(waDigits)}" defer></script>
+<script src="/tarot/app.js" data-wa="${esc(waDigits)}" data-pin="${pin ? "1" : ""}" defer></script>
 </body></html>`;
 }
 
@@ -137,6 +146,7 @@ export function pageHtml(waDigits: string): string {
 export const APP_JS = String.raw`(function () {
 "use strict";
 var WA = document.currentScript.getAttribute("data-wa");
+var PIN = document.currentScript.getAttribute("data-pin") === "1";
 var app = document.getElementById("app");
 var BACK = document.getElementById("back").innerHTML;
 var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -153,7 +163,16 @@ function el(tag, attrs, kids) {
   (kids || []).forEach(function (c) { if (c) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
   return n;
 }
-function clear() { app.innerHTML = ""; window.scrollTo(0, 0); }
+function clear() { stopVoice(); app.innerHTML = ""; window.scrollTo(0, 0); }
+// Ticket 61: a sticky top bar with a big back button (48px, with a label) and the screen's name.
+function bar(label, fn, title) {
+  return el("div", { class: "bar" }, [el("button", { class: "back", type: "button", "aria-label": "Back to " + label, on: { click: fn } }, [el("b", { "aria-hidden": "true", text: "‹" }), el("span", { text: label })]), title ? el("span", { class: "title", text: title }) : null]);
+}
+function twoTap(text, again, fn) {
+  var armed = false;
+  var b = el("button", { class: "btn ghost danger", type: "button", text: text, on: { click: function () { if (!armed) { armed = true; b.textContent = again; return; } fn(); } } });
+  return b;
+}
 function wait(ms) { return new Promise(function (r) { setTimeout(r, REDUCED ? 0 : ms); }); }
 function toast(t) { var x = el("div", { class: "toast", role: "status", text: t }); document.body.appendChild(x); setTimeout(function () { x.remove(); }, 2600); }
 function waLink(text) { return "https://wa.me/" + WA + "?text=" + encodeURIComponent(text); }
@@ -223,9 +242,26 @@ function showLogin(old) {
   var go = el("button", { class: "btn", type: "button", text: "Continue with WhatsApp" });
   go.onclick = function () { codeLogin(status, go); };
   s.appendChild(go); s.appendChild(status);
+  if (PIN) s.appendChild(el("button", { class: "again", style: "margin:0 auto", type: "button", text: "Tester login", on: { click: function () { pinForm(s); } } }));
   app.appendChild(s); app.appendChild(footer());
   var saved = null; try { saved = JSON.parse(sessionStorage.getItem("ddCode") || "null"); } catch (e) {}
   if (saved && saved.code) pollCode(saved, status, go);
+}
+// Ticket 61: testers (test only) log in with their number and the test PIN.
+function pinForm(s) {
+  if (s.querySelector(".pinform")) return;
+  var phone = el("input", { type: "tel", inputmode: "tel", autocomplete: "tel", placeholder: "Your number, e.g. 98xxxxxxxx", maxlength: "20" });
+  var pin = el("input", { type: "password", inputmode: "numeric", autocomplete: "off", placeholder: "PIN", maxlength: "20" });
+  var err = el("p", { class: "err", role: "alert" });
+  var f = el("form", { class: "form pinform", style: "width:100%;max-width:320px" }, [el("label", { class: "field" }, [el("span", { text: "Tester number" }), phone]), el("label", { class: "field" }, [el("span", { text: "PIN" }), pin]), err, el("button", { class: "btn", type: "submit", text: "Log in" })]);
+  f.addEventListener("submit", function (e) {
+    e.preventDefault(); err.textContent = "";
+    api("tester-login", { phone: phone.value, pin: pin.value }).then(function (r) {
+      if (r.ok) { load(); return; }
+      err.textContent = r.error === "wait" ? "Too many tries. Please wait 15 minutes." : "That number and PIN do not match a tester.";
+    }).catch(function () { err.textContent = "No connection. Please try again."; });
+  });
+  s.appendChild(f); phone.focus();
 }
 // Ticket 60: log in by sending "TAROT <code>" on WhatsApp; this page (or the app) waits for the bot to see it.
 function codeLogin(status, go) {
@@ -276,6 +312,64 @@ function reminderBox() {
   return el("div", { class: "summary" }, [el("h3", { text: "Daily reminder" }), el("p", { class: "small", text: "A gentle note from your phone once a day. Nothing is sent to us." }), el("label", { class: "field" }, [el("span", { text: "Time" }), time]), el("div", { class: "actions" }, [on, off]), state]);
 }
 
+// What a person may read in a theme right now, in words.
+function accessLine(k) {
+  var a = S.data.access ? S.data.access[k] : "free";
+  if (a === "tester") return "Tester: as many readings as you like.";
+  if (a === "pass") return "Your pass is active until " + S.data.pass.endsAt.slice(0, 10) + ".";
+  if (a === "free") return "Your first reading in this theme is free.";
+  return "Your free reading here is used. Today's message stays free every day.";
+}
+function themeCard(k) {
+  var t = S.data.themes[k], m = S.data.messages ? S.data.messages[k] : null, a = S.data.access ? S.data.access[k] : "free";
+  var chip = { tester: ["chip", "Tester"], pass: ["chip", "Pass active"], free: ["chip free", "1 free reading"], locked: ["chip lock", "Pass needed"] }[a];
+  var card = el("div", { class: "theme-card" }, [el("div", { class: "head" }, [el("h3", { text: t.label }), el("span", { class: chip[0], text: chip[1] })]), el("p", { class: "muted small", text: t.blurb })]);
+  if (m) {
+    var ce = cardEl(m.id, m.reversed, true);
+    card.appendChild(el("button", { class: "msg", type: "button", "aria-label": "Today's message: " + m.name, on: { click: function () { showMessage(k); } } }, [ce, el("div", {}, [
+      el("div", { class: "lbl", text: "Today's message" }), el("div", { class: "nm", text: m.name + (m.reversed ? " (upside down)" : "") }), el("p", { class: "small", text: m.theme }),
+    ])]));
+  }
+  card.appendChild(el("div", { class: "actions", style: "margin:4px 0 0" }, [el("button", { class: a === "locked" ? "btn ghost" : "btn", type: "button", text: a === "locked" ? "See passes" : "Ask the cards", on: { click: function () {
+    S.theme = k; if (a === "locked") showPasses(k); else showSpreads();
+  } } })]));
+  return card;
+}
+// Today's message in one theme, opened up: the card, what it says for this theme, and a question to sit with.
+function showMessage(k) {
+  var m = S.data.messages[k], t = S.data.themes[k];
+  clear(); document.body.classList.add("dawn");
+  app.appendChild(bar("Home", showHome, "Today's message"));
+  var ce = cardEl(m.id, m.reversed, true); ce.style.setProperty("--card-w", "min(52vw,220px)");
+  app.appendChild(el("div", { class: "stage", style: "min-height:auto;margin:8px 0 18px" }, [ce]));
+  app.appendChild(el("p", { class: "center muted small", text: t.label }));
+  app.appendChild(el("h2", { class: "center", text: m.name + (m.reversed ? " (upside down)" : "") }));
+  var kw = el("div", { class: "chips", style: "justify-content:center;margin:8px 0 14px" }); m.keywords.forEach(function (w) { kw.appendChild(el("span", { class: "chip", text: w })); });
+  app.appendChild(kw);
+  app.appendChild(el("div", { class: "summary story" }, [el("h3", { text: "Today, for " + t.label.toLowerCase() }), el("p", { text: m.theme }), el("p", { class: "muted", text: m.meaning }), el("p", { class: "serif", style: "font-size:1.2rem;font-style:italic;color:var(--rose)", text: m.ask })]));
+  app.appendChild(el("div", { class: "actions", style: "justify-content:center" }, [el("button", { class: "btn", text: "Ask the cards about " + t.label.split(" ")[0].toLowerCase(), on: { click: function () { S.theme = k; if (S.data.access[k] === "locked") showPasses(k); else showSpreads(); } } })]));
+  app.appendChild(footer());
+}
+// Ticket 61: after the free reading in a theme, a pass. Passes go on sale in a later ticket; until then this screen says so plainly.
+function showPasses(k) {
+  clear(); document.body.classList.remove("dawn");
+  app.appendChild(bar("Home", showHome, "Passes"));
+  app.appendChild(el("h2", { text: "Keep reading with a pass" }));
+  app.appendChild(el("p", { class: "muted", text: "Your free reading in " + S.data.themes[k].label + " is used. A pass opens every theme and every spread for a set number of days. It is paid once and never renews by itself." }));
+  app.appendChild(el("div", { class: "summary" }, [el("h3", { text: "Passes open soon" }), el("p", { text: "Until then, today's card and today's message in each theme stay free, every day." })]));
+  app.appendChild(el("div", { class: "summary" }, [
+    el("h3", { text: "Want to talk it through?" }),
+    el("p", { class: "muted", text: "Shantha Rao can talk with you on a ₹99 call." }),
+    el("div", { class: "actions" }, [el("a", { class: "btn", href: waLink("Book a call"), rel: "noopener", text: "Book a ₹99 call" })]),
+  ]));
+  app.appendChild(footer());
+}
+function deleteHistoryBtn() {
+  return twoTap("Delete my history", "Tap again to delete all readings", function () {
+    api("history/delete", {}).then(function (r) { toast(r.ok ? "Your readings and notes are deleted." : "Could not delete. Please try again."); load(); });
+  });
+}
+
 function showHome() {
   stopVoice(); clear(); document.body.classList.remove("dawn");
   var d = S.data, ins = d.insights;
@@ -295,13 +389,14 @@ function showHome() {
     el("span", { class: "go", text: "›" }),
   ]));
   if (daily && d.tester) app.appendChild(el("button", { class: "again", text: "Draw another card (tester)", on: { click: beginDaily } }));
+  // Ticket 61: the three themes live on the home screen, each with today's message (one free card a day) and its own reading.
+  app.appendChild(el("h2", { class: "section", text: "Your themes today" }));
+  app.appendChild(el("p", { class: "muted small", text: "A free message in each theme, every day. Tap a theme to ask your own question." }));
+  Object.keys(d.themes).forEach(function (k) { app.appendChild(themeCard(k)); });
   var sp = d.today.spread;
-  app.appendChild(el("button", { class: "tile" + (sp ? " done" : ""), on: { click: function () { sp ? showReading(sp) : showThemes(); } } }, [
-    el("h3", { text: sp ? "Today's reading: " + sp.spread : "Today's reading" }),
-    el("p", { class: "muted small", text: sp ? sp.question : "Choose a theme, a spread and your question." }),
-    el("span", { class: "go", text: "›" }),
+  if (sp) app.appendChild(el("button", { class: "tile done", on: { click: function () { showReading(sp); } } }, [
+    el("h3", { text: "Your latest reading" }), el("p", { class: "muted small", text: sp.question + " · " + sp.spread }), el("span", { class: "go", text: "›" }),
   ]));
-  if (sp && d.tester) app.appendChild(el("button", { class: "again", text: "Do another reading (tester)", on: { click: showThemes } }));
   if (ins) {
     app.appendChild(el("h2", { text: "Your path across the arts", style: "margin-top:26px" }));
     app.appendChild(el("p", { class: "muted small", text: "Worked out from your birth details. They shape how your readings are explained, never which cards appear." }));
@@ -321,6 +416,7 @@ function showHome() {
   if (d.journal.length) {
     app.appendChild(el("h2", { text: "Your journal", style: "margin-top:26px" }));
     app.appendChild(el("p", { class: "muted small", text: "Your readings from the last 7 days." }));
+    var delWrap = el("div", { class: "actions" });
     d.journal.forEach(function (j) {
       var c = j.cards[0];
       app.appendChild(el("button", { class: "jitem", on: { click: function () { showReading(j); } } }, [
@@ -328,6 +424,8 @@ function showHome() {
         el("div", {}, [el("div", { text: (j.kind === "daily" ? "Daily card: " + c.name : j.question) }), el("div", { class: "small muted", text: j.day + (j.kind === "daily" ? "" : " · " + j.spread) + (j.note ? " · has your note" : "") })]),
       ]));
     });
+    delWrap.appendChild(deleteHistoryBtn());
+    app.appendChild(delWrap);
   }
   app.appendChild(el("h2", { text: "Your collection", style: "margin-top:26px" }));
   app.appendChild(el("p", { class: "muted small", text: d.seen.length + " of 78 cards found. Each card you draw joins your deck." }));
@@ -347,7 +445,7 @@ function allIds() {
 var OFFSETS = [[330, "India (IST, UTC+5:30)"], [345, "Nepal (UTC+5:45)"], [360, "Bangladesh (UTC+6)"], [300, "Pakistan, Maldives (UTC+5)"], [240, "UAE, Oman (UTC+4)"], [180, "Saudi Arabia, Qatar, Kuwait (UTC+3)"], [480, "Singapore, Malaysia (UTC+8)"], [600, "Sydney, Melbourne, standard time (UTC+10)"], [0, "UK, standard time (UTC+0)"], [60, "UK summer time, central Europe (UTC+1)"], [-300, "US East, standard time (UTC−5)"], [-240, "US East, summer time (UTC−4)"], [-480, "US West, standard time (UTC−8)"], [-420, "US West, summer time (UTC−7)"]];
 function showProfileForm(p) {
   clear(); document.body.classList.remove("dawn");
-  if (p) app.appendChild(el("button", { class: "back", on: { click: showHome }, text: "‹ Home" }));
+  if (p) app.appendChild(bar("Home", showHome, "Your details"));
   app.appendChild(el("h2", { text: p ? "Your details" : "Welcome" }));
   app.appendChild(el("p", { class: "muted", text: "Tell us a little about you once. We use it to read your numbers and stars, and to make each reading speak to you." }));
   var f = el("form", { class: "form", novalidate: "" });
@@ -358,32 +456,33 @@ function showProfileForm(p) {
   var tz = el("select", { name: "tz" });
   OFFSETS.forEach(function (o) { var op = el("option", { value: String(o[0]), text: o[1] }); if ((p ? p.tzMinutes : 330) === o[0]) op.selected = true; tz.appendChild(op); });
   var place = el("input", { name: "place", maxlength: "80", placeholder: "City, for example Bengaluru" }); place.value = p && p.birthPlace ? p.birthPlace : "";
+  var email = el("input", { name: "email", type: "email", autocomplete: "email", maxlength: "120", placeholder: "you@example.com" }); email.value = p && p.email ? p.email : "";
   var consent = el("input", { type: "checkbox", name: "consent" }); if (p) consent.checked = true;
   f.appendChild(field("Your full name, as at birth", name, "Used for your name numbers. English letters work best."));
   f.appendChild(field("Date of birth", dob, "For adults 18 and over."));
   f.appendChild(field("Time of birth (if you know it)", time, "Leave empty if you don't know. It makes your Moon sign and birth star exact."));
   f.appendChild(field("Where you were born: time zone", tz, null));
   f.appendChild(field("Place of birth (optional)", place, null));
+  f.appendChild(field("Email (optional)", email, "Only to reach you about your account. Never shared, never used for adverts."));
   f.appendChild(el("label", { class: "check" }, [consent, el("span", { text: "I am 18 or older, and I agree that Disha Dira keeps these details to personalise my readings. I can delete them at any time." })]));
   var err = el("p", { class: "err", role: "alert" });
   f.appendChild(err);
   f.appendChild(el("button", { class: "btn", type: "submit", text: p ? "Save" : "See my path" }));
   f.addEventListener("submit", function (e) {
     e.preventDefault(); err.textContent = "";
-    api("profile", { name: name.value, dob: dob.value, birthTime: time.value, tzMinutes: Number(tz.value), birthPlace: place.value, consent: consent.checked }).then(function (r) {
+    api("profile", { name: name.value, dob: dob.value, birthTime: time.value, tzMinutes: Number(tz.value), birthPlace: place.value, email: email.value, consent: consent.checked }).then(function (r) {
       if (r.ok) { load(); return; }
-      err.textContent = { name: "Please write your name.", dob: "Please choose a real date of birth.", age: "Disha Dira Tarot is for adults 18 and over.", time: "Please check the birth time.", tz: "Please choose a time zone.", consent: "Please tick the box to agree." }[r.error] || "Something went wrong. Please try again.";
+      err.textContent = { name: "Please write your name.", dob: "Please choose a real date of birth.", age: "Disha Dira Tarot is for adults 18 and over.", time: "Please check the birth time.", tz: "Please choose a time zone.", email: "Please check your email address, or leave it empty.", consent: "Please tick the box to agree." }[r.error] || "Something went wrong. Please try again.";
     }).catch(function () { err.textContent = "No connection. Please try again."; });
   });
   app.appendChild(f);
   if (p) {
-    var armed = false;
-    var del = el("button", { class: "btn ghost", text: "Delete my account", on: { click: function () {
-      if (!armed) { armed = true; del.textContent = "Tap again to delete everything"; return; }
+    app.appendChild(el("h3", { class: "section", text: "Your data" }));
+    var del = twoTap("Delete my account", "Tap again to delete everything", function () {
       api("account/delete", {}).then(function () { try { localStorage.clear(); sessionStorage.clear(); } catch (e) {} S.data = null; showLogin(false); toast("Your account and readings are deleted."); });
-    } } });
-    app.appendChild(el("div", { class: "actions" }, [el("button", { class: "btn ghost", text: "Delete my details", on: { click: function () { api("profile/delete", {}).then(function () { toast("Your details are deleted."); load(); }); } } }), del]));
-    app.appendChild(el("p", { class: "small muted", text: "Delete my details removes your birth details. Delete my account removes everything: details, readings, notes and your collection." }));
+    });
+    app.appendChild(el("div", { class: "actions" }, [deleteHistoryBtn(), el("button", { class: "btn ghost", text: "Delete my details", on: { click: function () { api("profile/delete", {}).then(function () { toast("Your details are deleted."); load(); }); } } }), del]));
+    app.appendChild(el("p", { class: "small muted", text: "Delete my history removes your readings and notes. Delete my details removes your birth details and email. Delete my account removes everything, including your collection." }));
   }
   app.appendChild(footer());
 }
@@ -410,20 +509,11 @@ function layoutEl(positions, cards, maxW, labels) {
   return box;
 }
 
-function showThemes() {
-  clear(); app.appendChild(el("button", { class: "back", on: { click: showHome }, text: "‹ Back" }));
-  app.appendChild(el("h2", { text: "Choose today's theme" }));
-  app.appendChild(el("p", { class: "muted", text: S.data.tester ? "Tester: as many readings as you like." : "One free reading a day." }));
-  Object.keys(S.data.themes).forEach(function (k) {
-    var t = S.data.themes[k];
-    app.appendChild(el("button", { class: "tile", on: { click: function () { S.theme = k; showSpreads(); } } }, [el("h3", { text: t.label }), el("p", { class: "muted small", text: t.blurb }), el("span", { class: "go", text: "›" })]));
-  });
-}
 function showSpreads() {
-  clear(); app.appendChild(el("button", { class: "back", on: { click: showThemes }, text: "‹ Themes" }));
+  clear(); app.appendChild(bar("Home", showHome, S.data.themes[S.theme].label));
   var t = S.data.themes[S.theme];
-  app.appendChild(el("h2", { text: t.label }));
-  app.appendChild(el("p", { class: "muted", text: "Choose a spread: the shape of your reading." }));
+  app.appendChild(el("h2", { text: "Choose a spread" }));
+  app.appendChild(el("p", { class: "muted", text: "The shape of your reading. " + accessLine(S.theme) }));
   t.spreads.forEach(function (s) {
     app.appendChild(el("button", { class: "tile spread", on: { click: function () { S.spread = s.id; S.count = s.count; showQuestions(); } } }, [
       el("div", { class: "row" }, [el("div", { class: "mini" }, [layoutEl(s.layout, null, 90, false)]), el("div", {}, [el("h3", { text: s.label }), el("p", { class: "muted small", text: s.blurb + " · " + s.count + (s.count === 1 ? " card" : " cards") })])]),
@@ -432,7 +522,7 @@ function showSpreads() {
   });
 }
 function showQuestions() {
-  clear(); app.appendChild(el("button", { class: "back", on: { click: showSpreads }, text: "‹ Spreads" }));
+  clear(); app.appendChild(bar("Spreads", showSpreads, "Your question"));
   var t = S.data.themes[S.theme];
   app.appendChild(el("h2", { text: "Your question" }));
   app.appendChild(el("p", { class: "muted", text: "Ask in your own words, or pick one of ours." }));
@@ -515,6 +605,7 @@ function start(pile) {
   api("start", body).then(function (r) {
     if (r._status === 401) return load();
     if (r.error === "crisis") return showCrisis();
+    if (r._status === 402) return load(true).then(function () { showPasses(S.theme); });
     if (r._status === 409) { toast(r.error === "profile" ? "Please add your details first." : "Today's reading is already done."); return load(); }
     if (!r.ok) { toast("Something went wrong. Please try again."); return; }
     fanStep();
@@ -544,6 +635,7 @@ function fanStep() {
 }
 function pick() {
   api("pick", { kind: S.kind, picks: S.picks }).then(function (r) {
+    if (r._status === 402) return load(true).then(function () { showPasses(S.theme); });
     if (!r.ok) { toast("Something went wrong. Please try again."); return load(); }
     reveal(r.reading);
   }).catch(function () { toast("No connection. Please try again."); });
@@ -563,11 +655,24 @@ function reveal(reading) {
 }
 
 // "What this means for you": the reading in plain words, and a Listen button (a warm recorded voice when the server has one, else the phone's).
-var VOICE = { audio: null, url: null, id: null, speaking: false };
+// Ticket 61: the recorded voice is fetched as soon as the words arrive, so Listen plays at once; it stops when the person leaves the reading
+// or the screen goes off, and a voice that arrives late never starts by itself.
+var VOICE = { audio: null, url: null, id: null, speaking: false, ready: {}, label: null };
 function stopVoice() {
-  if (VOICE.audio) { VOICE.audio.pause(); }
+  if (VOICE.audio) { VOICE.audio.pause(); VOICE.audio = null; }
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   VOICE.speaking = false;
+  if (VOICE.label) { VOICE.label(" Listen"); VOICE.label = null; }
+}
+document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") stopVoice(); });
+window.addEventListener("pagehide", stopVoice);
+function voiceBlob(id) {
+  if (!VOICE.ready[id]) VOICE.ready[id] = fetch("/tarot/api/voice/" + id, { credentials: "same-origin" }).then(function (res) {
+    if (!res.ok) throw new Error("voice");
+    return res.blob();
+  });
+  VOICE.ready[id].catch(function () { delete VOICE.ready[id]; });
+  return VOICE.ready[id];
 }
 function storyBox(r) {
   var box = el("div", { class: "summary story" }, [el("h3", { text: "What this means for you" })]);
@@ -582,23 +687,21 @@ function storyBox(r) {
     s.text.split(/\n\n+/).forEach(function (para) { body.appendChild(el("p", { text: para })); });
     btn.removeAttribute("disabled");
     VOICE.server = !!s.voice;
+    if (VOICE.server) voiceBlob(r.id).catch(function () {});
   }).catch(function () { body.innerHTML = ""; body.appendChild(el("p", { class: "muted", text: "No connection. Please read the cards below." })); });
   btn.addEventListener("click", function () {
-    if (VOICE.speaking && VOICE.id === r.id) { stopVoice(); label(" Listen"); return; }
-    stopVoice(); VOICE.id = r.id; VOICE.speaking = true; label(" Pause");
-    var done = function () { VOICE.speaking = false; label(" Listen"); };
+    if (VOICE.speaking && VOICE.id === r.id) { stopVoice(); return; }
+    stopVoice(); VOICE.id = r.id; VOICE.speaking = true; VOICE.label = label; label(" Pause");
+    var done = function () { VOICE.speaking = false; VOICE.label = null; label(" Listen"); };
     if (VOICE.server) {
-      label(" Loading…");
-      fetch("/tarot/api/voice/" + r.id, { credentials: "same-origin" }).then(function (res) {
-        if (!res.ok) throw new Error("voice");
-        return res.blob();
-      }).then(function (b) {
-        if (!VOICE.speaking) return;
+      label(" Preparing…");
+      voiceBlob(r.id).then(function (b) {
+        if (!VOICE.speaking || VOICE.id !== r.id || document.visibilityState !== "visible" || !document.body.contains(btn)) return;
         if (VOICE.url) URL.revokeObjectURL(VOICE.url);
         VOICE.url = URL.createObjectURL(b); VOICE.audio = new Audio(VOICE.url);
         VOICE.audio.onended = done; label(" Pause");
         return VOICE.audio.play();
-      }).catch(function () { if (VOICE.speaking) phoneVoice(text, done, label); });
+      }).catch(function () { if (VOICE.speaking && VOICE.id === r.id) phoneVoice(text, done, label); });
     } else phoneVoice(text, done, label);
   });
   return box;
@@ -618,8 +721,8 @@ function phoneVoice(text, done, label) {
 }
 
 function showReading(r) {
-  stopVoice(); clear(); document.body.classList.add("dawn");
-  app.appendChild(el("button", { class: "back", on: { click: showHome }, text: "‹ Home" }));
+  clear(); document.body.classList.add("dawn");
+  app.appendChild(bar("Home", showHome, r.kind === "daily" ? "Today's card" : S.data.themes[r.theme].label));
   app.appendChild(el("h2", { text: r.kind === "daily" ? "Today's card" : r.question }));
   if (r.kind !== "daily") {
     app.appendChild(el("p", { class: "muted", text: r.spread + " · " + S.data.themes[r.theme].label }));

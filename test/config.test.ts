@@ -57,7 +57,7 @@ describe("config", () => {
   });
 
   it("names every required secret", () => {
-    expect(SECRET_NAMES).toHaveLength(21); // ticket 45 added VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY; ticket 58 TAROT_TESTERS
+    expect(SECRET_NAMES).toHaveLength(22); // ticket 45 added VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY; ticket 58 TAROT_TESTERS; ticket 61 TAROT_TESTER_PIN
     expect(SECRET_NAMES).toContain("TAROT_TESTERS");
     expect(SECRET_NAMES).toContain("VAPID_PUBLIC_KEY");
     expect(SECRET_NAMES).toContain("VAPID_PRIVATE_KEY");

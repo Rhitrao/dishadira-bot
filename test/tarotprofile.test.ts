@@ -66,7 +66,7 @@ describe("the sky", () => {
 describe("the details form", () => {
   const ok = { name: "  Asha   Kumari ", dob: "1990-05-15", birthTime: "", tzMinutes: 330, birthPlace: "", consent: true };
   it("keeps what is given and refuses what does not make sense", () => {
-    expect(parseProfile(ok)).toEqual({ name: "Asha Kumari", dob: "1990-05-15", birthTime: null, tzMinutes: 330, birthPlace: null });
+    expect(parseProfile(ok)).toEqual({ name: "Asha Kumari", dob: "1990-05-15", birthTime: null, tzMinutes: 330, birthPlace: null, email: null });
     expect(parseProfile({ ...ok, consent: false })).toEqual({ error: "consent" });
     expect(parseProfile({ ...ok, dob: "2023-02-30" })).toEqual({ error: "dob" });
     expect(parseProfile({ ...ok, dob: "2015-01-01" })).toEqual({ error: "age" });

@@ -783,3 +783,15 @@ Rohit, 25 Nov 2026, on the app plan: "start now". Step one of the plan's groundw
 5. **Build**: .github/workflows/android.yml builds a test APK (test or live game) as a downloadable artifact. No Play publishing, no signing key.
 - Not in this ticket: Google Play billing for Plus, the release key and Play listing, offline cards, the home-screen widget, iOS.
 - Tests: codes (alphabet, spread, once, secret, expiry, ceiling); the routes (start, poll, cookie, Origin); delete account; the chat (link, old code, first message, game off).
+
+## Ticket 61: the tarot home screen, free readings and passes, history, tester PIN, voice and layout fixes
+Rohit, 26 Nov 2026, eleven asks after trying the Android app (screenshot). Branch tarot-home, migration 0029_tarot_home, CONTRACT v29.
+1. **Themes on home**, each with **Today's message** (one free card per theme per day) and an "Ask the cards" button to its spreads.
+2. **Free and paid**: the daily card and messages always free; the first reading in each theme free once; then a pass (table only; "Passes open soon"; 402 from the API). Testers unlimited.
+3. **Delete my history** (readings, notes, messages) on home and in the details screen.
+4. **Optional email** in the details.
+5. **Tester PIN login** behind the TAROT_TESTER_PIN secret (test only), rate-limited.
+6. **Love readings**: "Their heart" and "The next three months", framed as possibilities and energies; new ready questions in every theme; the assistant's rules updated.
+7. **Page**: sticky top bar with a big back button, safe-area padding, the voice fetched early and stopped when hidden; the app's system bars.
+- Not in this ticket: selling passes (Razorpay on the web, Google Play billing in the app), WhatsApp or email one-time codes, the ₹888 session price.
+- Tests: test/tarothome.test.ts (messages, access, passes, history delete, wipe, PIN, email, love spreads, page pieces); tarot.test.ts and tarotprofile.test.ts updated.

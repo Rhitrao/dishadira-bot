@@ -4,7 +4,10 @@
   "webDir": "www",
   "server": {
     "url": "https://bot-test.disha-dira.com/tarot",
-    "allowNavigation": ["bot-test.disha-dira.com", "bot.disha-dira.com"],
+    "allowNavigation": [
+      "bot-test.disha-dira.com",
+      "bot.disha-dira.com"
+    ],
     "errorPath": "offline.html"
   },
   "android": {
@@ -15,6 +18,11 @@
     "LocalNotifications": {
       "smallIcon": "ic_stat_tarot",
       "iconColor": "#d9b56c"
+    },
+    "SystemBars": {
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover",
+      "style": "DARK"
     }
   }
 }
