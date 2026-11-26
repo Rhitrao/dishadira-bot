@@ -1,7 +1,7 @@
 # STATUS
 Updated: 2026-11-26 (Ticket 61: tarot home screen, free readings and passes, fixes)
 
-## Ticket 61 (branch tarot-home, migration 0029_tarot_home, CONTRACT v29; based on main d053a9e with #79)
+## Ticket 61 (PR https://github.com/Rhitrao/dishadira-bot/pull/80, branch tarot-home, migration 0029_tarot_home, CONTRACT v29; based on main d053a9e with #79)
 Rohit, 26 Nov 2026, eleven asks after trying the Android app (screenshot): login and OTP options, first-time details, themes on the home screen, a bigger back button, delete history, an easy tester login, the voice starting late and playing with the screen off, a pricing model, more engaging love questions, a "today's message" per theme, a light UI polish.
 - **Home** (page.ts themeCard, showMessage): the three themes sit on the home screen, each with **Today's message** (one card per theme per IST day, store.ts todayMessages, table tarot_messages, added to the collection) and "Ask the cards". The separate themes screen is gone.
 - **Free and paid** (store.ts themeAccess, activePass, markFreeUsed; api.ts /api/start and /api/pick): daily card and messages always free; first reading in each theme free once (tarot_free); then 402 "pass" and a "Passes open soon" screen with the ₹99 call. Testers and pass holders unlimited. tarot_passes is ready for sales; nothing sells passes yet.
