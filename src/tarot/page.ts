@@ -355,7 +355,7 @@ function showPasses(k) {
   clear(); document.body.classList.remove("dawn");
   app.appendChild(bar("Home", showHome, "Passes"));
   app.appendChild(el("h2", { text: "Keep reading with a pass" }));
-  app.appendChild(el("p", { class: "muted", text: "You have used your free " + S.data.themes[k].label.toLowerCase() + " reading. A pass opens every theme and every spread for a set number of days. It is paid once and never renews by itself." }));
+  app.appendChild(el("p", { class: "muted", text: "Your free reading in " + S.data.themes[k].label + " is used. A pass opens every theme and every spread for a set number of days. It is paid once and never renews by itself." }));
   app.appendChild(el("div", { class: "summary" }, [el("h3", { text: "Passes open soon" }), el("p", { text: "Until then, today's card and today's message in each theme stay free, every day." })]));
   app.appendChild(el("div", { class: "summary" }, [
     el("h3", { text: "Want to talk it through?" }),
